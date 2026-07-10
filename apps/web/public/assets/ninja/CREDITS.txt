@@ -1,0 +1,11 @@
+Ninja Adventure Asset Pack
+by Pixel-boy (and AAA)
+https://pixel-boy.itch.io/ninja-adventure-asset-pack
+https://github.com/pixel-boy/NinjaAdventure
+
+License: CC0 1.0 Universal (public domain). Attribution not required but appreciated.
+
+Files used in this project:
+- tileset_floor.png              (ground: grass / water / path)
+- tileset_village_abandoned.png  (buildings, trees, fences, decor)
+- samurai_green.png              (player character spritesheet, 16x16 frames)
