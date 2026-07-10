@@ -20,10 +20,10 @@ export class VillageHudScene extends Phaser.Scene {
     const cx = GAME_WIDTH / 2;
 
     this.add
-      .rectangle(cx, GAME_HEIGHT - 30, 520, 40, PALETTE.parchment, 0.9)
+      .rectangle(cx, GAME_HEIGHT - 64, 520, 40, PALETTE.parchment, 0.9)
       .setStrokeStyle(3, PALETTE.ink);
     this.add
-      .text(cx, GAME_HEIGHT - 30, "WASD / panah untuk bergerak", { ...LABEL_STYLE, fontSize: "22px" })
+      .text(cx, GAME_HEIGHT - 64, "WASD / panah untuk bergerak", { ...LABEL_STYLE, fontSize: "22px" })
       .setOrigin(0.5);
 
     this.prompt = this.add

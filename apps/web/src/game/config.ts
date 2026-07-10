@@ -15,7 +15,9 @@ export function createGameConfig(
     parent,
     backgroundColor: "#164429",
     scale: {
-      mode: Phaser.Scale.FIT,
+      // ENVELOP fills the whole window (no letterbox bars); the base aspect is
+      // preserved and the overflow is cropped at the edges.
+      mode: Phaser.Scale.ENVELOP,
       autoCenter: Phaser.Scale.CENTER_BOTH,
       width: GAME_WIDTH,
       height: GAME_HEIGHT,
