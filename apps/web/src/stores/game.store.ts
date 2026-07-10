@@ -8,6 +8,7 @@ import {
   isRedeemedVoucherArray,
   type RedeemedVoucher,
 } from "../content/vouchers";
+import { MISSIONS, isStringArray, type MissionReward } from "../content/missions";
 
 /**
  * The four top-level views. This union is the single source of truth for
@@ -26,7 +27,7 @@ export type View =
  * prompts (CONFIRM_ENTER / COMING_SOON), MadingInfoBoard renders MADING_INFO,
  * MadingDataBoard renders MADING_DATA, MadingKnowledgeBoard renders MADING_KNOWLEDGE,
  * QuizBoard renders QUIZ, KasirVoucherBoard renders KASIR_VOUCHER, ProfileModal
- * renders PROFILE.
+ * renders PROFILE, MissionBoard renders MISSION.
  */
 export type OverlayKind =
   | "NONE"
@@ -37,12 +38,24 @@ export type OverlayKind =
   | "MADING_KNOWLEDGE"
   | "QUIZ"
   | "KASIR_VOUCHER"
-  | "PROFILE";
+  | "PROFILE"
+  | "MISSION";
+
+/** Result of completeMission — carries the granted reward on success. */
+export type MissionResult =
+  | { ok: true; reward: MissionReward }
+  | { ok: false; reason: "already" | "wrong-code" | "unknown" };
 
 const NAME_STORAGE_KEY = "koperasi.playerName";
 const XP_STORAGE_KEY = "koperasi.xp";
 const POINT_STORAGE_KEY = "koperasi.point";
 const VOUCHERS_STORAGE_KEY = "koperasi.vouchers";
+const MISSION_STORAGE_KEY = "koperasi.missions";
+
+/** Trim + case-insensitive on both sides so "kdmp2026 " matches "KDMP2026". */
+function codeMatches(expected: string, input?: string): boolean {
+  return input != null && input.trim().toLowerCase() === expected.trim().toLowerCase();
+}
 
 function loadPlayerName(): string | null {
   try {
@@ -87,6 +100,8 @@ export type GameState = {
   xp: number;
   point: number;
   redeemedVouchers: RedeemedVoucher[];
+  /** Ids of missions already completed (persisted). Membership = "done". */
+  completedMissionIds: string[];
 
   setView: (view: View) => void;
   setPlayerName: (name: string) => void;
@@ -120,6 +135,14 @@ export type GameState = {
    * (carrying its fresh code) on success, or null if unknown / not affordable.
    */
   redeemVoucher: (voucherId: string) => RedeemedVoucher | null;
+  /** Open the mission overlay (no-op if another overlay is already open). */
+  openMission: () => void;
+  /**
+   * Complete a mission (one-time). Live-reads completedMissionIds as the gate;
+   * real-life missions require a matching code. Banks the reward + persists in a
+   * single flat transaction. Returns the reward on success, else a failure reason.
+   */
+  completeMission: (missionId: string, code?: string) => MissionResult;
 };
 
 /** How long (ms) the scene ignores E after an overlay closes — see interactSuppressedUntil. */
@@ -153,6 +176,7 @@ export const gameStore = createStore<GameState>()(
       [],
       isRedeemedVoucherArray,
     ),
+    completedMissionIds: loadJson<string[]>(MISSION_STORAGE_KEY, [], isStringArray),
 
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
@@ -259,6 +283,29 @@ export const gameStore = createStore<GameState>()(
       saveJson(VOUCHERS_STORAGE_KEY, nextList);
       set({ point: nextPoint, redeemedVouchers: nextList });
       return redeemed;
+    },
+
+    openMission: () => {
+      if (get().activeOverlay !== "NONE") return;
+      set({ activeOverlay: "MISSION" });
+    },
+
+    completeMission: (missionId, code) => {
+      const mission = MISSIONS.find((m) => m.id === missionId);
+      if (!mission) return { ok: false, reason: "unknown" };
+      const { completedMissionIds, xp, point } = get(); // live read — the gate
+      if (completedMissionIds.includes(missionId)) return { ok: false, reason: "already" };
+      if (mission.kind === "reallife" && !codeMatches(mission.code, code)) {
+        return { ok: false, reason: "wrong-code" };
+      }
+      const nextXp = xp + Math.max(0, mission.reward.xp);
+      const nextPoint = point + Math.max(0, mission.reward.point);
+      const nextIds = [...completedMissionIds, missionId];
+      saveNumber(XP_STORAGE_KEY, nextXp);
+      saveNumber(POINT_STORAGE_KEY, nextPoint);
+      saveJson(MISSION_STORAGE_KEY, nextIds);
+      set({ xp: nextXp, point: nextPoint, completedMissionIds: nextIds });
+      return { ok: true, reward: mission.reward };
     },
   })),
 );
