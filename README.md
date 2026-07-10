@@ -68,6 +68,16 @@ Aset seni dipakai dengan lisensi bebas. Detail per-berkas juga ada di
 > jadi sesuai syarat. Untuk penggunaan komersial: beli versi berbayar LimeZu atau ganti
 > dengan aset CC0 (mis. [ArMM1998 Zelda-like](https://opengameart.org/content/zelda-like-tilesets-and-sprites), CC0).
 
+## Sumber Data
+
+Statistik koperasi yang tampil pada **Papan Pengetahuan** (mading dekat pintu
+interior koperasi) dikutip dari Dashboard SIMKOPDES. Pengutipan pada dashboard
+diizinkan sepanjang menyertakan sumber:
+
+> SIMKOPDES. (2026). *Dashboard SIMKOPDES*. Kementerian Koperasi Republik
+> Indonesia. Diakses pada 11 Juli 2026, pukul 01.00 WIB, dari
+> https://simkopdes.go.id/pers/dashboard
+
 ## Status
 
 Iterasi-1 (fondasi): monorepo + boot ke **Main Menu**. Belum ada gameplay.

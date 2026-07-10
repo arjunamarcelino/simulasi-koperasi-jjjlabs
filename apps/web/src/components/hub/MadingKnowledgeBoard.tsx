@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useGameStore, gameStore } from "../../stores/game.store";
-import { MADING_KNOWLEDGE_CARDS } from "../../content/mading-knowledge";
+import { MADING_KNOWLEDGE_CARDS, KNOWLEDGE_SOURCE } from "../../content/mading-knowledge";
 import { ModalShell } from "../common/ModalShell";
 import { GameButton } from "../common/GameButton";
 
@@ -50,6 +50,11 @@ export function MadingKnowledgeBoard() {
       >
         {card.kind === "stat" ? (
           <div>
+            {card.group && (
+              <span className="mb-3 inline-block border-2 border-border bg-mustard px-2 py-0.5 font-display text-[9px] text-ink">
+                {card.group}
+              </span>
+            )}
             <p className="font-display text-2xl leading-tight text-forest md:text-3xl">
               {card.value}
             </p>
@@ -105,6 +110,10 @@ export function MadingKnowledgeBoard() {
           ›
         </GameButton>
       </div>
+
+      <p className="mt-4 text-center font-body text-[11px] leading-snug text-ink-soft/70">
+        {KNOWLEDGE_SOURCE}
+      </p>
     </ModalShell>
   );
 }
