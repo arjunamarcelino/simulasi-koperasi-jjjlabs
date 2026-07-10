@@ -1,6 +1,5 @@
 import Phaser from "phaser";
 import { SceneKey } from "./sceneKeys";
-import { PALETTE } from "../palette";
 import { LABEL_STYLE } from "../textStyles";
 import { GAME_WIDTH, GAME_HEIGHT } from "../dimensions";
 
@@ -18,13 +17,6 @@ export class VillageHudScene extends Phaser.Scene {
 
   create(): void {
     const cx = GAME_WIDTH / 2;
-
-    this.add
-      .rectangle(cx, GAME_HEIGHT - 64, 520, 40, PALETTE.parchment, 0.9)
-      .setStrokeStyle(3, PALETTE.ink);
-    this.add
-      .text(cx, GAME_HEIGHT - 64, "WASD / panah untuk bergerak", { ...LABEL_STYLE, fontSize: "22px" })
-      .setOrigin(0.5);
 
     this.prompt = this.add
       .text(cx, GAME_HEIGHT / 2 + 60, "Tekan E untuk masuk", {

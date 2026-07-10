@@ -1,6 +1,9 @@
 import { GameCanvas } from "../components/game/GameCanvas";
 import { HubOverlays } from "../components/hub/HubOverlays";
 import { HubHud } from "../components/hub/HubHud";
+import { HubGuide } from "../components/hub/HubGuide";
+import { NamePrompt } from "../components/hub/NamePrompt";
+import { useGameStore } from "../stores/game.store";
 
 /**
  * The spatial hub (Village → Koperasi Interior). Hosts the Phaser canvas with
@@ -8,11 +11,15 @@ import { HubHud } from "../components/hub/HubHud";
  * SCENARIO_SELECTION view.
  */
 export function HubPage() {
+  const needsName = useGameStore((s) => s.playerName === null);
+
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-forest-2">
       <GameCanvas />
       <HubHud />
+      <HubGuide />
       <HubOverlays />
+      {needsName && <NamePrompt />}
     </main>
   );
 }

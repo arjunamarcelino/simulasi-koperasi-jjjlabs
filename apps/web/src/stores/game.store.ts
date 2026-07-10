@@ -17,8 +17,20 @@ export type View =
 /** Which React overlay (if any) is shown over the hub canvas. */
 export type OverlayKind = "NONE" | "CONFIRM_ENTER" | "COMING_SOON";
 
+const NAME_STORAGE_KEY = "koperasi.playerName";
+
+function loadPlayerName(): string | null {
+  try {
+    return window.localStorage.getItem(NAME_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export type GameState = {
   currentView: View;
+  /** Player name (frontend only, persisted to localStorage). Null until entered. */
+  playerName: string | null;
   /** Hub room selection + overlay (serializable; Phaser owns scene transitions). */
   selectedRoomId: string | null;
   activeOverlay: OverlayKind;
@@ -26,6 +38,7 @@ export type GameState = {
   selectedScenarioId: string | null;
 
   setView: (view: View) => void;
+  setPlayerName: (name: string) => void;
   selectRoom: (roomId: string) => void;
   clearSelection: () => void;
   enterScenario: (scenarioId: string) => void;
@@ -43,6 +56,7 @@ export type GameState = {
 export const gameStore = createStore<GameState>()(
   subscribeWithSelector((set, get) => ({
     currentView: "MAIN_MENU",
+    playerName: loadPlayerName(),
     selectedRoomId: null,
     activeOverlay: "NONE",
     selectedScenarioId: null,
@@ -50,6 +64,16 @@ export const gameStore = createStore<GameState>()(
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
       set({ currentView: view, activeOverlay: "NONE", selectedRoomId: null }),
+
+    setPlayerName: (name) => {
+      const clean = name.trim().slice(0, 16);
+      try {
+        window.localStorage.setItem(NAME_STORAGE_KEY, clean);
+      } catch {
+        // ignore (storage unavailable)
+      }
+      set({ playerName: clean });
+    },
 
     // No-op while an overlay is open (movement-later key-spam safety).
     selectRoom: (roomId) => {

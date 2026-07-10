@@ -3,6 +3,9 @@ import { SceneKey } from "./sceneKeys";
 import { makeInteractable } from "../interaction/makeInteractable";
 import { Player } from "../entities/Player";
 import { VILLAGER } from "../entities/characters";
+import { PALETTE } from "../palette";
+import { LABEL_STYLE } from "../textStyles";
+import { gameStore } from "../../stores/game.store";
 
 const VILLAGE_COLS = 20; // columns in tileset_village_abandoned spritesheet
 const NEAR_DOOR_KEY = "villageNearDoor";
@@ -36,6 +39,7 @@ export class VillageScene extends Phaser.Scene {
   private player!: Player;
   private eKey!: Phaser.Input.Keyboard.Key;
   private nearDoor = false;
+  private greetBubble: Phaser.GameObjects.Container | undefined = undefined;
   private readonly doorCenter = new Phaser.Math.Vector2();
   private readonly solids: Phaser.GameObjects.GameObject[] = [];
 
@@ -76,11 +80,85 @@ export class VillageScene extends Phaser.Scene {
     this.setupDoor(map);
     this.registry.set(NEAR_DOOR_KEY, false);
     this.scene.launch(SceneKey.VillageHud);
+    this.setupGreeting();
+  }
+
+  /** Show a one-time "Hi, <name>! ..." bubble over the player on first entry. */
+  private setupGreeting(): void {
+    this.greetBubble = undefined;
+    if (this.registry.get("greeted") === true) return;
+
+    const name = gameStore.getState().playerName;
+    if (name) {
+      this.showGreeting(name);
+      return;
+    }
+    // First play: name not set yet — greet once the welcome prompt is submitted.
+    const unsub = gameStore.subscribe(
+      (s) => s.playerName,
+      (value) => {
+        if (value && this.registry.get("greeted") !== true) this.showGreeting(value);
+      },
+    );
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsub);
+    this.events.once(Phaser.Scenes.Events.DESTROY, unsub);
+  }
+
+  private showGreeting(name: string): void {
+    this.registry.set("greeted", true);
+    const label = this.add
+      .text(0, 0, `Hi, ${name} di sini!`, {
+        fontFamily: LABEL_STYLE.fontFamily ?? "monospace",
+        fontSize: "10px",
+        color: "#2B2016",
+      })
+      .setResolution(3) // render crisp under the 2x camera zoom
+      .setOrigin(0.5, 0.5);
+
+    const padX = 6;
+    const padY = 3;
+    const tail = 5;
+    const w = Math.ceil(label.width) + padX * 2;
+    const h = Math.ceil(label.height) + padY * 2;
+    const top = -(tail + h);
+    const bottom = -tail;
+    const half = w / 2;
+    // Speech-bubble outline as one closed path (body + downward tail) so the
+    // tail blends into the box instead of drawing a seam.
+    const pts = [
+      new Phaser.Geom.Point(-half, top),
+      new Phaser.Geom.Point(half, top),
+      new Phaser.Geom.Point(half, bottom),
+      new Phaser.Geom.Point(4, bottom),
+      new Phaser.Geom.Point(0, 0),
+      new Phaser.Geom.Point(-4, bottom),
+      new Phaser.Geom.Point(-half, bottom),
+    ];
+    const g = this.add.graphics();
+    g.fillStyle(PALETTE.parchment, 1);
+    g.fillPoints(pts, true);
+    g.lineStyle(2, PALETTE.ink, 1);
+    g.strokePoints(pts, true);
+    label.setPosition(0, top + h / 2);
+
+    this.greetBubble = this.add
+      .container(this.player.sprite.x, this.player.sprite.y - 10, [g, label])
+      .setDepth(10000);
   }
 
   override update(): void {
     this.player.update();
     const { x, y } = this.player.sprite;
+
+    if (this.greetBubble) {
+      this.greetBubble.setPosition(x, y - 10);
+      const body = this.player.sprite.body as Phaser.Physics.Arcade.Body;
+      if (body.velocity.x !== 0 || body.velocity.y !== 0) {
+        this.greetBubble.destroy();
+        this.greetBubble = undefined;
+      }
+    }
+
     this.nearDoor =
       Phaser.Math.Distance.Between(x, y, this.doorCenter.x, this.doorCenter.y) <=
       DOOR_RADIUS;
