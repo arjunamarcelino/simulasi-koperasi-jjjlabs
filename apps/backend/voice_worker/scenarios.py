@@ -135,18 +135,25 @@ KREDIT_MACET = Scenario(
     voice="id-ID-ArdiNeural",
     prompt=KREDIT_MACET_PROMPT,
     greeting_instructions=(
-        "Buka sebagai Pak Joko: akui cicilan menunggak, jelaskan singkat "
-        "warung sepi, tegaskan tidak berniat lari dari kewajiban."
+        "Buka sebagai Joko dengan nada cemas dan sedikit defensif: akui cicilan "
+        "menunggak sekitar dua bulan dan tegaskan tidak berniat lari dari "
+        "kewajiban, tanpa langsung merinci semua sebabnya. Jangan memanggil "
+        "petugas dengan 'Pak/Bu'. Ringkas."
     ),
     mentor_brief=(
         "Kamu petugas koperasi simpan pinjam menghadapi Pak Joko yang menunggak "
-        "cicilan 2 bulan. Tujuanmu: gali SEBAB tunggakan secara objektif (jangan "
-        "menuduh, jangan langsung percaya), lalu tentukan penyelesaian yang sesuai "
-        "prosedur. Langkah yang baik: tanyakan kondisi warung & minta bukti riil "
-        "(mis. nota penjualan, proyek jalan yang menutup akses), tunjukkan empati, "
-        "lalu tawarkan jalur restrukturisasi 3R (Rescheduling/Reconditioning/"
-        "Restructuring) — bukan ancaman atau penyitaan sepihak. Jaga asas "
-        "kekeluargaan; nada mengancam menaikkan ketegangan dan bisa membuat Pak "
+        "cicilan sekitar dua bulan. Semua berlangsung LEWAT PERCAKAPAN saja — tidak "
+        "ada kontak fisik, foto, atau tukar dokumen di tempat. Tujuanmu: pahami "
+        "sebab tunggakan lewat pertanyaan yang empatik dan objektif, lalu arahkan "
+        "ke penyelesaian yang menjaga martabat anggota. Alur percakapan yang baik: "
+        "tanyakan kabar usahanya dan apa yang membuatnya kesulitan; dengarkan "
+        "ceritanya (akses jalan tertutup proyek, omzet anjlok); tunjukkan "
+        "pengertian; lalu TAWARKAN keringanan konkret — menjadwalkan ulang "
+        "angsuran, menurunkan cicilan sementara, atau memberi tenggang sampai "
+        "usahanya pulih (langkah ini dikenal sebagai restrukturisasi). Bila merasa "
+        "perlu bukti, CUKUP sepakati untuk menjadwalkan pemeriksaan catatan nanti — "
+        "jangan menuntut dokumen diserahkan saat ini. Hindari ancaman atau "
+        "penyitaan sepihak; nada mengancam menaikkan ketegangan dan membuat Pak "
         "Joko menutup diri."
     ),
     drift=DriftSpec(
