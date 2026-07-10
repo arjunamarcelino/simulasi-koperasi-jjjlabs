@@ -12,6 +12,8 @@ const MAP_H = 352;
 /** A multi-tile "stamp" region from the village tileset. */
 type Stamp = { col: number; row: number; w: number; h: number };
 const KOPERASI: Stamp = { col: 13, row: 6, w: 3, h: 5 }; // tall wooden lodge w/ door
+const MOSSY_HOUSE: Stamp = { col: 11, row: 0, w: 3, h: 3 }; // mossy green-roof house
+const WOOD_HOUSE: Stamp = { col: 16, row: 8, w: 4, h: 2 }; // wooden A-frame house (clean bounds)
 const BIG_TREE: Stamp = { col: 1, row: 6, w: 3, h: 3 };
 const SMALL_TREE: Stamp = { col: 4, row: 6, w: 2, h: 2 };
 const STUMP: Stamp = { col: 7, row: 8, w: 2, h: 3 }; // orange cut log
@@ -20,10 +22,10 @@ const STUMP: Stamp = { col: 7, row: 8, w: 2, h: 3 }; // orange cut log
 const SCATTER_FRAMES = [104, 105, 164, 165, 224, 225, 88, 89, 90] as const;
 /** Hand-placed scatter spots ringing the central clearing (kept off the play path). */
 const SCATTER_SPOTS: ReadonlyArray<readonly [number, number]> = [
-  [64, 118], [104, 84], [148, 150], [88, 208], [140, 250], [70, 292], [176, 300],
-  [200, 108], [232, 198], [430, 110], [470, 168], [420, 232], [500, 250], [540, 118],
-  [560, 290], [468, 300], [252, 302], [382, 300], [300, 150], [364, 152],
-  [120, 58], [520, 58], [214, 60], [444, 60], [40, 160], [596, 160],
+  [48, 120], [64, 180], [40, 240], [70, 300], [176, 300], [210, 300], [150, 180],
+  [200, 130], [232, 210], [250, 300], [176, 130], [240, 150], [40, 90],
+  [560, 120], [540, 190], [560, 290], [420, 300], [470, 300], [400, 150], [530, 150],
+  [590, 220], [440, 240], [380, 300], [560, 60],
 ];
 
 /**
@@ -56,6 +58,7 @@ export class VillageScene extends Phaser.Scene {
     collision.setVisible(false).setCollisionByExclusion([-1]);
 
     this.placeKoperasi();
+    this.placeBuildings();
     this.placeTreeBorder();
     this.placeScatter();
     this.placeAccents();
@@ -119,6 +122,17 @@ export class VillageScene extends Phaser.Scene {
     const y = 16; // tile row 1
     this.stamp(KOPERASI, x, y);
     this.addSolid(x + (KOPERASI.w * 16) / 2, y + (KOPERASI.h * 16) / 2, KOPERASI.w * 16, KOPERASI.h * 16);
+  }
+
+  /** Decorative neighbour buildings (not enterable) with collision. */
+  private placeBuildings(): void {
+    for (const [s, x, y] of [
+      [MOSSY_HOUSE, 96, 64],
+      [WOOD_HOUSE, 448, 64],
+    ] as const) {
+      this.stamp(s, x, y);
+      this.addSolid(x + (s.w * 16) / 2, y + (s.h * 16) / 2, s.w * 16, s.h * 16 - 8);
+    }
   }
 
   /** Dense tree frame around the screen edges (decorative — player is world-bounded). */
