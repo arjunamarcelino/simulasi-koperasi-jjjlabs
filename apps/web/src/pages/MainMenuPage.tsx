@@ -40,7 +40,7 @@ export function MainMenuPage() {
 
       <PixelPanel className="relative z-10 w-full max-w-xl text-center">
         <span className="pixel-panel -rotate-1 mb-6 inline-block bg-orange px-3 py-1 font-body text-lg text-ink !shadow-none">
-          DEMO • Hackathon 24 Jam
+          JJJ Labs
         </span>
 
         <h1 className="font-display text-2xl leading-tight text-forest drop-shadow-[3px_3px_0_var(--color-mustard)] md:text-3xl">
@@ -50,7 +50,7 @@ export function MainMenuPage() {
         </h1>
 
         <p className="mb-8 mt-5 font-body text-xl leading-snug text-ink-soft md:text-2xl">
-          Belajar Memimpin, Mengambil Keputusan, dan Menjaga Amanah Anggota
+          Jelajahi, Pelajari, dan Kenali Dunia Koperasi
         </p>
 
         <GameButton variant="primary" onClick={start}>
