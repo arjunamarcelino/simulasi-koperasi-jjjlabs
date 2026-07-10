@@ -205,7 +205,7 @@ Tidak ada tabel database untuk MVP ini. Seluruh state (fase aktif, ChatContext, 
 
 ## 9. Referensi ke Dokumen Kontrak (disusun terpisah)
 
-Setelah PRD ini disepakati, dokumen kontrak ringkas akan dibuat berisi: (1) daftar REST endpoint (`POST /token`, dst.) beserta shape request/response, dan (2) daftar event LiveKit data channel beserta payload — mencakup minimal: mulai skenario, Tanya Mentor, transisi fase (khusus RAT), Keputusan Akhir, hasil skor AI Auditor, **dan level drift real-time** (Bagian 6 Lapisan 2) — kemungkinan besar lewat participant attribute atau data message yang diperbarui tiap kali level berubah, dipakai FE untuk indikator ketegangan dan penonjolan tombol Keputusan Akhir saat Level 1 tercapai. Bentuk UI persisnya sepenuhnya keputusan tim FE; backend hanya menjamin nilai level tersedia real-time. Dokumen kontrak ini menjadi sumber kebenaran bersama untuk FE Game dan FE Sementara.
+Setelah PRD ini disepakati, dokumen kontrak ringkas akan dibuat berisi: (1) daftar REST endpoint (`POST /token`, dst.) beserta shape request/response, dan (2) daftar event LiveKit data channel beserta payload — mencakup minimal: mulai skenario, Petunjuk, transisi fase (khusus RAT), Keputusan Akhir, hasil skor AI Auditor, **dan level drift real-time** (Bagian 6 Lapisan 2) — kemungkinan besar lewat participant attribute atau data message yang diperbarui tiap kali level berubah, dipakai FE untuk indikator ketegangan dan penonjolan tombol Keputusan Akhir saat Level 1 tercapai. Bentuk UI persisnya sepenuhnya keputusan tim FE; backend hanya menjamin nilai level tersedia real-time. Dokumen kontrak ini menjadi sumber kebenaran bersama untuk FE Game dan FE Sementara.
 
 ---
 

@@ -23,6 +23,10 @@ export function ScenarioCard({ meta }: { meta: ScenarioMeta }) {
         <p className="text-xs text-ink-soft">NPC: {meta.npcName}</p>
       )}
       <p className="text-sm leading-relaxed">{meta.blurb}</p>
+      <p className="text-sm leading-relaxed">
+        <span className="font-semibold text-forest">Misi: </span>
+        {meta.mission}
+      </p>
     </button>
   );
 }

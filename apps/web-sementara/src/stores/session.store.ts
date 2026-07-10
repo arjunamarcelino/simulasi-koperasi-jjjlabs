@@ -22,6 +22,10 @@ export type SessionState = {
   micEnabled: boolean;
   ended: SessionEnded | null;
   error: string | null;
+  /** Petunjuk mentor terkini (fitur Petunjuk); null bila belum/di-tutup. */
+  hint: string | null;
+  /** True selagi menunggu petunjuk dari transport. */
+  hintLoading: boolean;
 
   setView: (view: View) => void;
   setScenarioId: (id: ScenarioId) => void;
@@ -32,6 +36,8 @@ export type SessionState = {
   setMicEnabled: (enabled: boolean) => void;
   setEnded: (ended: SessionEnded) => void;
   setError: (message: string | null) => void;
+  setHint: (hint: string | null) => void;
+  setHintLoading: (loading: boolean) => void;
   reset: () => void;
 };
 
@@ -43,6 +49,8 @@ const INITIAL = {
   micEnabled: false,
   ended: null,
   error: null,
+  hint: null,
+  hintLoading: false,
 } satisfies Partial<SessionState>;
 
 /**
@@ -77,6 +85,8 @@ export const sessionStore = createStore<SessionState>()(
     setMicEnabled: (micEnabled) => set({ micEnabled }),
     setEnded: (ended) => set({ ended }),
     setError: (error) => set({ error }),
+    setHint: (hint) => set({ hint }),
+    setHintLoading: (hintLoading) => set({ hintLoading }),
     reset: () => set({ ...INITIAL }),
   })),
 );

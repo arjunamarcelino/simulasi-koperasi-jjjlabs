@@ -83,6 +83,7 @@ class Scenario:
     voice: str  # Azure Speech voice id (persona utama; RAT pakai rat.personas)
     prompt: str
     greeting_instructions: str
+    mentor_brief: str = ""  # grounding fitur Petunjuk (mentor.py); tujuan + langkah
     drift: DriftSpec | None = None  # None → tanpa observer (tutorial)
     auditor: AuditorSpec | None = None  # None → hasil terskrip (tutorial)
     scripted_result: ScenarioResult | None = None
@@ -97,16 +98,30 @@ TUTORIAL = Scenario(
     voice="id-ID-GadisNeural",
     prompt=TUTORIAL_PROMPT,
     greeting_instructions=(
-        "Sapa petugas koperasi sebagai ibu rumah tangga yang penasaran soal "
-        "belanja lebih murah di koperasi. Ringkas dan ramah."
+        "Sebagai ibu rumah tangga non-anggota, buka dengan menyapa petugas "
+        "kasir sambil membawa sebotol minyak goreng untuk dibayar, lalu "
+        "tanyakan harganya atau soal belanja lebih murah di koperasi. Ringkas "
+        "dan ramah."
+    ),
+    mentor_brief=(
+        "Kamu petugas kasir koperasi konsumen. Seorang ibu non-anggota datang "
+        "membeli minyak goreng (harga umum ~Rp65.000). Tujuanmu: tawarkan "
+        "keanggotaan dengan menjelaskan manfaatnya, lalu tuntaskan pendaftaran "
+        "lewat tombol 'Bayar & Daftar'. Poin yang perlu dijelaskan: harga anggota "
+        "lebih murah (~Rp58.000), Sisa Hasil Usaha (SHU) akhir tahun yang "
+        "sebanding dengan belanja, serta Simpanan Pokok (dibayar sekali di awal, "
+        "tetap jadi milik anggota) dan Simpanan Wajib (berkala). Alur yang baik: "
+        "sapa & layani transaksinya → jelaskan untungnya jadi anggota → jelaskan "
+        "Simpanan Pokok/SHU dengan sabar → ajak ibu mendaftar → tekan 'Bayar & "
+        "Daftar' begitu ia setuju."
     ),
     scripted_result=ScenarioResult(
         ending_type="good",
         narrative_feedback=(
-            "Selamat! Ibu tadi resmi terdaftar sebagai anggota dan telah "
-            "membayar Simpanan Pokok. Anda baru saja menuntaskan transaksi "
-            "koperasi konsumen pertama Anda — mendaftar, menyimpan, lalu "
-            "menikmati manfaat sebagai anggota."
+            "Selamat! Kamu berhasil menyelesaikan sesi tutorial. Kamu telah "
+            "mempelajari fungsi dasar koperasi konsumen sebagai penyedia "
+            "kebutuhan harian, keuntungan menjadi anggota (diskon harga + SHU), "
+            "serta prinsip keanggotaan yang bersifat terbuka bagi masyarakat."
         ),
     ),
 )
@@ -122,6 +137,17 @@ KREDIT_MACET = Scenario(
     greeting_instructions=(
         "Buka sebagai Pak Joko: akui cicilan menunggak, jelaskan singkat "
         "warung sepi, tegaskan tidak berniat lari dari kewajiban."
+    ),
+    mentor_brief=(
+        "Kamu petugas koperasi simpan pinjam menghadapi Pak Joko yang menunggak "
+        "cicilan 2 bulan. Tujuanmu: gali SEBAB tunggakan secara objektif (jangan "
+        "menuduh, jangan langsung percaya), lalu tentukan penyelesaian yang sesuai "
+        "prosedur. Langkah yang baik: tanyakan kondisi warung & minta bukti riil "
+        "(mis. nota penjualan, proyek jalan yang menutup akses), tunjukkan empati, "
+        "lalu tawarkan jalur restrukturisasi 3R (Rescheduling/Reconditioning/"
+        "Restructuring) — bukan ancaman atau penyitaan sepihak. Jaga asas "
+        "kekeluargaan; nada mengancam menaikkan ketegangan dan bisa membuat Pak "
+        "Joko menutup diri."
     ),
     drift=DriftSpec(
         dimension=(
@@ -167,6 +193,17 @@ KEANGGOTAAN_FIKTIF = Scenario(
         "Buka sebagai Pak Bambang: sambut petugas, persilakan memeriksa, "
         "siratkan sudah puluhan tahun memegang pembukuan koperasi."
     ),
+    mentor_brief=(
+        "Kamu pengawas/pengurus baru yang menemukan ~50 nama anggota fiktif (tanpa "
+        "NIK lengkap, tanpa riwayat Simpanan Wajib) di Buku Daftar Anggota, dan "
+        "harus mengonfrontasi Pak Bambang, Bendahara Senior yang dihormati. "
+        "Tujuanmu: bersihkan data fiktif TANPA merusak hubungan kerja. Langkah "
+        "yang baik: gunakan hasil 'Periksa Dokumen' sebagai bukti, sampaikan "
+        "kejanggalan dengan santun, tekankan bahwa data fiktif mengurangi hak SHU "
+        "anggota asli, lalu ajak verifikasi ulang bersama (mis. cek ke ketua RT/"
+        "dusun). Hindari menuduh memalsukan data atau mengancam pidana — itu "
+        "merusak relasi; dan jangan pula membiarkan data demi 'sungkan'."
+    ),
     drift=DriftSpec(
         dimension=(
             "Petugas cenderung MERUSAK RELASI: menuduh tanpa bukti, menyebut "
@@ -211,6 +248,19 @@ RAPAT_ANGGOTA_TAHUNAN = Scenario(
     greeting_instructions=(
         "Sebagai Ibu Sri, sambut pimpinan rapat: sampaikan anggota kecil sudah "
         "hadir dan berharap suara mereka didengar. Ringkas dan santun."
+    ),
+    mentor_brief=(
+        "Kamu Ketua Rapat yang memimpin Rapat Anggota Tahunan (RAT) melewati tiga "
+        "fase: (1) Buka Rapat — pastikan kuorum lalu ketok palu; (2) Baca LPJ — "
+        "Pak Darma (pemodal terbesar) menginterupsi kasar dan mengancam menarik "
+        "modal bila usulannya ditolak, sementara Ibu Sri mewakili suara petani/"
+        "pedagang kecil; (3) Ambil Keputusan. Tujuanmu: jaga rapat tetap tertib "
+        "dan tuntas secara demokratis. Langkah yang baik: tegakkan tata tertib, "
+        "ingatkan prinsip satu anggota satu suara (modal besar tidak membeli hak "
+        "suara), lalu selesaikan perbedaan lewat musyawarah/voting yang adil. "
+        "Jangan tunduk pada tekanan modal Pak Darma, tapi juga jangan menyerangnya "
+        "secara pribadi hingga forum bubar. Panggil nama NPC (Pak Darma / Ibu Sri) "
+        "bila ingin berbicara ke salah satunya."
     ),
     drift=DriftSpec(
         dimension=(

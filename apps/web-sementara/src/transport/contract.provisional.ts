@@ -96,6 +96,13 @@ export interface SessionTransport {
   /** Giliran teks dari pemain — jalur fallback voice (PRD Prinsip 4). */
   sendText(text: string): void;
 
+  /**
+   * Fitur Petunjuk (menggantikan "Tanya Mentor", PRD §9) — mentor kontekstual.
+   * Meminta SATU petunjuk singkat berdasar keadaan percakapan saat ini.
+   * Request→response (RPC `petunjuk` di LiveKit; terskrip di mock).
+   */
+  requestHint(): Promise<string>;
+
   /** Toggle mic. No-op di mock; di LiveKit menyalakan track mikrofon. */
   setMicEnabled(enabled: boolean): void;
 

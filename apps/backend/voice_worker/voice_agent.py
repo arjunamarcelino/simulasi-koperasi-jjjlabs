@@ -35,6 +35,7 @@ from livekit.plugins import azure, openai, silero
 from openai import AsyncAzureOpenAI
 
 from auditor import run_auditor
+from mentor import generate_hint
 from observer import DriftTracker, evaluate_turn
 from scenarios import RatSpec, Scenario, get_scenario
 
@@ -290,6 +291,17 @@ async def entrypoint(ctx: JobContext) -> None:
         ended = True
         result = await _finalize("manual")
         return json.dumps(result)
+
+    # --- RPC: Petunjuk (mentor kontekstual, menggantikan "Tanya Mentor") ---
+    @ctx.room.local_participant.register_rpc_method("petunjuk")
+    async def _petunjuk(data: rtc.RpcInvocationData) -> str:  # noqa: ARG001
+        if ended:
+            return json.dumps({"hint": "Sesi sudah berakhir."})
+        hint = await generate_hint(
+            ai_client, dialogue_deployment, scenario, _transcript(session)
+        )
+        logger.info("Petunjuk diminta → %r", hint[:80])
+        return json.dumps({"hint": hint})
 
     # --- RPC: jalur fallback teks (PRD Prinsip 4) ---
     @ctx.room.local_participant.register_rpc_method("send_text")

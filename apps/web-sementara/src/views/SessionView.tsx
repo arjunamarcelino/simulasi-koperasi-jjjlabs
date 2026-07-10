@@ -2,9 +2,12 @@ import { DocumentPanel } from "../components/DocumentPanel";
 import { DriftDebug } from "../components/DriftDebug";
 import { DriftMeter } from "../components/DriftMeter";
 import { FinalDecisionButton } from "../components/FinalDecisionButton";
+import { HintButton } from "../components/HintButton";
+import { HintPanel } from "../components/HintPanel";
 import { MicButton } from "../components/MicButton";
 import { PhaseBar } from "../components/PhaseBar";
 import { ResultPanel } from "../components/ResultPanel";
+import { SessionBriefing } from "../components/SessionBriefing";
 import { TextInputBar } from "../components/TextInputBar";
 import { TranscriptPanel } from "../components/TranscriptPanel";
 import { getScenarioMeta } from "../scenarios/catalog";
@@ -70,6 +73,10 @@ export function SessionView() {
 
       {phase && <PhaseBar />}
 
+      {!ended && <SessionBriefing />}
+
+      <HintPanel />
+
       {driftLevel >= 1 && !ended && (
         <p className="rounded-lg border border-orange bg-orange/10 px-3 py-2 text-sm">
           Ketegangan meningkat. Pertimbangkan mengambil Keputusan Akhir sekarang
@@ -87,6 +94,7 @@ export function SessionView() {
       <footer className="flex flex-wrap items-center gap-2">
         <MicButton />
         <TextInputBar />
+        <HintButton />
         <FinalDecisionButton />
       </footer>
 

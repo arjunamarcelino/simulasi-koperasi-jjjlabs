@@ -191,6 +191,18 @@ export class LiveKitTransport implements SessionTransport {
     void this.room?.localParticipant.setMicrophoneEnabled(enabled);
   }
 
+  // Fitur Petunjuk — RPC "petunjuk" → mentor gpt-5-mini membaca transkrip.
+  async requestHint(): Promise<string> {
+    const raw = await this.rpc("petunjuk", "");
+    try {
+      const { hint } = JSON.parse(raw) as { hint?: string };
+      return hint ?? "";
+    } catch (cause: unknown) {
+      console.error("Gagal parse petunjuk:", cause);
+      return "";
+    }
+  }
+
   onTranscript(cb: (item: TranscriptItem) => void): Unsubscribe {
     return this.transcript.subscribe(cb);
   }

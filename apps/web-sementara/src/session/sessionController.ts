@@ -23,6 +23,8 @@ export type SessionController = {
   toggleMic: () => void;
   endSession: () => void;
   advancePhase: () => void;
+  requestHint: () => void;
+  dismissHint: () => void;
   restart: () => void;
   debugSetDrift: (level: DriftLevel) => void;
 };
@@ -119,6 +121,37 @@ export function createSessionController(): SessionController {
     endSession: guarded((t) => t.endSession("manual")),
 
     advancePhase: guarded((t) => t.advancePhase?.()),
+
+    // Fitur Petunjuk — request→response; simpan hasilnya ke store untuk dirender.
+    // Kegagalan petunjuk TIDAK menjatuhkan sesi (beda dari endSession): mentor
+    // opsional, jadi degrade halus ke pesan fallback tanpa menyentuh koneksi.
+    requestHint: () => {
+      if (!transport) return;
+      const t = transport;
+      const store = sessionStore.getState();
+      store.setHintLoading(true);
+      const fallback = (cause: unknown): void => {
+        console.error("Petunjuk gagal:", cause);
+        sessionStore
+          .getState()
+          .setHint("Mentor belum siap menjawab. Coba lagi sebentar lagi.");
+      };
+      try {
+        t.requestHint()
+          .then((hint) =>
+            sessionStore
+              .getState()
+              .setHint(hint || "Belum ada petunjuk untuk saat ini."),
+          )
+          .catch(fallback)
+          .finally(() => sessionStore.getState().setHintLoading(false));
+      } catch (cause: unknown) {
+        fallback(cause);
+        sessionStore.getState().setHintLoading(false);
+      }
+    },
+
+    dismissHint: () => sessionStore.getState().setHint(null),
 
     restart: () => {
       stop();

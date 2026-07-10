@@ -78,6 +78,7 @@ export class MockTransport implements SessionTransport {
   private disposed = false;
   private npcBusy = false;
   private seq = 0;
+  private hintCursor = 0;
 
   // --- state khusus RAT ---
   private phaseIndex = 0;
@@ -101,6 +102,7 @@ export class MockTransport implements SessionTransport {
     this.driftLevel = 0;
     this.ended = false;
     this.disposed = false;
+    this.hintCursor = 0;
     this.phaseIndex = 0;
     this.activePersonaKey = null;
     this.ratCursor.clear();
@@ -162,6 +164,19 @@ export class MockTransport implements SessionTransport {
       THINK_MIN_MS + Math.random() * Math.max(0, THINK_MAX_MS - THINK_MIN_MS);
     this.npcBusy = true;
     this.later(() => this.streamTurn(turn), think);
+  }
+
+  requestHint(): Promise<string> {
+    const hints = this.script?.hints;
+    if (!hints || hints.length === 0) {
+      return Promise.resolve(
+        "Coba dengarkan dulu kebutuhan lawan bicara, lalu jelaskan langkah " +
+          "yang sesuai dengan tujuan skenario ini.",
+      );
+    }
+    const hint = hints[Math.min(this.hintCursor, hints.length - 1)] ?? "";
+    this.hintCursor += 1;
+    return Promise.resolve(hint);
   }
 
   setMicEnabled(enabled: boolean): void {

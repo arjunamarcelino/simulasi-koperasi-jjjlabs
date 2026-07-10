@@ -58,6 +58,12 @@ export type ScenarioScript = {
   greeting: ScriptTurn;
   /** Dikonsumsi satu per giliran pemain, berurutan (skenario linear). */
   npcTurns: readonly ScriptTurn[];
+  /**
+   * Petunjuk terskrip untuk fitur Petunjuk (mock). Dikonsumsi berurutan tiap
+   * kali pemain menekan tombol; menetap di item terakhir. Absen → mock memberi
+   * petunjuk generik. Di LiveKit petunjuk di-generate backend, bukan dari sini.
+   */
+  hints?: readonly string[];
   /** Absen → skenario tidak menjalankan observer (tutorial inert di L0). */
   drift?: DriftConfig;
   /** Baris NPC saat menutup diri di Level 2 sebelum force quit. */

@@ -32,6 +32,12 @@ export const TUTORIAL_SCRIPT: ScenarioScript = {
       text: "Baik, saya sudah paham. Saya mau mendaftar sekalian membayar Simpanan Pokoknya. Bagaimana caranya, Mas?",
     },
   ],
+  hints: [
+    "Layani dulu pembelian minyak gorengnya, lalu tawari ibu menjadi anggota agar harganya lebih murah.",
+    "Jelaskan bedanya: sebagai anggota harganya turun (mis. dari Rp65.000 jadi Rp58.000) dan tiap belanja dicatat untuk bonus SHU akhir tahun.",
+    "Terangkan Simpanan Pokok: dibayar sekali di awal dan tetap jadi milik ibu, bukan biaya yang hangus. Sebutkan juga ada Simpanan Wajib berkala.",
+    "Ibu sudah paham dan tertarik — ajak ia mendaftar sekarang lalu tekan tombol 'Bayar & Daftar' untuk menuntaskan pendaftaran sekaligus pembayaran.",
+  ],
   endings: {
     good: {
       scenarioId: "tutorial-koperasi-konsumen",
