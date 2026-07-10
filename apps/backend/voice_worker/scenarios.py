@@ -259,21 +259,27 @@ RAPAT_ANGGOTA_TAHUNAN = Scenario(
     voice="id-ID-GadisNeural",  # tak dipakai langsung; lihat rat.personas
     prompt=RAT_SRI_PROMPT,  # placeholder; llm_node menukar per persona aktif
     greeting_instructions=(
-        "Sebagai Ibu Sri, sambut pimpinan rapat: sampaikan anggota kecil sudah "
-        "hadir dan berharap suara mereka didengar. Ringkas dan santun."
+        "Sebagai Sri, sambut pimpinan rapat dengan santun: sampaikan anggota kecil "
+        "sudah hadir dan berharap suara mereka didengar, lalu selipkan dorongan "
+        "halus agar rapat segera dibuka setelah kuorum dipastikan. Sapa dengan "
+        "'Pimpinan', jangan 'Pak/Bu'. Ringkas."
     ),
     mentor_brief=(
-        "Kamu Ketua Rapat yang memimpin Rapat Anggota Tahunan (RAT) melewati tiga "
-        "fase: (1) Buka Rapat — pastikan kuorum lalu ketok palu; (2) Baca LPJ — "
-        "Pak Darma (pemodal terbesar) menginterupsi kasar dan mengancam menarik "
-        "modal bila usulannya ditolak, sementara Ibu Sri mewakili suara petani/"
-        "pedagang kecil; (3) Ambil Keputusan. Tujuanmu: jaga rapat tetap tertib "
-        "dan tuntas secara demokratis. Langkah yang baik: tegakkan tata tertib, "
-        "ingatkan prinsip satu anggota satu suara (modal besar tidak membeli hak "
-        "suara), lalu selesaikan perbedaan lewat musyawarah/voting yang adil. "
-        "Jangan tunduk pada tekanan modal Pak Darma, tapi juga jangan menyerangnya "
-        "secara pribadi hingga forum bubar. Panggil nama NPC (Pak Darma / Ibu Sri) "
-        "bila ingin berbicara ke salah satunya."
+        "Kamu Ketua Rapat yang memimpin Rapat Anggota Tahunan (RAT), semua lewat "
+        "percakapan. Rapat punya tiga tahap dan pemain memajukannya lewat tombol "
+        "aksi: (1) Buka Rapat — periksa daftar hadir, pastikan kuorum (4 anggota, "
+        "3 hadir), lalu buka rapat; (2) Baca LPJ — bacakan rencana kerja (beli "
+        "beras lokal); di sini Pak Darma menyela kasar dan mengancam menarik "
+        "modalnya karena ingin dana dialihkan ke properti pribadinya, sementara "
+        "Ibu Sri membela anggota kecil; (3) Ambil Keputusan — pakai Tata Tertib "
+        "(satu anggota satu suara) lalu selesaikan lewat musyawarah/voting yang "
+        "adil. Tujuanmu: rapat TUNTAS secara demokratis — tidak tunduk pada tekanan "
+        "modal, tapi juga tidak menyerang pribadi hingga rapat bubar. Arahkan "
+        "pemain ke langkah berikutnya sesuai tahap yang sedang berjalan, dorong "
+        "maju bila ia tampak berputar, dan ingatkan ia bisa memanggil nama Pak "
+        "Darma atau Ibu Sri untuk berbicara ke salah satunya. Konflik modal vs "
+        "suara kecil itu memang inti skenario — bantu pemain menyelesaikannya "
+        "secara prosedural, bukan menghindarinya."
     ),
     drift=DriftSpec(
         dimension=(

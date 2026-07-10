@@ -95,6 +95,9 @@ class RatState:
     def __init__(self, default_persona: str) -> None:
         self.active = default_persona
         self.phase_index = 0
+        # Giliran pertama tiap fase dijawab persona pemimpin fase; sesudahnya
+        # partisipasi digilir agar seimbang (lihat RatAgent.route).
+        self.just_entered_phase = True
 
 
 class RatAgent(Agent):
@@ -112,18 +115,62 @@ class RatAgent(Agent):
         self._state = state
         self._on_speak = on_speak
         self._persona_tts = {p.key: _azure_tts(p.voice) for p in rat.personas}
+        # Persona pembicara utk utterance yang SEDANG disintesis. Dibekukan di
+        # awal generasi (llm_node) / sebelum session.say, supaya tts_node tak
+        # ikut berubah bila self._state.active bergeser di giliran berikutnya
+        # (mencegah konten satu persona keluar dengan suara persona lain).
+        self._utterance_persona = state.active
 
     async def route(self, text: str) -> None:
-        """Heuristik penyebutan nama → set persona aktif + tukar prompt. Dipanggil
-        dari jalur suara (on_user_turn_completed) & teks (RPC send_text)."""
+        """Pilih persona aktif lalu tukar prompt. Dipanggil dari jalur suara
+        (on_user_turn_completed) & teks (RPC send_text).
+
+        Prioritas: penyebutan nama eksplisit → persona itu yang menjawab. Bila
+        pemain tidak menyebut nama: giliran PERTAMA tiap fase dijawab persona
+        pemimpin fase (mis. Ibu Sri saat buka rapat, Pak Darma saat interupsi LPJ);
+        sesudahnya giliran DIGILIR antar persona agar partisipasi seimbang dan tak
+        didominasi satu suara (PRD §7.4, dua NPC)."""
         lower = (text or "").lower()
-        for keyword, persona_key in self._rat.name_mentions.items():
-            if keyword in lower:
-                if persona_key != self._state.active:
-                    self._state.active = persona_key
-                    logger.info("Name-mention → persona aktif: %s", persona_key)
-                break
+        mentioned = next(
+            (pk for kw, pk in self._rat.name_mentions.items() if kw in lower), None
+        )
+        if mentioned is not None:
+            if mentioned != self._state.active:
+                self._state.active = mentioned
+                logger.info("Name-mention → persona aktif: %s", mentioned)
+        elif len(self._rat.personas) > 1:
+            if self._state.just_entered_phase:
+                # Pertahankan persona pemimpin fase untuk giliran pertama.
+                logger.info("Awal fase → persona pemimpin: %s", self._state.active)
+            else:
+                self._state.active = self._next_persona(self._state.active)
+                logger.info("Giliran digilir → persona aktif: %s", self._state.active)
+        self._state.just_entered_phase = False
         await self.update_instructions(self._rat.persona(self._state.active).prompt)
+
+    def _next_persona(self, current: str) -> str:
+        """Persona berikutnya dalam urutan (toggle untuk dua persona)."""
+        keys = [p.key for p in self._rat.personas]
+        idx = keys.index(current) if current in keys else 0
+        return keys[(idx + 1) % len(keys)]
+
+    def set_speaking(self, persona_key: str) -> None:
+        """Bekukan persona pembicara utk utterance berikutnya (mis. session.say),
+        yang tidak melewati llm_node."""
+        self._state.active = persona_key
+        self._utterance_persona = persona_key
+
+    def llm_node(
+        self,
+        chat_ctx: llm.ChatContext,
+        tools: list[llm.FunctionTool],
+        model_settings: ModelSettings,
+    ):
+        # Bekukan persona pembicara di AWAL generasi. Konten dibuat dgn prompt
+        # persona aktif sekarang; tts_node harus memakai persona yang SAMA meski
+        # self._state.active berubah sebelum sintesis selesai.
+        self._utterance_persona = self._state.active
+        return Agent.default.llm_node(self, chat_ctx, tools, model_settings)
 
     async def on_user_turn_completed(
         self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage
@@ -133,13 +180,13 @@ class RatAgent(Agent):
     async def tts_node(
         self, text: AsyncIterable[str], model_settings: ModelSettings
     ) -> AsyncIterable[rtc.AudioFrame]:
-        persona = self._rat.persona(self._state.active)
+        persona = self._rat.persona(self._utterance_persona)
         logger.info("TTS persona: %s", persona.key)
         # Umumkan pembicara SEBELUM audio keluar → FE/game tahu karakter mana
         # yang bicara sebelum kata pertama muncul.
         if self._on_speak is not None:
             await self._on_speak(persona.name)
-        active_tts = self._persona_tts[self._state.active]
+        active_tts = self._persona_tts[self._utterance_persona]
         collected = ""
         async for chunk in text:
             collected += chunk
@@ -297,10 +344,30 @@ async def entrypoint(ctx: JobContext) -> None:
     async def _petunjuk(data: rtc.RpcInvocationData) -> str:  # noqa: ARG001
         if ended:
             return json.dumps({"hint": "Sesi sudah berakhir."})
+        # Skenario berfase (RAT): beri konteks tahap agar mentor bisa mengarahkan
+        # pemain berpindah tugas secara mulus.
+        phase_context: str | None = None
+        if scenario.rat is not None and rat_state is not None:
+            ph = scenario.rat.phases[rat_state.phase_index]
+            if ph.advance_action_label:
+                nxt = (
+                    "Bila tugas tahap ini sudah beres, aksi berikutnya untuk pemain "
+                    f"adalah menekan tombol '{ph.advance_action_label}'."
+                )
+            else:
+                nxt = (
+                    "Ini tahap terakhir; setelah keputusan diambil secara adil, "
+                    "pemain menutup sesi lewat tombol 'Keputusan Akhir'."
+                )
+            phase_context = f"Fase {ph.id} — {ph.label}. {nxt}"
         hint = await generate_hint(
-            ai_client, dialogue_deployment, scenario, _transcript(session)
+            ai_client,
+            dialogue_deployment,
+            scenario,
+            _transcript(session),
+            phase_context,
         )
-        logger.info("Petunjuk diminta → %r", hint[:80])
+        logger.info("Petunjuk diminta (fase=%s) → %r", phase_context, hint[:80])
         return json.dumps({"hint": hint})
 
     # --- RPC: jalur fallback teks (PRD Prinsip 4) ---
@@ -326,12 +393,19 @@ async def entrypoint(ctx: JobContext) -> None:
             rat_state.phase_index += 1
             phase = rat.phases[rat_state.phase_index]
             rat_state.active = phase.default_persona
+            # Fase baru: giliran pertama dijawab persona pemimpin fase (route()).
+            rat_state.just_entered_phase = True
             await agent.update_instructions(rat.persona(rat_state.active).prompt)
             await _publish_phase()
             logger.info("Fase → %d (%s)", phase.id, phase.label)
             if phase.entry_line is not None:
                 persona_key, line = phase.entry_line
-                rat_state.active = persona_key
+                # Bekukan persona pembicara: session.say melewati llm_node, jadi
+                # set eksplisit agar suara interupsi = persona entry_line (Darma).
+                if isinstance(agent, RatAgent):
+                    agent.set_speaking(persona_key)
+                else:
+                    rat_state.active = persona_key
                 await agent.update_instructions(rat.persona(persona_key).prompt)
                 session.say(line)  # interupsi terskrip dengan suara persona itu
             return "ok"

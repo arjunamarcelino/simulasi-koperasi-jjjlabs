@@ -4,6 +4,7 @@ import { DriftMeter } from "../components/DriftMeter";
 import { FinalDecisionButton } from "../components/FinalDecisionButton";
 import { HintButton } from "../components/HintButton";
 import { HintPanel } from "../components/HintPanel";
+import { LpjPanel } from "../components/LpjPanel";
 import { MicButton } from "../components/MicButton";
 import { PhaseBar } from "../components/PhaseBar";
 import { ResultPanel } from "../components/ResultPanel";
@@ -72,6 +73,8 @@ export function SessionView() {
       )}
 
       {phase && <PhaseBar />}
+
+      {!ended && <LpjPanel />}
 
       {!ended && <SessionBriefing />}
 

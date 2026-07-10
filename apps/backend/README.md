@@ -1,8 +1,11 @@
 # Koperasi Backend — token server + voice agent
 
 Backend & AI pipeline untuk Koperasi Simulator (PRD `apps/backent-prd.md`).
-Slice pertama: **Skenario 1 (Tutorial)**, voice penuh (Azure STT + Azure OpenAI
-`gpt-5-mini` + Azure TTS), tanpa observer drift / AI Auditor (PRD §7.1).
+Voice penuh (Azure STT + Azure OpenAI `gpt-5-mini` + Azure TTS). **Keempat
+skenario** terpasang: Tutorial, Kredit Macet, Keanggotaan Fiktif, dan RAT (dua
+NPC + state machine fase) — lengkap dengan observer drift (Lapisan 2), AI Auditor
+(Lapisan 3), dan fitur **Petunjuk** (mentor kontekstual). Detail arsitektur di
+`CLAUDE.md`; kontrak wire FE↔BE di `CONTRACT.md`.
 
 Dua proses terpisah, satu project `uv`:
 - `api/server.py` — FastAPI, `POST /token` (mint token + dispatch agent).
@@ -36,11 +39,14 @@ curl -XPOST localhost:8000/token \
 ## Klien uji
 
 `apps/web-sementara` dengan `VITE_TRANSPORT=livekit` dan
-`VITE_TOKEN_ENDPOINT=http://localhost:8000`. Pilih **Tutorial**, izinkan mic,
-bicara dengan Ibu Rumah Tangga, lalu klik **Bayar & Daftar**.
+`VITE_TOKEN_ENDPOINT=http://localhost:8000`. Pilih skenario, izinkan mic
+(opsional — teks juga jalan), lalu berinteraksi. Tombol **💡 Petunjuk** meminta
+saran mentor kapan saja; tutorial ditutup lewat **Bayar & Daftar**, skenario lain
+lewat **Keputusan Akhir**.
 
 ## Cakupan
 
-Kini hanya Skenario 1. `voice_worker/scenarios.py` adalah registry — persona,
-voice, dan (nanti) observer drift + AI Auditor untuk Skenario 2–4 tinggal
-ditambahkan di situ.
+Keempat skenario aktif. `voice_worker/scenarios.py` adalah registry tunggal —
+persona, voice, spec drift/auditor/RAT, dan `mentor_brief` per skenario. Menambah
+/mengubah skenario cukup di situ + prompt di `prompts/`; wiring (observer, auditor,
+Petunjuk, tiga jalur akhir) sudah generik. Lihat `CLAUDE.md`.

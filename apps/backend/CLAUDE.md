@@ -41,11 +41,16 @@ Input mic sulit di-headless; jalur teks bisa di-drive dengan Playwright.
 api/server.py                 POST /token (+ /health)
 voice_worker/
   voice_agent.py              entrypoint agent + RatAgent + wiring semua lapisan
-  scenarios.py                REGISTRY: semua skenario + spec drift/auditor/RAT
+  scenarios.py                REGISTRY: semua skenario + spec drift/auditor/RAT/mentor
   observer.py                 Lapisan 2: drift (gpt-5-mini async) + DriftTracker
   auditor.py                  Lapisan 3: AI Auditor (gpt-5.4) → JSON
-  prompts/*.py                system prompt persona (placeholder, di-grounding PRD)
+  mentor.py                   Fitur Petunjuk: hint kontekstual (gpt-5-mini) → JSON
+  prompts/*.py                system prompt persona, di-grounding ke ../scenarios.md
 ```
+
+Keempat skenario (Tutorial, Kredit Macet, Keanggotaan Fiktif, RAT) sudah
+terpasang penuh di `scenarios.py`. Prompt persona di-grounding ke dokumen
+skenario `apps/scenarios.md` (bukan lagi placeholder).
 
 ## Arsitektur: model state tiga lapis (PRD §6)
 
@@ -63,6 +68,18 @@ voice_worker/
 (attribute `drift_level=1`, FE menonjolkan tombol), `force_quit_level_2` (agent
 memicu otomatis → data message `session_ended`).
 
+## Fitur Petunjuk (mentor kontekstual — menggantikan "Tanya Mentor", PRD §9)
+
+`mentor.py`. RPC `petunjuk` → `gpt-5-mini` membaca transkrip + `mentor_brief`
+skenario → satu saran langkah berikutnya (JSON `{"hint": ...}`). DI LUAR
+ChatContext dialog (seperti observer/auditor) → tak mengubah percakapan. Guardrail
+prompt: hanya saran yang bisa dilakukan LEWAT percakapan (bukan aksi fisik),
+dorong ke solusi, tidak berulang, izinkan mekanik in-game "Periksa Dokumen".
+Untuk skenario berfase (RAT), `_petunjuk` mengirim `phase_context` (fase + tombol
+aksi berikutnya) agar mentor mengarahkan pemain pindah tugas secara mulus.
+Gagal-aman: error → hint fallback. Ada di SEMUA skenario (tiap `Scenario` punya
+`mentor_brief`).
+
 ## Skenario = data, bukan kode
 
 Semua skenario didefinisikan di `scenarios.py` sebagai `Scenario` dataclass.
@@ -71,18 +88,27 @@ Menambah/mengubah skenario TIDAK perlu menyentuh `voice_agent.py`.
 - `drift: DriftSpec | None` — None → tanpa observer (tutorial).
 - `auditor: AuditorSpec | None` — None → hasil terskrip (`scripted_result`).
 - `rat: RatSpec | None` — ada → alur dua-NPC + state machine fase (Skenario 4).
+- `mentor_brief: str` — grounding fitur Petunjuk (tujuan + langkah skenario).
 
 **Menambah skenario single-NPC**: tulis prompt di `prompts/`, tambah `Scenario`
-dengan `drift`+`auditor`, daftarkan di `_SCENARIOS`. Selesai — semua wiring
-(observer, auditor, tiga jalur akhir) sudah generik.
+dengan `drift`+`auditor`+`mentor_brief`, daftarkan di `_SCENARIOS`. Selesai —
+semua wiring (observer, auditor, Petunjuk, tiga jalur akhir) sudah generik.
 
 ## RAT (dua NPC) — pola yang dipakai
 
 Satu `RatAgent(Agent)`, dua persona (PRD §2.1: bukan proses/agent terpisah):
 - **Prompt** ditukar per persona via `update_instructions()` (async).
 - **Suara** ditukar via override `tts_node` → sintesis dengan TTS persona aktif.
-- **Persona aktif** dipilih oleh: default per fase (`RatPhase.default_persona`)
-  + heuristik penyebutan nama (`RatSpec.name_mentions`).
+- **Persona aktif** (`RatAgent.route()`): (1) penyebutan nama
+  (`RatSpec.name_mentions`) → prioritas; (2) tanpa nama → giliran PERTAMA tiap
+  fase dijawab pemimpin fase (`RatPhase.default_persona`, via flag
+  `just_entered_phase`), sesudahnya **digilir** antar persona
+  (`RatAgent._next_persona`) agar partisipasi seimbang tak didominasi satu suara.
+  Hasil: Fase 1 dipimpin Ibu Sri (kuorum), Fase 2 Pak Darma (interupsi), Fase 3
+  Ibu Sri (keputusan).
+- **Watak persona terkunci**: Darma selalu bela kepentingannya (dana ke
+  propertinya), Sri selalu bela anggota kecil + jaga prosedur — clue "dorong maju"
+  di prompt tidak boleh membuat mereka berpindah pihak (jaga konflik PRD §7.4).
 - **Fase**: RPC `advance_phase` menaikkan fase; publish attribute `phase`. Fase 2
   memicu interupsi terskrip (`session.say`) dari Pak Darma.
 
@@ -102,11 +128,18 @@ Satu `RatAgent(Agent)`, dua persona (PRD §2.1: bukan proses/agent terpisah):
    menyapa. (Kandidat pengerasan: nonaktifkan input sampai greeting.)
 5. **`tts_node` mengumpulkan teks penuh sebelum sintesis** (agar routing suara
    pasti benar). Latency naik sedikit untuk balasan panjang; oke untuk 1–2 kalimat.
+   **Suara persona DIBEKUKAN per-utterance** (`RatAgent._utterance_persona`,
+   di-set di `llm_node` saat generasi mulai & lewat `set_speaking()` sebelum
+   `session.say`). JANGAN membaca `self._state.active` langsung di `tts_node`:
+   nilai itu bisa bergeser (giliran berikutnya/alternation) sebelum sintesis
+   selesai → konten satu persona keluar dengan suara persona lain (bug nyata:
+   interupsi Pak Darma sempat bersuara Ibu Sri).
 6. **Nama deployment model = env** (`AZURE_OPENAI_DEPLOYMENT_DIALOGUE` untuk
    dialog+observer, `AZURE_OPENAI_DEPLOYMENT_AUDITOR` untuk gpt-5.4). Jangan
    hardcode nama model.
-7. **Observer & Auditor gagal-aman**: kalau panggilan LLM error, observer →
-   "neutral", auditor → fallback netral. Jangan biarkan error menjatuhkan sesi.
+7. **Observer, Auditor & mentor gagal-aman**: kalau panggilan LLM error, observer
+   → "neutral", auditor → fallback netral, mentor → hint fallback. Jangan biarkan
+   error menjatuhkan sesi.
 8. **Mic non-fatal di FE**: kegagalan mic tak boleh menutup sesi (teks fallback).
 
 ## Kredensial

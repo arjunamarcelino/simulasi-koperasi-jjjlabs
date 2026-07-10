@@ -32,7 +32,7 @@ singkat tentang apa yang sebaiknya ia lakukan BERIKUTNYA.
 Skenario: {scenario_id} — NPC: {npc_name}
 Tujuan & konteks skenario (jadikan acuan):
 {brief}
-
+{phase_block}
 Aturan menjawab:
 - Bahasa Indonesia, ramah dan sederhana, MAKSIMAL 2 kalimat.
 - Beri arahan langkah konkret yang bisa langsung dilakukan pemain, bukan teori panjang.
@@ -71,13 +71,30 @@ async def generate_hint(
     deployment: str,
     scenario: Scenario,
     transcript: list[tuple[str, str]],
+    phase_context: str | None = None,
 ) -> str:
-    """Kembalikan satu petunjuk singkat untuk pemain. Gagal-aman → fallback."""
+    """Kembalikan satu petunjuk singkat untuk pemain. Gagal-aman → fallback.
+
+    `phase_context` (khusus skenario berfase seperti RAT) menyebut fase yang
+    sedang berjalan + aksi berikutnya, agar mentor bisa mengarahkan pemain
+    berpindah tugas secara mulus tanpa memutus konflik.
+    """
     brief = scenario.mentor_brief or _FALLBACK
+    phase_block = ""
+    if phase_context:
+        phase_block = (
+            "\nKeadaan tahap saat ini:\n"
+            f"{phase_context}\n"
+            "Bila tugas tahap ini sudah beres atau pemain tampak berputar/mandek, "
+            "arahkan dengan HALUS ke langkah berikutnya — kaitkan dengan percakapan "
+            "terakhir, jangan kasar atau memaksa. Jangan melompati konflik yang "
+            "belum diselesaikan secara prosedural.\n"
+        )
     system = _SYSTEM.format(
         scenario_id=scenario.scenario_id,
         npc_name=scenario.npc_name,
         brief=brief,
+        phase_block=phase_block,
     )
     try:
         resp = await client.chat.completions.create(

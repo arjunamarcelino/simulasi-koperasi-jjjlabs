@@ -52,8 +52,9 @@ const CONNECTION_MAP: Record<ConnectionState, WireConnectionState> = {
  * event/RPC LiveKit) ke `SessionTransport` yang sama dipakai MockTransport,
  * sehingga UI tidak berubah sedikit pun saat menukar mock → livekit.
  *
- * Cakupan kini = Skenario 1 (Tutorial): STT/LLM/TTS + RPC "bayar_daftar" &
- * "send_text". Drift & fase belum dipakai (skenario lain menyusul).
+ * Mencakup keempat skenario: STT/LLM/TTS, RPC `send_text`/`end_session`/
+ * `petunjuk`, drift (attribute `drift_level`), fase RAT (attribute `phase` +
+ * RPC `advance_phase`), dan sinyal `speaker`. Kontrak wire: `apps/backend/CONTRACT.md`.
  */
 export class LiveKitTransport implements SessionTransport {
   private readonly transcript = new Emitter<TranscriptItem>();

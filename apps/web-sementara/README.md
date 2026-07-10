@@ -28,7 +28,7 @@ Seluruh UI ditulis terhadap satu interface, `SessionTransport`
 | `VITE_TRANSPORT` | Implementasi | Status |
 |---|---|---|
 | `mock` (default) | `MockTransport` — skrip + timer, tanpa jaringan | ✅ jalan |
-| `livekit` | `LiveKitTransport` | ⛔ stub, melempar error |
+| `livekit` | `LiveKitTransport` — token REST + event/RPC LiveKit nyata | ✅ jalan (butuh backend) |
 
 Aliran datanya satu arah:
 
@@ -74,13 +74,28 @@ dengan LiveKit tidak menyentuh satu pun file UI.
     **BUBAR**; Level 2 = rapat bubar (force-quit). `onPhase`/`advancePhase`
     ditambahkan ke `SessionTransport` sebagai **opsional** — PRD §9 memang
     mencantumkan transisi fase sebagai event kontrak masa depan.
+    - Mock memilih responder via penyebutan nama → default fase. Backend nyata
+      juga **menyeimbangkan giliran** antar-persona (pemimpin fase menjawab lebih
+      dulu, lalu digilir) — lihat `apps/backend/CLAUDE.md`.
+
+## Bantuan pemain (UI)
+
+Fitur ini aktif di kedua transport (mock & livekit):
+
+- **Briefing sesi** (`SessionBriefing`) — misi + langkah "yang perlu kamu lakukan"
+  per skenario, dari `scenarios/catalog.ts` (`mission`/`steps`).
+- **💡 Petunjuk** (`HintButton`/`HintPanel`) — minta saran mentor kontekstual.
+  `livekit` → RPC `petunjuk` (backend `gpt-5-mini`); `mock` → petunjuk terskrip
+  (`ScenarioScript.hints`). Kegagalan tidak menjatuhkan sesi.
+- **Ringkasan LPJ** (`LpjPanel`, RAT fase ≥ 2) — menampilkan isi LPJ dari
+  `scenarios/lpj.ts` agar pemain membaca sebelum mengambil keputusan.
 
 ## Batasan yang perlu diketahui
 
 - Naskah dialog di `src/transport/mock/scripts/*.script.ts` adalah
   **placeholder**. Naskah asli ada di "dokumen skenario" yang belum ada di repo.
   Ambang drift & daftar keyword juga tebakan awal — perlu di-tune saat playtest.
-- `contract.provisional.ts` bukan kontrak resmi. Dokumen kontrak FE↔BE (PRD §9)
-  belum disusun; file itu sengaja dibuat murah untuk dibuang.
-- Dependency LiveKit belum dipasang. Baru ditambahkan saat `LiveKitTransport`
-  benar-benar diisi.
+- `contract.provisional.ts` adalah kontrak lokal FE; sumber kebenaran wire FE↔BE
+  ada di `apps/backend/CONTRACT.md`. Jaga keduanya sinkron saat mengubah wire.
+- `LiveKitTransport` sudah terisi penuh dan `livekit-client` sudah terpasang;
+  jalankan dengan `VITE_TRANSPORT=livekit` + backend aktif.
