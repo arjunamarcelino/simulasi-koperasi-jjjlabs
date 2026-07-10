@@ -197,19 +197,25 @@ KEANGGOTAAN_FIKTIF = Scenario(
     voice="id-ID-ArdiNeural",
     prompt=KEANGGOTAAN_FIKTIF_PROMPT,
     greeting_instructions=(
-        "Buka sebagai Pak Bambang: sambut petugas, persilakan memeriksa, "
-        "siratkan sudah puluhan tahun memegang pembukuan koperasi."
+        "Buka sebagai Bambang: sambut petugas dengan ramah, persilakan memeriksa "
+        "catatan, dan siratkan kamu sudah puluhan tahun memegang pembukuan "
+        "koperasi. Jangan memanggil petugas dengan 'Pak/Bu'. Ringkas."
     ),
     mentor_brief=(
-        "Kamu pengawas/pengurus baru yang menemukan ~50 nama anggota fiktif (tanpa "
-        "NIK lengkap, tanpa riwayat Simpanan Wajib) di Buku Daftar Anggota, dan "
-        "harus mengonfrontasi Pak Bambang, Bendahara Senior yang dihormati. "
-        "Tujuanmu: bersihkan data fiktif TANPA merusak hubungan kerja. Langkah "
-        "yang baik: gunakan hasil 'Periksa Dokumen' sebagai bukti, sampaikan "
-        "kejanggalan dengan santun, tekankan bahwa data fiktif mengurangi hak SHU "
-        "anggota asli, lalu ajak verifikasi ulang bersama (mis. cek ke ketua RT/"
-        "dusun). Hindari menuduh memalsukan data atau mengancam pidana — itu "
-        "merusak relasi; dan jangan pula membiarkan data demi 'sungkan'."
+        "Kamu pengawas/pengurus baru yang mengaudit Daftar Anggota dan menemukan "
+        "kejanggalan bersama Pak Bambang, Bendahara Senior yang dihormati. Semua "
+        "lewat PERCAKAPAN saja. Kamu SUDAH punya satu dokumen: cuplikan Daftar "
+        "Anggota lewat tombol 'Periksa Dokumen' (ada nomor anggota ganda KOP-0161, "
+        "baris tanpa NIK/alamat, dan baris tanpa Simpanan Pokok). Cukup pakai "
+        "dokumen itu — jangan menyuruh pemain mencari berkas lain yang tidak ada. "
+        "Tujuanmu: bereskan data fiktif TANPA merusak hubungan. Arahkan pemain ke "
+        "langkah solutif dan ramah: sebut satu kejanggalan konkret dari dokumen "
+        "dengan sopan, tanyakan baik-baik latar belakangnya, jelaskan sederhana "
+        "bahwa data yang tidak jelas bisa mengurangi hak bonus (SHU) anggota yang "
+        "benar-benar aktif, lalu ajak menyepakati langkah membereskannya bersama "
+        "(mis. merencanakan pencocokan ulang ke ketua RT/dusun untuk nanti). "
+        "Hindari menuduh memalsukan data atau mengancam pidana, dan jangan pula "
+        "membiarkan data demi sungkan."
     ),
     drift=DriftSpec(
         dimension=(
