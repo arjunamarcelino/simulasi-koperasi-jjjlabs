@@ -125,8 +125,8 @@ export class VillageScene extends Phaser.Scene {
     for (const [x, y] of [
       [110, 150],
       [372, 150],
-      [120, 296],
-      [380, 296],
+      [120, 266],
+      [380, 266],
     ] as const) {
       this.placeTree(BIG_TREE, x, y);
       this.addSolid(x + BIG_TREE.w * 8, y + BIG_TREE.h * 16 - 8, 26, 10); // trunk collider
@@ -146,7 +146,7 @@ export class VillageScene extends Phaser.Scene {
   /** Dense tree frame around the screen. Top row is continuous (no gaps). */
   private placeTreeBorder(): void {
     for (let x = -48; x < MAP_W + 8; x += 34) {
-      this.placeTree(BIG_TREE, x, -18); // full top wall, koperasi sits lower/in front
+      this.placeTree(BIG_TREE, x, -6); // full top wall (lowered a little), koperasi in front
     }
     for (let y = 30; y < MAP_H - 50; y += 46) {
       this.placeTree(BIG_TREE, -24, y);
