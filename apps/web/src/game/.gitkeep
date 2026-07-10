@@ -1,0 +1,3 @@
+# Phaser lives here (iteration-2+). This layer must NEVER import React.
+# Scenes, entities, and the Phaser.Game config go under this folder.
+# ESLint enforces the boundary from the React side (pages/components ↮ phaser).
