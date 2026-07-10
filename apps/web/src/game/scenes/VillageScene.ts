@@ -127,22 +127,18 @@ export class VillageScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * Dense tree frame around the screen. Side columns are staggered (varied x +
-   * mixed sizes) so the inner edge reads as an organic forest, not a straight cut.
-   */
+  /** Dense tree frame around the screen (aligned columns/rows). */
   private placeTreeBorder(): void {
-    for (let x = 0, i = 0; x < MAP_W - 24; x += 40, i++) {
+    for (let x = 0; x < MAP_W - 24; x += 40) {
       if (x > 244 && x < 372) continue; // gap for the koperasi
-      this.placeTree(i % 3 === 0 ? SMALL_TREE : BIG_TREE, x, -6 + (i % 2) * 8);
+      this.placeTree(BIG_TREE, x, -6);
     }
-    for (let y = 34, i = 0; y < MAP_H - 52; y += 46, i++) {
-      const inset = (i % 2) * 16;
-      this.placeTree(i % 3 === 0 ? SMALL_TREE : BIG_TREE, 0 + inset, y); // left
-      this.placeTree(i % 3 === 1 ? SMALL_TREE : BIG_TREE, MAP_W - 48 - inset, y); // right
+    for (let y = 40; y < MAP_H - 56; y += 50) {
+      this.placeTree(BIG_TREE, 0, y);
+      this.placeTree(BIG_TREE, MAP_W - 48, y);
     }
-    for (let x = 8, i = 0; x < MAP_W - 24; x += 52, i++) {
-      this.placeTree(i % 2 === 0 ? SMALL_TREE : BIG_TREE, x, MAP_H - 44 + (i % 2) * 6);
+    for (let x = 8, i = 0; x < MAP_W - 24; x += 56, i++) {
+      this.placeTree(i % 2 === 0 ? SMALL_TREE : BIG_TREE, x, MAP_H - 44);
     }
   }
 
