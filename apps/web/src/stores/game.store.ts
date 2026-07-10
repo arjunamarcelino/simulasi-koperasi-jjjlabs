@@ -2,6 +2,12 @@ import { createStore } from "zustand/vanilla";
 import { subscribeWithSelector } from "zustand/middleware";
 import { useStore } from "zustand";
 import { KOPERASI_ROOMS } from "../world/rooms.config";
+import { loadNumber, saveNumber, loadJson, saveJson } from "./persist";
+import {
+  VOUCHERS,
+  isRedeemedVoucherArray,
+  type RedeemedVoucher,
+} from "../content/vouchers";
 
 /**
  * The four top-level views. This union is the single source of truth for
@@ -18,7 +24,9 @@ export type View =
  * Which React overlay (if any) is shown over the hub canvas. The non-NONE values
  * partition cleanly across self-guarding components: HubOverlays renders the room
  * prompts (CONFIRM_ENTER / COMING_SOON), MadingInfoBoard renders MADING_INFO,
- * MadingDataBoard renders MADING_DATA, MadingKnowledgeBoard renders MADING_KNOWLEDGE.
+ * MadingDataBoard renders MADING_DATA, MadingKnowledgeBoard renders MADING_KNOWLEDGE,
+ * QuizBoard renders QUIZ, KasirVoucherBoard renders KASIR_VOUCHER, ProfileModal
+ * renders PROFILE.
  */
 export type OverlayKind =
   | "NONE"
@@ -26,9 +34,15 @@ export type OverlayKind =
   | "COMING_SOON"
   | "MADING_INFO"
   | "MADING_DATA"
-  | "MADING_KNOWLEDGE";
+  | "MADING_KNOWLEDGE"
+  | "QUIZ"
+  | "KASIR_VOUCHER"
+  | "PROFILE";
 
 const NAME_STORAGE_KEY = "koperasi.playerName";
+const XP_STORAGE_KEY = "koperasi.xp";
+const POINT_STORAGE_KEY = "koperasi.point";
+const VOUCHERS_STORAGE_KEY = "koperasi.vouchers";
 
 function loadPlayerName(): string | null {
   try {
@@ -36,6 +50,14 @@ function loadPlayerName(): string | null {
   } catch {
     return null;
   }
+}
+
+/** Short mock voucher code, e.g. "KDMP-7X2A". Cosmetic only. */
+function genCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (let i = 0; i < 4; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return `KDMP-${s}`;
 }
 
 export type GameState = {
@@ -61,6 +83,10 @@ export type GameState = {
    * E can't leak into a station's fire() the instant an overlay closes. 0 = free.
    */
   interactSuppressedUntil: number;
+  /** Persisted wallet: XP (drives level, never spent), Point (spent on vouchers). */
+  xp: number;
+  point: number;
+  redeemedVouchers: RedeemedVoucher[];
 
   setView: (view: View) => void;
   setPlayerName: (name: string) => void;
@@ -80,6 +106,20 @@ export type GameState = {
   openMadingKnowledge: () => void;
   /** Jump to an absolute carousel slide/card; wrap math lives with the caller/content. */
   setMadingIndex: (index: number) => void;
+  /** Open the quiz (no-op if another overlay is already open). */
+  openQuiz: () => void;
+  /** Open the kasir voucher catalog (no-op if another overlay is open). */
+  openKasirVoucher: () => void;
+  /** Open the player profile modal (no-op if another overlay is open). */
+  openProfile: () => void;
+  /** Bank quiz rewards once (deltas clamped ≥ 0). Persists xp + point. */
+  addQuizRewards: (reward: { xp: number; point: number }) => void;
+  /**
+   * Redeem a voucher by id. Re-reads live point/cost as the authoritative gate
+   * (the button's disabled state lags a frame). Returns the redeemed voucher
+   * (carrying its fresh code) on success, or null if unknown / not affordable.
+   */
+  redeemVoucher: (voucherId: string) => RedeemedVoucher | null;
 };
 
 /** How long (ms) the scene ignores E after an overlay closes — see interactSuppressedUntil. */
@@ -106,6 +146,13 @@ export const gameStore = createStore<GameState>()(
     sceneLoading: null,
     madingIndex: 0,
     interactSuppressedUntil: 0,
+    xp: Math.max(0, loadNumber(XP_STORAGE_KEY, 0)),
+    point: Math.max(0, loadNumber(POINT_STORAGE_KEY, 0)),
+    redeemedVouchers: loadJson<RedeemedVoucher[]>(
+      VOUCHERS_STORAGE_KEY,
+      [],
+      isRedeemedVoucherArray,
+    ),
 
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
@@ -170,6 +217,49 @@ export const gameStore = createStore<GameState>()(
       set({ activeOverlay: "MADING_KNOWLEDGE", madingIndex: 0 });
     },
     setMadingIndex: (index) => set({ madingIndex: index }),
+
+    // Quiz / kasir / profile overlays — guarded like the mading opens. Closed via
+    // clearSelection (stamps the E-suppression window), never set() directly.
+    openQuiz: () => {
+      if (get().activeOverlay !== "NONE") return;
+      set({ activeOverlay: "QUIZ" });
+    },
+    openKasirVoucher: () => {
+      if (get().activeOverlay !== "NONE") return;
+      set({ activeOverlay: "KASIR_VOUCHER" });
+    },
+    openProfile: () => {
+      if (get().activeOverlay !== "NONE") return;
+      set({ activeOverlay: "PROFILE" });
+    },
+
+    // Wallet. In-memory is authoritative; persist is best-effort (try/catch).
+    addQuizRewards: ({ xp, point }) => {
+      const nextXp = get().xp + Math.max(0, xp);
+      const nextPoint = get().point + Math.max(0, point);
+      saveNumber(XP_STORAGE_KEY, nextXp);
+      saveNumber(POINT_STORAGE_KEY, nextPoint);
+      set({ xp: nextXp, point: nextPoint });
+    },
+
+    redeemVoucher: (voucherId) => {
+      const voucher = VOUCHERS.find((v) => v.id === voucherId);
+      if (!voucher) return null;
+      const { point, redeemedVouchers } = get(); // live read — the real gate
+      if (point < voucher.cost) return null;
+      const redeemed: RedeemedVoucher = {
+        voucherId,
+        name: voucher.name,
+        code: genCode(),
+        redeemedAt: Date.now(),
+      };
+      const nextPoint = point - voucher.cost;
+      const nextList = [...redeemedVouchers, redeemed];
+      saveNumber(POINT_STORAGE_KEY, nextPoint);
+      saveJson(VOUCHERS_STORAGE_KEY, nextList);
+      set({ point: nextPoint, redeemedVouchers: nextList });
+      return redeemed;
+    },
   })),
 );
 
