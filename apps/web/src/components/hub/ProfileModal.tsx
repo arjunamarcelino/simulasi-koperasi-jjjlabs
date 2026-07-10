@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { KOPERASI_IDENTITAS } from "../../content/mading-info";
+import { BADGES, isEarned, type BadgeContext } from "../../content/badges";
 import { ModalShell } from "../common/ModalShell";
+import { BadgeIcon } from "./BadgeIcon";
 
 /**
  * Level tiers (title + XP threshold). Ascending; first tier MUST start at 0.
@@ -38,18 +41,69 @@ export function ProfileModal() {
   const xp = useGameStore((s) => s.xp);
   const point = useGameStore((s) => s.point);
   const voucherCount = useGameStore((s) => s.redeemedVouchers.length);
+  const completedMissionIds = useGameStore((s) => s.completedMissionIds);
+  const [tab, setTab] = useState<"profil" | "badge">("profil");
 
   const close = () => gameStore.getState().clearSelection();
   const { index, title, floor, nextXp } = levelFromXp(xp);
   const maxed = nextXp === null;
   const pct = maxed ? 100 : Math.round(((xp - floor) / (nextXp - floor)) * 100);
 
+  // Assembled here (owns levelFromXp) and passed to pure badge predicates.
+  const ctx: BadgeContext = { xp, level: index + 1, point, completedMissionIds, voucherCount };
+
   return (
-    <ModalShell titleId="profile-title" onClose={close} panelClassName="w-full max-w-sm">
+    <ModalShell titleId="profile-title" onClose={close} panelClassName="w-full max-w-md">
       <h2 id="profile-title" className="mb-4 text-center font-display text-sm text-forest md:text-base">
         Profil Anggota
       </h2>
 
+      <div className="mb-4 flex gap-2">
+        {(["profil", "badge"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`flex-1 border-3 border-border px-3 py-2 font-display text-[10px] focus-visible:pixel-focus focus-visible:outline-none ${
+              tab === t
+                ? "pixel-press bg-forest text-cream"
+                : "pixel-raise bg-cream-2 text-forest hover:bg-parchment"
+            }`}
+          >
+            {t === "profil" ? "Profil" : "Badge"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "badge" ? (
+        <div className="grid grid-cols-3 gap-3">
+          {BADGES.map((badge) => {
+            const earned = isEarned(badge.criteria, ctx);
+            return (
+              <div
+                key={badge.id}
+                className="flex flex-col items-center gap-1 text-center"
+                aria-label={`${badge.title} — ${earned ? "tercapai" : badge.requirement}`}
+              >
+                <div className="flex h-14 w-14 items-center justify-center border-3 border-border bg-mustard">
+                  <div className={earned ? "" : "grayscale opacity-60"}>
+                    <BadgeIcon kind={badge.icon} />
+                  </div>
+                </div>
+                <p className="font-display text-[9px] leading-tight text-ink">{badge.title}</p>
+                <p
+                  className={`font-body text-[13px] leading-none ${
+                    earned ? "text-forest" : "text-ink-soft"
+                  }`}
+                >
+                  {earned ? "✓ Tercapai" : badge.requirement}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <>
       <div className="mb-5 flex items-center gap-4 border-3 border-border bg-cream px-4 py-3">
         <span className="flex h-14 w-14 shrink-0 items-center justify-center border-3 border-border bg-mustard">
           <svg viewBox="0 0 16 16" width="40" height="40" shapeRendering="crispEdges" aria-hidden="true">
@@ -103,6 +157,8 @@ export function ProfileModal() {
       <p className="mt-1 text-right font-body text-base text-ink-soft">
         {voucherCount} voucher ditukar
       </p>
+        </>
+      )}
     </ModalShell>
   );
 }
