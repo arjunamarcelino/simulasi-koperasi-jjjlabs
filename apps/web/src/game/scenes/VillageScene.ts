@@ -49,6 +49,7 @@ export class VillageScene extends Phaser.Scene {
 
   create(): void {
     this.solids.length = 0;
+    gameStore.getState().setActiveHubScene("Village");
 
     const map = this.make.tilemap({ key: "village-map" });
     const tiles = map.addTilesetImage("floor", "floorTiles");
@@ -66,8 +67,19 @@ export class VillageScene extends Phaser.Scene {
     this.placeMiddleTrees();
     this.placeScatter();
 
+    // Returning from the koperasi drops the player at the doorstep; a fresh play
+    // uses the map's player_spawn (where the greeting shows). Flag set on exit.
+    const fromKoperasi = this.registry.get("villageEntry") === "koperasi";
+    if (fromKoperasi) this.registry.remove("villageEntry");
     const spawn = map.findObject("Objects", (o) => o.name === "player_spawn");
-    this.player = new Player(this, spawn?.x ?? 328, spawn?.y ?? 336, VILLAGER);
+    const door = map.findObject("Objects", (o) => o.name === "door");
+    const spawnX = fromKoperasi
+      ? (door?.x ?? 304) + (door?.width ?? 32) / 2
+      : (spawn?.x ?? 328);
+    const spawnY = fromKoperasi
+      ? (door?.y ?? 108) + (door?.height ?? 44) + 6
+      : (spawn?.y ?? 336);
+    this.player = new Player(this, spawnX, spawnY, VILLAGER);
     this.physics.add.collider(this.player.sprite, collision);
     this.physics.add.collider(this.player.sprite, this.solids);
 

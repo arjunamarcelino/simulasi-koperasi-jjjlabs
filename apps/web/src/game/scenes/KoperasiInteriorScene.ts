@@ -1,183 +1,423 @@
 import Phaser from "phaser";
 import { SceneKey } from "./sceneKeys";
 import { PALETTE } from "../palette";
-import { LABEL_STYLE, TITLE_STYLE } from "../textStyles";
-import { makeInteractable } from "../interaction/makeInteractable";
-import { GAME_WIDTH } from "../dimensions";
-import { KOPERASI_ROOMS, type Room } from "../../world/rooms.config";
+import { LABEL_STYLE } from "../textStyles";
+import { Player } from "../entities/Player";
+import { VILLAGER } from "../entities/characters";
+import { KOPERASI_ROOMS, type RoomId } from "../../world/rooms.config";
 import { gameStore } from "../../stores/game.store";
 
-/** Interior of the koperasi building. Rooms are clickable zones from config. */
+const MAP_W = 640;
+const MAP_H = 368;
+const TILE = 16;
+
+// Frames in the interiorTiles spritesheet (352px wide → 22 cols; index = row*22+col).
+const FLOOR_FRAME = 290; // warm yellow brick floor
+const WALL_FRAME = 298; // dark brown brick wall
+
+const INTERACT_RADIUS = 48;
+const EXIT_RADIUS = 40;
+
+// Furniture from the LimeZu "Modern Interiors" sheet (16 cols; frame = r*16 + c).
+// Each entry is a multi-tile object: top-left tile (c,r) + size (w,h) in tiles.
+type LzDef = { c: number; r: number; w: number; h: number };
+const LZ = {
+  kasir: { c: 3, r: 8, w: 1, h: 2 }, // computer + printer workstation (131,147)
+  fridge: { c: 2, r: 18, w: 4, h: 3 }, // refrigerated display / kulkas
+  goodsShelf: { c: 6, r: 18, w: 2, h: 3 }, // minimart goods shelf
+  gudangRak: { c: 5, r: 14, w: 2, h: 4 }, // stocked storage shelf
+  chalkboard: { c: 10, r: 40, w: 2, h: 2 }, // green board on stand
+  worldMap: { c: 10, r: 67, w: 2, h: 1 }, // framed wall map
+  computer: { c: 13, r: 40, w: 2, h: 2 }, // monitor + keyboard (quiz)
+  plant: { c: 12, r: 45, w: 1, h: 2 }, // pohon (732,748)
+} as const satisfies Record<string, LzDef>;
+
+// A long conference table = three "big tables" joined by the connector column.
+// Each table = left/right cap (160/163) around a 2-wide middle (161,162); the
+// connector (164,180,196) replaces the inner caps so the joins look seamless.
+const MEETING_TABLE_COLS: readonly (readonly [number, number, number])[] = [
+  [160, 176, 192], // table 1 — left cap
+  [161, 177, 193],
+  [162, 178, 194],
+  [164, 180, 196], // join 1–2
+  [161, 177, 193], // table 2
+  [162, 178, 194],
+  [164, 180, 196], // join 2–3
+  [161, 177, 193], // table 3
+  [162, 178, 194],
+  [163, 179, 195], // right cap
+];
+
+/** A pixel rectangle [x, y, w, h] (top-left origin) — used for wall bands. */
+type Rect = readonly [number, number, number, number];
+
+// Wall bands (brick), leaving gaps for the top exit and the two room doors.
+const WALLS: readonly Rect[] = [
+  [0, 0, 212, 32], // top wall, left of entrance gap (212..268)
+  [268, 0, 372, 32], // top wall, right of entrance gap
+  [0, 0, 16, MAP_H], // left wall
+  [MAP_W - 16, 0, 16, MAP_H], // right wall
+  [0, MAP_H - 16, MAP_W, 16], // bottom wall
+  [16, 208, 132, 16], // divider, left of gudang door (148..196)
+  [196, 208, 256, 16], // divider, between gudang & rapat doors
+  [500, 208, 124, 16], // divider, right of rapat door (452..500)
+  [312, 224, 16, 128], // vertical wall between gudang & ruang rapat
+];
+
+type StationKind = RoomId | "exit" | "mading" | "quiz";
+
+type Station = {
+  id: StationKind;
+  label: string;
+  x: number;
+  y: number;
+  radiusSq: number;
+  locked: boolean;
+  fire: () => void;
+};
+
+/**
+ * Walkable koperasi interior (mirrors VillageScene): a single static screen with
+ * a brick floor + walls, four section "stations" (Marketplace, Kasir, Gudang,
+ * Ruang Rapat) and an exit. The player walks up to a station and presses E, which
+ * calls `selectRoom(id)`; the React HubOverlays handles confirm / "segera hadir".
+ */
 export class KoperasiInteriorScene extends Phaser.Scene {
+  private player!: Player;
+  private eKey!: Phaser.Input.Keyboard.Key;
+  private prompt!: Phaser.GameObjects.Container;
+  private promptLabel!: Phaser.GameObjects.Text;
+  private readonly solids: Phaser.GameObjects.GameObject[] = [];
+  private readonly stations: Station[] = [];
+  private lastStationId: StationKind | null = null;
+  private wasOverlayOpen = false;
+  private exiting = false;
+  private toast: Phaser.GameObjects.Container | undefined = undefined;
+
   constructor() {
     super(SceneKey.KoperasiInterior);
   }
 
   create(): void {
-    this.drawRoomShell();
-    for (const room of KOPERASI_ROOMS) {
-      this.makeRoomCard(room);
-    }
-    this.makeExit();
-    this.addHud();
+    this.solids.length = 0;
+    this.stations.length = 0;
+    this.lastStationId = null;
+    this.wasOverlayOpen = false;
+    this.exiting = false;
+    this.toast = undefined;
+    // Fresh entry starts from a known overlay state (guards a stale soft-lock).
+    gameStore.getState().clearSelection();
+    gameStore.getState().setActiveHubScene("KoperasiInterior");
+
+    this.drawFloor();
+    this.drawWalls();
+    this.drawDoorways();
+    this.buildStations();
+
+    // Spawn just inside the entrance door (right of the kasir booth).
+    this.player = new Player(this, 240, 90, VILLAGER);
+    this.physics.add.collider(this.player.sprite, this.solids);
+
+    this.cameras.main.setZoom(2);
+    this.cameras.main.setBounds(0, 0, MAP_W, MAP_H);
+    this.cameras.main.centerOn(MAP_W / 2, MAP_H / 2);
+    this.physics.world.setBounds(0, 0, MAP_W, MAP_H);
+
+    this.prompt = this.makePrompt();
+
+    const keyboard = this.input.keyboard;
+    if (!keyboard) throw new Error("Keyboard input is unavailable");
+    this.eKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
   }
 
-  private drawRoomShell(): void {
-    this.add.rectangle(0, 0, GAME_WIDTH, 720, PALETTE.cream2).setOrigin(0).setDepth(0);
-
-    const wainscot = this.add.graphics().setDepth(1);
-    wainscot.lineStyle(2, 0xd9c39a, 1);
-    for (let x = 0; x <= GAME_WIDTH; x += 80) {
-      wainscot.lineBetween(x, 150, x, 540);
-    }
-    this.add.rectangle(0, 150, GAME_WIDTH, 4, PALETTE.brown).setOrigin(0).setDepth(1);
-
-    this.add.rectangle(0, 560, GAME_WIDTH, 160, PALETTE.brown).setOrigin(0).setDepth(2);
-    this.add.rectangle(0, 540, GAME_WIDTH, 20, PALETTE.brown2).setOrigin(0).setDepth(2);
-    const floor = this.add.graphics().setDepth(2);
-    floor.lineStyle(2, PALETTE.brown2, 1);
-    for (let x = 0; x <= GAME_WIDTH; x += 90) {
-      floor.lineBetween(x, 560, x, 720);
-    }
-  }
-
-  private makeRoomCard(room: Room): void {
-    const { x, y, width: w, height: h } = room.position;
-    const available = room.status === "AVAILABLE";
-
-    const g = this.add.graphics().setDepth(3);
-    g.fillStyle(PALETTE.brown2, 1);
-    g.fillRect(x + 6, y + 6, w, h);
-    g.fillStyle(PALETTE.brown, 1);
-    g.fillRect(x, y, w, h);
-    g.lineStyle(3, PALETTE.ink, 1);
-    g.strokeRect(x, y, w, h);
-    g.fillStyle(available ? PALETTE.parchment : 0xb9a985, 1);
-    g.fillRect(x + 14, y + 14, w - 28, h - 28);
-    g.lineStyle(2, PALETTE.ink, 1);
-    g.strokeRect(x + 14, y + 14, w - 28, h - 28);
-
-    this.drawRoomIcon(room.id, x + w / 2, y + 100);
-    this.add
-      .text(x + w / 2, y + h - 62, room.label, { ...LABEL_STYLE, fontSize: "26px" })
-      .setOrigin(0.5)
-      .setDepth(3);
-    this.drawStatusTag(available, x, y, w);
-
-    if (available) {
-      this.add.rectangle(x + w / 2, 560, w * 0.8, 10, PALETTE.mustard, 0.5).setDepth(2);
-    } else {
-      this.add.rectangle(x, y, w, h, PALETTE.ink, 0.28).setOrigin(0).setDepth(3);
-      this.drawLock(x + w / 2, y + h / 2 - 10);
+  override update(): void {
+    // Top-right React door icon requested an exit — leave via the same path as E.
+    if (gameStore.getState().koperasiExitRequested) {
+      gameStore.getState().consumeKoperasiExit();
+      this.exitToVillage();
+      return;
     }
 
-    const ring = this.add
-      .rectangle(x + w / 2, y + h / 2, w + 12, h + 12)
-      .setStrokeStyle(4, PALETTE.mustard)
-      .setDepth(4)
-      .setVisible(false);
-    const zone = this.add.zone(x + w / 2, y + h / 2, w, h).setDepth(4);
-    zone.on(Phaser.Input.Events.POINTER_OVER, () => ring.setVisible(true));
-    zone.on(Phaser.Input.Events.POINTER_OUT, () => ring.setVisible(false));
-    makeInteractable(zone, () => gameStore.getState().selectRoom(room.id));
-  }
+    const overlayOpen = gameStore.getState().activeOverlay !== "NONE";
 
-  private drawRoomIcon(id: string, cx: number, cy: number): void {
-    const g = this.add.graphics().setDepth(3);
-    if (id === "ruang-meeting") {
-      g.fillStyle(PALETTE.forest, 1);
-      g.fillRect(cx - 30, cy - 6, 60, 16);
-      g.fillStyle(PALETTE.brown2, 1);
-      g.fillRect(cx - 26, cy + 10, 6, 16);
-      g.fillRect(cx + 20, cy + 10, 6, 16);
-      g.fillStyle(PALETTE.mustard, 1);
-      for (const dx of [-24, 0, 24]) {
-        g.fillRect(cx + dx - 5, cy - 24, 10, 10);
+    // Freeze movement + drain E while a React overlay is open above the canvas
+    // (the DOM backdrop blocks pointer events but NOT the keyboard).
+    if (overlayOpen) {
+      this.player.sprite.setVelocity(0, 0);
+      this.prompt.setVisible(false);
+      Phaser.Input.Keyboard.JustDown(this.eKey); // consume so it can't leak out
+      this.wasOverlayOpen = true;
+      return;
+    }
+
+    this.player.update();
+
+    // Close-edge latch: on the frame the overlay just closed, swallow E so a
+    // still-held key can't immediately re-open it (overlay whack-a-mole).
+    if (this.wasOverlayOpen) {
+      this.wasOverlayOpen = false;
+      Phaser.Input.Keyboard.JustDown(this.eKey);
+      this.prompt.setVisible(false);
+      return;
+    }
+
+    const nearest = this.nearestStation();
+    if (nearest) {
+      if (this.lastStationId !== nearest.id) {
+        this.lastStationId = nearest.id;
+        this.promptLabel.setText(`Tekan E — ${nearest.label}`);
       }
-    } else if (id === "gudang") {
-      g.fillStyle(PALETTE.brown, 1);
-      g.fillRect(cx - 26, cy - 20, 52, 44);
-      g.fillStyle(PALETTE.brown2, 1);
-      g.fillRect(cx - 26, cy - 24, 52, 8);
-      g.lineStyle(3, PALETTE.ink, 1);
-      g.lineBetween(cx - 26, cy - 20, cx + 26, cy + 24);
-      g.lineBetween(cx + 26, cy - 20, cx - 26, cy + 24);
+      // Stations near the top edge (the exit door) show the prompt below so it
+      // isn't clipped off the top of the frame.
+      const py = nearest.y < 60 ? nearest.y + 34 : nearest.y - 34;
+      this.prompt.setPosition(nearest.x, py).setVisible(true);
+      if (Phaser.Input.Keyboard.JustDown(this.eKey)) nearest.fire();
     } else {
-      g.fillStyle(PALETTE.orange, 1);
-      g.fillRect(cx - 24, cy - 16, 48, 26);
-      g.lineStyle(3, PALETTE.ink, 1);
-      g.strokeRect(cx - 24, cy - 16, 48, 26);
-      g.fillStyle(PALETTE.ink, 1);
-      g.fillCircle(cx - 14, cy + 18, 6);
-      g.fillCircle(cx + 14, cy + 18, 6);
+      this.lastStationId = null;
+      this.prompt.setVisible(false);
     }
   }
 
-  private drawStatusTag(available: boolean, x: number, y: number, w: number): void {
-    const tagW = available ? 96 : 132;
-    const tx = x + w - 12 - tagW;
-    const ty = y + 12;
-    const g = this.add.graphics().setDepth(3);
-    g.fillStyle(available ? PALETTE.forest : 0x8c7a5c, 1);
-    g.fillRect(tx, ty, tagW, 30);
-    g.lineStyle(2, PALETTE.ink, 1);
-    g.strokeRect(tx, ty, tagW, 30);
-    this.add
-      .text(tx + tagW / 2, ty + 15, available ? "TERSEDIA" : "SEGERA HADIR", {
-        ...LABEL_STYLE,
-        fontSize: available ? "18px" : "16px",
-        color: available ? "#FBF3DE" : "#2B2016",
-        strokeThickness: 0,
-      })
-      .setOrigin(0.5)
-      .setDepth(3);
+  /** Nearest in-range station, computed once per frame; ties resolve by index. */
+  private nearestStation(): Station | null {
+    const { x, y } = this.player.sprite;
+    let best: Station | null = null;
+    let bestSq = Infinity;
+    for (const s of this.stations) {
+      const dSq = Phaser.Math.Distance.Squared(x, y, s.x, s.y);
+      if (dSq <= s.radiusSq && dSq < bestSq) {
+        bestSq = dSq;
+        best = s;
+      }
+    }
+    return best;
   }
 
-  private drawLock(cx: number, cy: number): void {
-    const g = this.add.graphics().setDepth(3);
-    g.lineStyle(5, PALETTE.parchment, 1);
-    g.strokeRoundedRect(cx - 12, cy - 26, 24, 22, 9);
-    g.fillStyle(PALETTE.ink, 1);
-    g.fillRect(cx - 18, cy - 8, 36, 28);
-    g.lineStyle(2, PALETTE.parchment, 1);
-    g.strokeRect(cx - 18, cy - 8, 36, 28);
-    g.fillStyle(PALETTE.mustard, 1);
-    g.fillRect(cx - 3, cy + 2, 6, 12);
+  // ---- world building -------------------------------------------------------
+
+  private drawFloor(): void {
+    for (let y = 0; y < MAP_H; y += TILE) {
+      for (let x = 0; x < MAP_W; x += TILE) {
+        this.add.image(x, y, "interiorTiles", FLOOR_FRAME).setOrigin(0, 0).setDepth(-100);
+      }
+    }
   }
 
-  private makeExit(): void {
-    const g = this.add.graphics().setDepth(5);
-    g.fillStyle(PALETTE.brown2, 1);
-    g.fillRect(30, 300, 90, 240);
-    g.lineStyle(3, PALETTE.ink, 1);
-    g.strokeRect(30, 300, 90, 240);
+  private drawWalls(): void {
+    for (const [x, y, w, h] of WALLS) {
+      for (let ty = y; ty < y + h; ty += TILE) {
+        for (let tx = x; tx < x + w; tx += TILE) {
+          this.add.image(tx, ty, "interiorTiles", WALL_FRAME).setOrigin(0, 0).setDepth(ty + TILE);
+        }
+      }
+      this.addSolid(x + w / 2, y + h / 2, w, h);
+    }
+  }
+
+  /** Wooden posts framing the three openings so the gaps read as doorways. */
+  private drawDoorways(): void {
+    this.drawDoorPosts(172, 208, 24); // gudang door (gap 148..196)
+    this.drawDoorPosts(476, 208, 24); // ruang rapat door (gap 452..500)
+    this.drawDoorPosts(240, 0, 28); // koperasi entrance/exit (gap 212..268)
+  }
+
+  private drawDoorPosts(cx: number, y: number, half: number): void {
+    const g = this.add.graphics().setDepth(y + 40);
     g.fillStyle(PALETTE.brown, 1);
-    g.fillRect(42, 312, 66, 216);
-    g.lineStyle(2, PALETTE.ink, 1);
-    g.strokeRect(42, 312, 66, 216);
-    g.fillStyle(PALETTE.mustard, 1);
-    g.fillCircle(96, 420, 5);
-
-    this.add
-      .text(75, 560, "← Keluar", {
-        ...LABEL_STYLE,
-        fontSize: "24px",
-        color: "#FBF3DE",
-        backgroundColor: "#164429",
-      })
-      .setOrigin(0.5)
-      .setPadding(10, 6, 10, 6)
-      .setDepth(5);
-
-    const zone = this.add.zone(75, 420, 120, 300).setDepth(5);
-    makeInteractable(zone, () => this.scene.start(SceneKey.Village));
+    g.fillRect(cx - half - 4, y, 4, 28);
+    g.fillRect(cx + half, y, 4, 28);
+    g.fillStyle(PALETTE.brown2, 1);
+    g.fillRect(cx - half - 4, y, half * 2 + 8, 5); // lintel
   }
 
-  private addHud(): void {
-    this.add.text(GAME_WIDTH / 2, 58, "Kantor Koperasi", { ...TITLE_STYLE, fontSize: "28px" }).setOrigin(0.5).setDepth(10);
+  private buildStations(): void {
+    // Kasir booth (left): a computer + printer workstation.
+    this.lzStamp(130, 116, LZ.kasir);
+    this.stationLabel(130, 64, "KASIR", false);
+    // Marketplace (right hall): a fridge display + minimart goods shelves.
+    this.lzStamp(462, 130, LZ.fridge);
+    this.lzStamp(540, 130, LZ.goodsShelf);
+    this.lzStamp(582, 130, LZ.goodsShelf);
+    this.stationLabel(500, 152, "MARKETPLACE", false);
+    // Gudang: stocked storage shelves (player enters from the top door).
+    this.lzStamp(70, 323, LZ.gudangRak);
+    this.lzStamp(130, 323, LZ.gudangRak);
+    this.lzStamp(190, 323, LZ.gudangRak);
+    this.lzStamp(250, 323, LZ.gudangRak);
+    this.stationLabel(150, 236, "GUDANG", false);
+    // Ruang rapat: a long meeting table + a tree in the corner.
+    this.drawMeetingTable(476, 328);
+    this.stationLabel(476, 236, "RUANG RAPAT", true);
+    this.lzStamp(606, 346, LZ.plant);
+
+    // Points of interest: wall boards (mading) + a computer for the koperasi quiz.
+    this.lzStamp(340, 40, LZ.chalkboard, false);
+    this.lzStamp(540, 34, LZ.worldMap, false);
+    this.lzStamp(320, 200, LZ.computer);
+    this.stationLabel(320, 150, "KUIS", false);
+
+    const spot: Record<RoomId, { x: number; y: number }> = {
+      kasir: { x: 130, y: 150 },
+      marketplace: { x: 500, y: 162 },
+      gudang: { x: 150, y: 262 },
+      "ruang-meeting": { x: 476, y: 270 },
+    };
+
+    for (const room of KOPERASI_ROOMS) {
+      const at = spot[room.id];
+      this.stations.push({
+        id: room.id,
+        label: room.label,
+        x: at.x,
+        y: at.y,
+        radiusSq: INTERACT_RADIUS * INTERACT_RADIUS,
+        locked: room.status !== "AVAILABLE",
+        fire: () => gameStore.getState().selectRoom(room.id),
+      });
+    }
+
+    // Exit back to the village (top doorway) — latched so it fires once.
+    this.stations.push({
+      id: "exit",
+      label: "Keluar",
+      x: 240,
+      y: 44,
+      radiusSq: EXIT_RADIUS * EXIT_RADIUS,
+      locked: false,
+      fire: () => this.exitToVillage(),
+    });
+
+    // Points of interest — mapped now, real content wired later (show a stub toast).
+    this.addPoi("mading", "Papan Info", 340, 54);
+    this.addPoi("mading", "Papan Info", 540, 54);
+    this.addPoi("quiz", "Kuis Koperasi", 320, 150);
+  }
+
+  private addPoi(id: "mading" | "quiz", label: string, x: number, y: number): void {
+    this.stations.push({
+      id,
+      label,
+      x,
+      y,
+      radiusSq: INTERACT_RADIUS * INTERACT_RADIUS,
+      locked: true,
+      fire: () => this.showToast(x, y < 60 ? y + 44 : y - 44, `${label} — segera hadir`),
+    });
+  }
+
+  private exitToVillage(): void {
+    if (this.exiting) return;
+    this.exiting = true;
+    gameStore.getState().clearSelection();
+    // Tell VillageScene to spawn the player back at the koperasi doorstep.
+    this.registry.set("villageEntry", "koperasi");
+    this.scene.start(SceneKey.Village);
+  }
+
+  // ---- furniture (LimeZu Modern Interiors stamps) ---------------------------
+
+  /**
+   * Stamp a LimeZu furniture object: horizontally centered at `cx` with its
+   * bottom edge at `footY`. Depth = footY for correct y-sort against the player.
+   */
+  private lzStamp(cx: number, footY: number, def: LzDef, solid = true): void {
+    const x0 = Math.round(cx - (def.w * TILE) / 2);
+    const y0 = Math.round(footY - def.h * TILE);
+    for (let dr = 0; dr < def.h; dr++) {
+      for (let dc = 0; dc < def.w; dc++) {
+        this.add
+          .image(x0 + dc * TILE, y0 + dr * TILE, "lzInterior", (def.r + dr) * 16 + def.c + dc)
+          .setOrigin(0, 0)
+          .setDepth(footY);
+      }
+    }
+    if (solid) this.addSolid(cx, footY - (def.h * TILE) / 2, def.w * TILE, def.h * TILE);
+  }
+
+  /** The long meeting table, stamped column-by-column with the connector piece. */
+  private drawMeetingTable(cx: number, footY: number): void {
+    const cols = MEETING_TABLE_COLS;
+    const x0 = Math.round(cx - (cols.length * TILE) / 2);
+    const y0 = Math.round(footY - 3 * TILE);
+    cols.forEach((col, dc) => {
+      col.forEach((frame, dr) => {
+        this.add
+          .image(x0 + dc * TILE, y0 + dr * TILE, "lzInterior", frame)
+          .setOrigin(0, 0)
+          .setDepth(footY);
+      });
+    });
+    this.addSolid(cx, footY - (3 * TILE) / 2, cols.length * TILE, 3 * TILE);
+  }
+
+  // ---- ui -------------------------------------------------------------------
+
+  private stationLabel(cx: number, cy: number, text: string, available: boolean): void {
     this.add
-      .text(GAME_WIDTH / 2, 104, "Pilih ruang untuk memulai", { ...LABEL_STYLE, fontSize: "24px" })
+      .text(cx, cy, text, {
+        fontFamily: LABEL_STYLE.fontFamily ?? "monospace",
+        fontSize: "11px",
+        color: "#2B2016",
+        stroke: "#FBF3DE",
+        strokeThickness: 3,
+      })
+      .setResolution(3)
       .setOrigin(0.5)
-      .setDepth(10);
+      .setDepth(9000);
+
+    const badge = available ? "TERSEDIA" : "SEGERA HADIR";
+    this.add
+      .text(cx, cy + 13, badge, {
+        fontFamily: LABEL_STYLE.fontFamily ?? "monospace",
+        fontSize: "9px",
+        color: available ? "#FBF3DE" : "#2B2016",
+        backgroundColor: available ? "#1F5D3A" : "#D9A521",
+      })
+      .setResolution(3)
+      .setOrigin(0.5)
+      .setPadding(4, 2, 4, 2)
+      .setDepth(9000);
+  }
+
+  /** A brief self-dismissing message (used for not-yet-built points of interest). */
+  private showToast(x: number, y: number, text: string): void {
+    this.toast?.destroy();
+    const label = this.add
+      .text(0, 0, text, {
+        fontFamily: LABEL_STYLE.fontFamily ?? "monospace",
+        fontSize: "10px",
+        color: "#FBF3DE",
+      })
+      .setResolution(3)
+      .setOrigin(0.5);
+    const bg = this.add
+      .rectangle(0, 0, label.width + 16, 22, PALETTE.ink, 0.95)
+      .setStrokeStyle(2, PALETTE.mustard);
+    this.toast = this.add.container(x, y, [bg, label]).setDepth(10001);
+    this.time.delayedCall(1500, () => {
+      this.toast?.destroy();
+      this.toast = undefined;
+    });
+  }
+
+  private makePrompt(): Phaser.GameObjects.Container {
+    this.promptLabel = this.add
+      .text(0, 0, "", {
+        fontFamily: LABEL_STYLE.fontFamily ?? "monospace",
+        fontSize: "10px",
+        color: "#FBF3DE",
+      })
+      .setResolution(3)
+      .setOrigin(0.5);
+    const bg = this.add
+      .rectangle(0, 0, 170, 20, PALETTE.forest2, 0.92)
+      .setStrokeStyle(2, PALETTE.mustard);
+    return this.add.container(0, 0, [bg, this.promptLabel]).setDepth(9999).setVisible(false);
+  }
+
+  private addSolid(cx: number, cy: number, w: number, h: number): void {
+    const rect = this.add.rectangle(cx, cy, w, h).setVisible(false);
+    this.physics.add.existing(rect, true);
+    this.solids.push(rect);
   }
 }

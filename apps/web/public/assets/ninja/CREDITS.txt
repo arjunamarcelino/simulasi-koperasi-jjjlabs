@@ -8,6 +8,7 @@ License: CC0 1.0 Universal (public domain). Attribution not required but appreci
 Files used in this project:
 - tileset_floor.png              (ground: grass / water / path)
 - tileset_village_abandoned.png  (buildings, trees, fences, decor)
+- tileset_interior_floor.png     (koperasi interior: brick floor + wall tiles, 16x16 frames)
 - samurai_green.png              (player character spritesheet, 16x16 frames)
 
 ---
