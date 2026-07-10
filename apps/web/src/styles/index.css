@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/* Warm "Koperasi" palette + fonts — Tailwind v4 config-less @theme     */
+/* Tokens auto-generate utilities: --color-cream -> bg-cream/text-cream  */
+/* ------------------------------------------------------------------ */
+@theme {
+  /* Surfaces */
+  --color-cream: #f4e6c8; /* page base / paper */
+  --color-cream-2: #ead6a8; /* panel fill */
+  --color-parchment: #fbf3de; /* raised highlights */
+
+  /* Brand core */
+  --color-forest: #1f5d3a; /* primary dark green */
+  --color-forest-2: #164429; /* green shadow/depth */
+  --color-mustard: #d9a521; /* muted yellow */
+  --color-brown: #7a4e2d; /* wood / border brown */
+  --color-brown-2: #5a3a20; /* deep wood shadow */
+  --color-orange: #e07a3c; /* soft orange accent */
+
+  /* Ink & lines */
+  --color-ink: #2b2016; /* warm near-black text */
+  --color-ink-soft: #5a4a38; /* secondary text */
+  --color-border: #2b2016; /* pixel outline */
+  --color-line: #c6af82; /* hairline divider */
+
+  /* Fonts */
+  --font-display: "Press Start 2P", ui-monospace, monospace;
+  --font-body: "VT323", "Courier New", ui-monospace, monospace;
+
+  --radius-pixel: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pixel bevel / hard-shadow utilities (no blur)                        */
+/* ------------------------------------------------------------------ */
+@utility border-3 {
+  border-width: 3px;
+}
+
+@utility pixel-panel {
+  border: 3px solid var(--color-border);
+  border-radius: var(--radius-pixel);
+  box-shadow:
+    inset 2px 2px 0 0 rgba(255, 255, 255, 0.35),
+    inset -2px -2px 0 0 rgba(0, 0, 0, 0.18),
+    4px 4px 0 0 var(--color-brown-2),
+    8px 8px 0 0 rgba(43, 32, 22, 0.35);
+}
+
+@utility pixel-raise {
+  border: 3px solid var(--color-border);
+  border-radius: var(--radius-pixel);
+  box-shadow:
+    inset 2px 2px 0 0 rgba(255, 255, 255, 0.45),
+    inset -2px -3px 0 0 rgba(0, 0, 0, 0.22),
+    0 5px 0 0 var(--color-forest-2);
+}
+
+@utility pixel-press {
+  box-shadow: inset 2px 2px 0 0 rgba(0, 0, 0, 0.25);
+  transform: translateY(5px);
+}
+
+@utility pixel-focus {
+  outline: 3px solid var(--color-forest);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--color-mustard);
+}
+
+@utility roof {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+/* Asset-free cooperative background: floor grid + parchment dots + band */
+@utility koperasi-bg {
+  background-color: var(--color-cream);
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 39px,
+      rgba(122, 78, 45, 0.1) 39px 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 39px,
+      rgba(122, 78, 45, 0.1) 39px 40px
+    ),
+    radial-gradient(rgba(122, 78, 45, 0.06) 1px, transparent 1px),
+    linear-gradient(to top, var(--color-cream-2) 0 14%, transparent 14%);
+  background-size:
+    40px 40px,
+    40px 40px,
+    8px 8px,
+    100% 100%;
+}
+
+/* Base page defaults */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background-color: var(--color-cream);
+}
