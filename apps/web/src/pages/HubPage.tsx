@@ -5,6 +5,7 @@ import { KoperasiExitButton } from "../components/hub/KoperasiExitButton";
 import { SceneLoadingOverlay } from "../components/hub/SceneLoadingOverlay";
 import { MadingInfoBoard } from "../components/hub/MadingInfoBoard";
 import { MadingDataBoard } from "../components/hub/MadingDataBoard";
+import { MadingKnowledgeBoard } from "../components/hub/MadingKnowledgeBoard";
 import { NamePrompt } from "../components/hub/NamePrompt";
 import { useGameStore } from "../stores/game.store";
 
@@ -24,6 +25,7 @@ export function HubPage() {
       <HubOverlays />
       <MadingInfoBoard />
       <MadingDataBoard />
+      <MadingKnowledgeBoard />
       <SceneLoadingOverlay />
       {needsName && <NamePrompt />}
     </main>

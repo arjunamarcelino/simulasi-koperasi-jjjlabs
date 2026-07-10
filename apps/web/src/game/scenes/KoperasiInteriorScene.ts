@@ -270,9 +270,8 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     // Ruang rapat: long table + chairs along the top edge + a tree in the corner.
     this.drawMeetingTable(476, 328);
     for (const cx of [412, 444, 476, 508, 540]) this.lzStamp(cx, 284, LZ.chair, false);
-    this.lzStamp(410, 236, LZ.rapatDeco, false); // left of the rapat door
-    this.lzStamp(540, 230, LZ.rapatDeco2, false); // right of the rapat door
-    this.lzStamp(360, 240, LZ.poster, false); // data board on the left rapat wall
+    this.lzStamp(410, 236, LZ.rapatDeco, false); // left of rapat door — opens data board
+    this.lzStamp(540, 230, LZ.rapatDeco2, false); // right of rapat door — opens info board
     this.stationLabel(476, 236, "RUANG RAPAT", true);
     this.lzStamp(606, 346, LZ.plant);
 
@@ -314,11 +313,13 @@ export class KoperasiInteriorScene extends Phaser.Scene {
       fire: () => this.exitToVillage(),
     });
 
-    // Points of interest. The entrance boards open the sticky-note info board;
-    // the ruang-rapat board opens the data carousel. Quiz + simpan-pinjam still stub.
-    this.addPoi("mading", "Papan Info", 200, 54, () => gameStore.getState().openMadingInfo());
-    this.addPoi("mading", "Papan Info", 340, 54, () => gameStore.getState().openMadingInfo());
-    this.addPoi("mading", "Papan Data", 360, 250, () => gameStore.getState().openMadingData());
+    // Points of interest. Entrance posters open the knowledge carousel; the two
+    // ruang-rapat wall decos flank the door — left (rapatDeco) opens the data
+    // tables, right (rapatDeco2) opens the info board. Quiz + simpan-pinjam stub.
+    this.addPoi("mading", "Info Koperasi", 200, 54, () => gameStore.getState().openMadingKnowledge());
+    this.addPoi("mading", "Info Koperasi", 340, 54, () => gameStore.getState().openMadingKnowledge());
+    this.addPoi("mading", "Papan Data", 410, 250, () => gameStore.getState().openMadingData());
+    this.addPoi("mading", "Papan Info", 540, 246, () => gameStore.getState().openMadingInfo());
     this.addPoi("quiz", "Kuis Koperasi", 320, 150);
     this.addPoi("simpan-pinjam", "Simpan Pinjam", 165, 180);
   }

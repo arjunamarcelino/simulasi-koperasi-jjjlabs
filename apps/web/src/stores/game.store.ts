@@ -16,16 +16,17 @@ export type View =
 
 /**
  * Which React overlay (if any) is shown over the hub canvas. The non-NONE values
- * partition cleanly across three self-guarding components: HubOverlays renders
- * the room prompts (CONFIRM_ENTER / COMING_SOON), MadingInfoBoard renders
- * MADING_INFO, MadingDataBoard renders MADING_DATA.
+ * partition cleanly across self-guarding components: HubOverlays renders the room
+ * prompts (CONFIRM_ENTER / COMING_SOON), MadingInfoBoard renders MADING_INFO,
+ * MadingDataBoard renders MADING_DATA, MadingKnowledgeBoard renders MADING_KNOWLEDGE.
  */
 export type OverlayKind =
   | "NONE"
   | "CONFIRM_ENTER"
   | "COMING_SOON"
   | "MADING_INFO"
-  | "MADING_DATA";
+  | "MADING_DATA"
+  | "MADING_KNOWLEDGE";
 
 const NAME_STORAGE_KEY = "koperasi.playerName";
 
@@ -75,7 +76,9 @@ export type GameState = {
   openMadingInfo: () => void;
   /** Open the data carousel at slide 0 (no-op if another overlay is already open). */
   openMadingData: () => void;
-  /** Jump to an absolute carousel slide; wrap math lives with the caller/content. */
+  /** Open the knowledge carousel at card 0 (no-op if another overlay is open). */
+  openMadingKnowledge: () => void;
+  /** Jump to an absolute carousel slide/card; wrap math lives with the caller/content. */
   setMadingIndex: (index: number) => void;
 };
 
@@ -161,6 +164,10 @@ export const gameStore = createStore<GameState>()(
     openMadingData: () => {
       if (get().activeOverlay !== "NONE") return;
       set({ activeOverlay: "MADING_DATA", madingIndex: 0 });
+    },
+    openMadingKnowledge: () => {
+      if (get().activeOverlay !== "NONE") return;
+      set({ activeOverlay: "MADING_KNOWLEDGE", madingIndex: 0 });
     },
     setMadingIndex: (index) => set({ madingIndex: index }),
   })),
