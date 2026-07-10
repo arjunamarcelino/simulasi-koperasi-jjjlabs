@@ -8,7 +8,6 @@ import { LABEL_STYLE } from "../textStyles";
 import { gameStore } from "../../stores/game.store";
 
 const VILLAGE_COLS = 20; // columns in tileset_village_abandoned spritesheet
-const NEAR_DOOR_KEY = "villageNearDoor";
 const DOOR_RADIUS = 44;
 const MAP_W = 640;
 const MAP_H = 368;
@@ -40,6 +39,7 @@ export class VillageScene extends Phaser.Scene {
   private eKey!: Phaser.Input.Keyboard.Key;
   private nearDoor = false;
   private greetBubble: Phaser.GameObjects.Container | undefined = undefined;
+  private doorPrompt: Phaser.GameObjects.Container | undefined = undefined;
   private readonly doorCenter = new Phaser.Math.Vector2();
   private readonly solids: Phaser.GameObjects.GameObject[] = [];
 
@@ -78,9 +78,66 @@ export class VillageScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
     this.setupDoor(map);
-    this.registry.set(NEAR_DOOR_KEY, false);
-    this.scene.launch(SceneKey.VillageHud);
+    this.doorPrompt = this.makeDoorPrompt();
+    // Below the door (on the path) so it doesn't cover the building.
+    this.doorPrompt.setPosition(this.doorCenter.x, this.doorCenter.y + 26).setVisible(false);
     this.setupGreeting();
+  }
+
+  /** A UI sign (not a dialog): fixed near the koperasi door, no tail. */
+  private makeDoorPrompt(): Phaser.GameObjects.Container {
+    const label = this.add
+      .text(0, 0, "Tekan E untuk masuk", {
+        fontFamily: LABEL_STYLE.fontFamily ?? "monospace",
+        fontSize: "9px",
+        color: "#FBF3DE",
+      })
+      .setResolution(3)
+      .setOrigin(0.5);
+    const w = Math.ceil(label.width) + 12;
+    const h = Math.ceil(label.height) + 6;
+    const bg = this.add
+      .rectangle(0, 0, w, h, PALETTE.forest2, 0.92)
+      .setStrokeStyle(2, PALETTE.mustard);
+    return this.add.container(0, 0, [bg, label]).setDepth(9999);
+  }
+
+  /** Build a crisp pixel speech bubble (parchment + ink) with a downward tail. */
+  private makeBubble(text: string): Phaser.GameObjects.Container {
+    const label = this.add
+      .text(0, 0, text, {
+        fontFamily: LABEL_STYLE.fontFamily ?? "monospace",
+        fontSize: "10px",
+        color: "#2B2016",
+      })
+      .setResolution(3) // crisp under the 2x camera zoom
+      .setOrigin(0.5, 0.5);
+
+    const padX = 6;
+    const padY = 3;
+    const tail = 5;
+    const w = Math.ceil(label.width) + padX * 2;
+    const h = Math.ceil(label.height) + padY * 2;
+    const top = -(tail + h);
+    const bottom = -tail;
+    const half = w / 2;
+    const pts = [
+      new Phaser.Geom.Point(-half, top),
+      new Phaser.Geom.Point(half, top),
+      new Phaser.Geom.Point(half, bottom),
+      new Phaser.Geom.Point(4, bottom),
+      new Phaser.Geom.Point(0, 0),
+      new Phaser.Geom.Point(-4, bottom),
+      new Phaser.Geom.Point(-half, bottom),
+    ];
+    const g = this.add.graphics();
+    g.fillStyle(PALETTE.parchment, 1);
+    g.fillPoints(pts, true);
+    g.lineStyle(2, PALETTE.ink, 1);
+    g.strokePoints(pts, true);
+    label.setPosition(0, top + h / 2);
+
+    return this.add.container(0, 0, [g, label]).setDepth(10000);
   }
 
   /** Show a one-time "Hi, <name>! ..." bubble over the player on first entry. */
@@ -106,44 +163,8 @@ export class VillageScene extends Phaser.Scene {
 
   private showGreeting(name: string): void {
     this.registry.set("greeted", true);
-    const label = this.add
-      .text(0, 0, `Hi, ${name} di sini!`, {
-        fontFamily: LABEL_STYLE.fontFamily ?? "monospace",
-        fontSize: "10px",
-        color: "#2B2016",
-      })
-      .setResolution(3) // render crisp under the 2x camera zoom
-      .setOrigin(0.5, 0.5);
-
-    const padX = 6;
-    const padY = 3;
-    const tail = 5;
-    const w = Math.ceil(label.width) + padX * 2;
-    const h = Math.ceil(label.height) + padY * 2;
-    const top = -(tail + h);
-    const bottom = -tail;
-    const half = w / 2;
-    // Speech-bubble outline as one closed path (body + downward tail) so the
-    // tail blends into the box instead of drawing a seam.
-    const pts = [
-      new Phaser.Geom.Point(-half, top),
-      new Phaser.Geom.Point(half, top),
-      new Phaser.Geom.Point(half, bottom),
-      new Phaser.Geom.Point(4, bottom),
-      new Phaser.Geom.Point(0, 0),
-      new Phaser.Geom.Point(-4, bottom),
-      new Phaser.Geom.Point(-half, bottom),
-    ];
-    const g = this.add.graphics();
-    g.fillStyle(PALETTE.parchment, 1);
-    g.fillPoints(pts, true);
-    g.lineStyle(2, PALETTE.ink, 1);
-    g.strokePoints(pts, true);
-    label.setPosition(0, top + h / 2);
-
-    this.greetBubble = this.add
-      .container(this.player.sprite.x, this.player.sprite.y - 10, [g, label])
-      .setDepth(10000);
+    this.greetBubble = this.makeBubble(`Hi, ${name} di sini!`);
+    this.greetBubble.setPosition(this.player.sprite.x, this.player.sprite.y - 10);
   }
 
   override update(): void {
@@ -162,7 +183,10 @@ export class VillageScene extends Phaser.Scene {
     this.nearDoor =
       Phaser.Math.Distance.Between(x, y, this.doorCenter.x, this.doorCenter.y) <=
       DOOR_RADIUS;
-    this.registry.set(NEAR_DOOR_KEY, this.nearDoor);
+
+    // Door sign is fixed near the house; only shown when the player is close.
+    this.doorPrompt?.setVisible(this.nearDoor);
+
     if (this.nearDoor && Phaser.Input.Keyboard.JustDown(this.eKey)) {
       this.enterKoperasi();
     }
@@ -260,8 +284,6 @@ export class VillageScene extends Phaser.Scene {
   }
 
   private enterKoperasi(): void {
-    this.registry.set(NEAR_DOOR_KEY, false);
-    this.scene.stop(SceneKey.VillageHud);
     this.scene.start(SceneKey.KoperasiInterior);
   }
 }

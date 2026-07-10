@@ -3,7 +3,6 @@ export const SceneKey = {
   Boot: "Boot",
   Preload: "Preload",
   Village: "Village",
-  VillageHud: "VillageHud",
   KoperasiInterior: "KoperasiInterior",
 } as const;
 

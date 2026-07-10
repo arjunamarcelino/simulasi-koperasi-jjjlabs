@@ -38,8 +38,8 @@ export function HubGuide() {
                 </li>
                 <li>• Di dalam, pilih ruangan untuk memulai skenario.</li>
                 <li>
-                  • Tombol <b className="text-ink">Keluar</b> (kanan atas) untuk
-                  kembali ke menu.
+                  • Klik ikon <b className="text-ink">?</b> (kiri atas) kapan saja
+                  untuk membuka panduan ini.
                 </li>
               </ul>
               <div className="text-center">

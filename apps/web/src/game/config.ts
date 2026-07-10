@@ -2,7 +2,6 @@ import Phaser from "phaser";
 import { BootScene } from "./scenes/BootScene";
 import { PreloadScene } from "./scenes/PreloadScene";
 import { VillageScene } from "./scenes/VillageScene";
-import { VillageHudScene } from "./scenes/VillageHudScene";
 import { KoperasiInteriorScene } from "./scenes/KoperasiInteriorScene";
 import { GAME_WIDTH, GAME_HEIGHT } from "./dimensions";
 
@@ -27,12 +26,6 @@ export function createGameConfig(
       default: "arcade",
       arcade: { debug: false }, // top-down: gravity defaults to 0,0
     },
-    scene: [
-      BootScene,
-      PreloadScene,
-      VillageScene,
-      VillageHudScene,
-      KoperasiInteriorScene,
-    ],
+    scene: [BootScene, PreloadScene, VillageScene, KoperasiInteriorScene],
   };
 }

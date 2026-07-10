@@ -1,6 +1,5 @@
 import { GameCanvas } from "../components/game/GameCanvas";
 import { HubOverlays } from "../components/hub/HubOverlays";
-import { HubHud } from "../components/hub/HubHud";
 import { HubGuide } from "../components/hub/HubGuide";
 import { NamePrompt } from "../components/hub/NamePrompt";
 import { useGameStore } from "../stores/game.store";
@@ -16,7 +15,6 @@ export function HubPage() {
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-forest-2">
       <GameCanvas />
-      <HubHud />
       <HubGuide />
       <HubOverlays />
       {needsName && <NamePrompt />}
