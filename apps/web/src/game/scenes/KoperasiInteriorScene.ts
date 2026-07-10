@@ -245,11 +245,13 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     this.lzStamp(165, 88, LZ.kasir);
     this.lzStamp(149, 88, LZ.deskExt);
     this.lzStamp(133, 88, LZ.deskExt);
-    this.stationLabel(132, 62, "KASIR", false);
+    // Label sits in the open floor in front of the counter (gap below the desk),
+    // so the "SEGERA HADIR" badge never covers the desk furniture above it.
+    this.stationLabel(150, 100, "KASIR", false);
     this.lzStamp(165, 156, LZ.kasir);
     this.lzStamp(149, 156, LZ.deskExt);
     this.lzStamp(133, 156, LZ.deskExt);
-    this.stationLabel(118, 132, "SIMPAN PINJAM", false);
+    this.stationLabel(150, 172, "SIMPAN PINJAM", false);
 
     // Marketplace (right hall): fridges flush to the top wall (between the boards)
     // with a grid of goods shelves below — a minimart.
