@@ -2,6 +2,7 @@ import { GameCanvas } from "../components/game/GameCanvas";
 import { HubOverlays } from "../components/hub/HubOverlays";
 import { HubGuide } from "../components/hub/HubGuide";
 import { KoperasiExitButton } from "../components/hub/KoperasiExitButton";
+import { SceneLoadingOverlay } from "../components/hub/SceneLoadingOverlay";
 import { NamePrompt } from "../components/hub/NamePrompt";
 import { useGameStore } from "../stores/game.store";
 
@@ -19,6 +20,7 @@ export function HubPage() {
       <HubGuide />
       <KoperasiExitButton />
       <HubOverlays />
+      <SceneLoadingOverlay />
       {needsName && <NamePrompt />}
     </main>
   );

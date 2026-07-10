@@ -18,16 +18,23 @@ const WALL_FRAME = 298; // dark brown brick wall
 const INTERACT_RADIUS = 48;
 const EXIT_RADIUS = 40;
 
+// Brief loading trivia (hardcoded) shown when leaving the koperasi back to the village.
+const EXIT_TRIVIA =
+  "Koperasi Desa Merah Putih punya beragam unit usaha — sembako, simpan pinjam, apotek/klinik desa, hingga gudang & logistik — untuk memperkuat ekonomi desa dan memangkas rantai tengkulak.";
+
 // Furniture from the LimeZu "Modern Interiors" sheet (16 cols; frame = r*16 + c).
 // Each entry is a multi-tile object: top-left tile (c,r) + size (w,h) in tiles.
 type LzDef = { c: number; r: number; w: number; h: number };
 const LZ = {
   kasir: { c: 3, r: 8, w: 1, h: 2 }, // computer + printer workstation (131,147)
+  deskExt: { c: 3, r: 5, w: 1, h: 1 }, // desk-top extension (83)
+  chair: { c: 5, r: 21, w: 1, h: 2 }, // chair facing down (341,357)
   fridge: { c: 2, r: 18, w: 4, h: 3 }, // refrigerated display / kulkas
   goodsShelf: { c: 6, r: 18, w: 2, h: 3 }, // minimart goods shelf
   gudangRak: { c: 5, r: 14, w: 2, h: 4 }, // stocked storage shelf
-  chalkboard: { c: 10, r: 40, w: 2, h: 2 }, // green board on stand
-  worldMap: { c: 10, r: 67, w: 2, h: 1 }, // framed wall map
+  poster: { c: 0, r: 22, w: 2, h: 2 }, // framed wall poster (352,353,368,369)
+  rapatDeco: { c: 13, r: 38, w: 2, h: 2 }, // meeting-room wall decoration (621,622,637,638)
+  rapatDeco2: { c: 0, r: 41, w: 2, h: 1 }, // meeting-room wall object (656,657)
   computer: { c: 13, r: 40, w: 2, h: 2 }, // monitor + keyboard (quiz)
   plant: { c: 12, r: 45, w: 1, h: 2 }, // pohon (732,748)
 } as const satisfies Record<string, LzDef>;
@@ -64,7 +71,7 @@ const WALLS: readonly Rect[] = [
   [312, 224, 16, 128], // vertical wall between gudang & ruang rapat
 ];
 
-type StationKind = RoomId | "exit" | "mading" | "quiz";
+type StationKind = RoomId | "exit" | "mading" | "quiz" | "simpan-pinjam";
 
 type Station = {
   id: StationKind;
@@ -108,6 +115,7 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     // Fresh entry starts from a known overlay state (guards a stale soft-lock).
     gameStore.getState().clearSelection();
     gameStore.getState().setActiveHubScene("KoperasiInterior");
+    gameStore.getState().hideSceneLoading(); // interior ready — clear the enter overlay
 
     this.drawFloor();
     this.drawWalls();
@@ -205,11 +213,12 @@ export class KoperasiInteriorScene extends Phaser.Scene {
 
   private drawWalls(): void {
     for (const [x, y, w, h] of WALLS) {
-      for (let ty = y; ty < y + h; ty += TILE) {
-        for (let tx = x; tx < x + w; tx += TILE) {
-          this.add.image(tx, ty, "interiorTiles", WALL_FRAME).setOrigin(0, 0).setDepth(ty + TILE);
-        }
-      }
+      // TileSprite tiles the brick and clips at the band's exact bounds, so a
+      // wall never spills a partial tile into a door gap (kept tidy at every door).
+      this.add
+        .tileSprite(x, y, w, h, "interiorTiles", WALL_FRAME)
+        .setOrigin(0, 0)
+        .setDepth(y + h);
       this.addSolid(x + w / 2, y + h / 2, w, h);
     }
   }
@@ -218,7 +227,7 @@ export class KoperasiInteriorScene extends Phaser.Scene {
   private drawDoorways(): void {
     this.drawDoorPosts(172, 208, 24); // gudang door (gap 148..196)
     this.drawDoorPosts(476, 208, 24); // ruang rapat door (gap 452..500)
-    this.drawDoorPosts(240, 0, 28); // koperasi entrance/exit (gap 212..268)
+    this.drawDoorPosts(240, 8, 28); // koperasi entrance/exit (lowered a touch)
   }
 
   private drawDoorPosts(cx: number, y: number, half: number): void {
@@ -231,34 +240,50 @@ export class KoperasiInteriorScene extends Phaser.Scene {
   }
 
   private buildStations(): void {
-    // Kasir booth (left): a computer + printer workstation.
-    this.lzStamp(130, 116, LZ.kasir);
-    this.stationLabel(130, 64, "KASIR", false);
-    // Marketplace (right hall): a fridge display + minimart goods shelves.
-    this.lzStamp(462, 130, LZ.fridge);
-    this.lzStamp(540, 130, LZ.goodsShelf);
-    this.lzStamp(582, 130, LZ.goodsShelf);
-    this.stationLabel(500, 152, "MARKETPLACE", false);
+    // Kasir booth (left): two stacked service desks — Kasir (top) and Simpan
+    // Pinjam / pengajuan (bottom), each a computer + printer with a desk extension.
+    this.lzStamp(165, 88, LZ.kasir);
+    this.lzStamp(149, 88, LZ.deskExt);
+    this.lzStamp(133, 88, LZ.deskExt);
+    this.stationLabel(132, 62, "KASIR", false);
+    this.lzStamp(165, 156, LZ.kasir);
+    this.lzStamp(149, 156, LZ.deskExt);
+    this.lzStamp(133, 156, LZ.deskExt);
+    this.stationLabel(118, 132, "SIMPAN PINJAM", false);
+
+    // Marketplace (right hall): fridges flush to the top wall (between the boards)
+    // with a grid of goods shelves below — a minimart.
+    for (const fx of [400, 468, 536]) this.lzStamp(fx, 66, LZ.fridge);
+    for (const ry of [130, 178]) {
+      for (const rx of [392, 424, 456, 488, 520, 552]) this.lzStamp(rx, ry, LZ.goodsShelf);
+    }
+    this.stationLabel(476, 132, "MARKETPLACE", false);
+
     // Gudang: stocked storage shelves (player enters from the top door).
     this.lzStamp(70, 323, LZ.gudangRak);
     this.lzStamp(130, 323, LZ.gudangRak);
     this.lzStamp(190, 323, LZ.gudangRak);
     this.lzStamp(250, 323, LZ.gudangRak);
     this.stationLabel(150, 236, "GUDANG", false);
-    // Ruang rapat: a long meeting table + a tree in the corner.
+
+    // Ruang rapat: long table + chairs along the top edge + a tree in the corner.
     this.drawMeetingTable(476, 328);
+    for (const cx of [412, 444, 476, 508, 540]) this.lzStamp(cx, 284, LZ.chair, false);
+    this.lzStamp(410, 236, LZ.rapatDeco, false); // left of the rapat door
+    this.lzStamp(540, 230, LZ.rapatDeco2, false); // right of the rapat door
     this.stationLabel(476, 236, "RUANG RAPAT", true);
     this.lzStamp(606, 346, LZ.plant);
 
     // Points of interest: wall boards (mading) + a computer for the koperasi quiz.
-    this.lzStamp(340, 40, LZ.chalkboard, false);
-    this.lzStamp(540, 34, LZ.worldMap, false);
+    this.lzStamp(180, 48, LZ.poster, false);
+    this.lzStamp(300, 48, LZ.poster, false);
+    this.lzStamp(340, 48, LZ.poster, false);
     this.lzStamp(320, 200, LZ.computer);
     this.stationLabel(320, 150, "KUIS", false);
 
     const spot: Record<RoomId, { x: number; y: number }> = {
-      kasir: { x: 130, y: 150 },
-      marketplace: { x: 500, y: 162 },
+      kasir: { x: 165, y: 112 },
+      marketplace: { x: 476, y: 196 },
       gudang: { x: 150, y: 262 },
       "ruang-meeting": { x: 476, y: 270 },
     };
@@ -288,12 +313,13 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     });
 
     // Points of interest — mapped now, real content wired later (show a stub toast).
+    this.addPoi("mading", "Papan Info", 200, 54);
     this.addPoi("mading", "Papan Info", 340, 54);
-    this.addPoi("mading", "Papan Info", 540, 54);
     this.addPoi("quiz", "Kuis Koperasi", 320, 150);
+    this.addPoi("simpan-pinjam", "Simpan Pinjam", 165, 180);
   }
 
-  private addPoi(id: "mading" | "quiz", label: string, x: number, y: number): void {
+  private addPoi(id: "mading" | "quiz" | "simpan-pinjam", label: string, x: number, y: number): void {
     this.stations.push({
       id,
       label,
@@ -311,7 +337,9 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     gameStore.getState().clearSelection();
     // Tell VillageScene to spawn the player back at the koperasi doorstep.
     this.registry.set("villageEntry", "koperasi");
-    this.scene.start(SceneKey.Village);
+    // Brief loading + trivia, then transition (VillageScene.create clears it).
+    gameStore.getState().showSceneLoading(EXIT_TRIVIA);
+    this.time.delayedCall(4500, () => this.scene.start(SceneKey.Village));
   }
 
   // ---- furniture (LimeZu Modern Interiors stamps) ---------------------------

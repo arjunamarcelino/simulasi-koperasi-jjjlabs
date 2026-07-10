@@ -40,6 +40,8 @@ export type GameState = {
   activeHubScene: "Village" | "KoperasiInterior";
   /** React→Phaser signal: leave the koperasi interior back to the village. */
   koperasiExitRequested: boolean;
+  /** Trivia shown on a brief loading overlay during enter/exit; null = hidden. */
+  sceneLoading: string | null;
 
   setView: (view: View) => void;
   setPlayerName: (name: string) => void;
@@ -49,6 +51,8 @@ export type GameState = {
   setActiveHubScene: (scene: "Village" | "KoperasiInterior") => void;
   requestKoperasiExit: () => void;
   consumeKoperasiExit: () => void;
+  showSceneLoading: (text: string) => void;
+  hideSceneLoading: () => void;
 };
 
 /**
@@ -69,6 +73,7 @@ export const gameStore = createStore<GameState>()(
     selectedScenarioId: null,
     activeHubScene: "Village",
     koperasiExitRequested: false,
+    sceneLoading: null,
 
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
@@ -109,6 +114,8 @@ export const gameStore = createStore<GameState>()(
       set({ activeHubScene: scene, koperasiExitRequested: false }),
     requestKoperasiExit: () => set({ koperasiExitRequested: true }),
     consumeKoperasiExit: () => set({ koperasiExitRequested: false }),
+    showSceneLoading: (text) => set({ sceneLoading: text }),
+    hideSceneLoading: () => set({ sceneLoading: null }),
   })),
 );
 
