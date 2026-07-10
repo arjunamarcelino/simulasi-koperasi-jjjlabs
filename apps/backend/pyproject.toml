@@ -1,0 +1,21 @@
+[project]
+name = "koperasi-backend"
+version = "0.1.0"
+description = "Koperasi Simulator — token server + voice agent (LiveKit Agents)"
+requires-python = ">=3.12"
+dependencies = [
+    "livekit-agents[openai]~=1.6",
+    "livekit-plugins-azure~=1.6",
+    "livekit-plugins-silero~=1.6",
+    "livekit-api~=1.0",
+    "openai~=2.0",
+    "fastapi~=0.115",
+    "uvicorn[standard]~=0.34",
+    "python-dotenv~=1.0",
+]
+
+[dependency-groups]
+dev = []
+
+[tool.uv]
+package = false

@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+/* Palette tokens dipinjam dari apps/web supaya harness ini terasa satu keluarga.
+   Utility pixel-art sengaja TIDAK dibawa — ini alat validasi, bukan game. */
+@theme {
+  --color-cream: #f4e6c8;
+  --color-cream-2: #ead6a8;
+  --color-parchment: #fbf3de;
+
+  --color-forest: #1f5d3a;
+  --color-forest-2: #164429;
+  --color-mustard: #d9a521;
+  --color-brown: #7a4e2d;
+  --color-orange: #e07a3c;
+
+  --color-ink: #2b2016;
+  --color-ink-soft: #5a4a38;
+  --color-line: #c6af82;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--color-ink);
+  background-color: var(--color-cream);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Caret berkedip saat teks NPC masih streaming. */
+@keyframes caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.streaming-caret {
+  animation: caret-blink 1s step-end infinite;
+}
