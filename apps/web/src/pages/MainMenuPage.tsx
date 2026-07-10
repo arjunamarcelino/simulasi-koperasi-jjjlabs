@@ -3,25 +3,8 @@ import { PixelPanel } from "../components/common/PixelPanel";
 import { GameButton } from "../components/common/GameButton";
 import { gameStore } from "../stores/game.store";
 
-/** Pure-CSS cooperative building silhouette — decorative, no assets. */
-function CoopBuilding() {
-  return (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none absolute bottom-[14%] left-1/2 -translate-x-1/2 opacity-25 md:opacity-30"
-    >
-      <div className="roof mx-auto h-16 w-72 bg-mustard" />
-      <div className="pixel-panel mx-auto flex h-40 w-64 items-center justify-center gap-4 bg-forest !shadow-none">
-        <div className="border-3 h-10 w-10 border-border bg-mustard" />
-        <div className="border-3 h-10 w-10 border-border bg-mustard" />
-        <div className="border-3 h-16 w-10 self-end border-border bg-brown" />
-      </div>
-    </div>
-  );
-}
-
 export function MainMenuPage() {
-  const start = () => gameStore.getState().setView("SCENARIO_SELECTION");
+  const start = () => gameStore.getState().setView("LOADING");
 
   // Match the "Tekan Enter untuk mulai" hint with a real keyboard shortcut.
   useEffect(() => {
@@ -35,9 +18,7 @@ export function MainMenuPage() {
   }, []);
 
   return (
-    <main className="koperasi-bg relative flex min-h-screen w-full items-center justify-center overflow-hidden px-4 py-8">
-      <CoopBuilding />
-
+    <main className="koperasi-bg-plain relative flex min-h-screen w-full items-center justify-center overflow-hidden px-4 py-8">
       <PixelPanel className="relative z-10 w-full max-w-xl text-center">
         <span className="pixel-panel -rotate-1 mb-6 inline-block bg-orange px-3 py-1 font-body text-lg text-ink !shadow-none">
           JJJ Labs

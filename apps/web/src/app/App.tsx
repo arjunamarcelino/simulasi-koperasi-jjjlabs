@@ -1,5 +1,6 @@
 import { ErrorBoundary } from "../components/common/ErrorBoundary";
 import { MainMenuPage } from "../pages/MainMenuPage";
+import { LoadingPage } from "../pages/LoadingPage";
 import { HubPage } from "../pages/HubPage";
 import { GamePage } from "../pages/GamePage";
 import { EvaluationPage } from "../pages/EvaluationPage";
@@ -9,6 +10,8 @@ function renderView(view: View) {
   switch (view) {
     case "MAIN_MENU":
       return <MainMenuPage />;
+    case "LOADING":
+      return <LoadingPage />;
     case "SCENARIO_SELECTION":
       return <HubPage />;
     case "GAME":
