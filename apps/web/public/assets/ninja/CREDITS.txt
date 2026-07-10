@@ -1,0 +1,16 @@
+Ninja Adventure Asset Pack
+by Pixel-boy (and AAA)
+https://pixel-boy.itch.io/ninja-adventure-asset-pack
+https://github.com/pixel-boy/NinjaAdventure
+
+License: CC0 1.0 Universal (public domain). Attribution not required but appreciated.
+
+Files used in this project:
+- tileset_floor.png              (ground: grass / water / path)
+- tileset_village_abandoned.png  (buildings, trees, fences, decor)
+- samurai_green.png              (player character spritesheet, 16x16 frames)
+
+---
+villager.png — "Man Sprite 16x16" by Ivan Voirol (and others), CC0
+https://opengameart.org/content/man-sprite-16x16
+Used as an alternative "regular villager" player character.

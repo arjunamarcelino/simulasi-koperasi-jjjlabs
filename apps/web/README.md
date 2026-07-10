@@ -64,8 +64,51 @@ service (`GameApiService` + mock/http + pemilihan via `VITE_USE_MOCK_API`)
 ditambahkan pada iterasi berikutnya saat ada konsumennya (pemilihan skenario /
 dialog). Rahasia LLM tidak boleh diekspos di frontend.
 
-## Keterbatasan (iterasi-1)
+## Dunia Phaser — Hub World
 
-- Belum ada dunia Phaser (peta, pemain, NPC, dialog).
-- Skenario selain RAT berstatus "Segera Hadir".
-- Halaman GAME & EVALUATION masih placeholder.
+Pemilihan skenario berupa **hub spasial** (bukan menu). Alur:
+Main Menu → **Desa** (klik gedung koperasi) → **Interior Koperasi** (klik ruangan)
+→ overlay React → Ruang Meeting mengarah ke skenario RAT (stub).
+
+- `src/game/` — kode Phaser (tak pernah impor React): `config.ts`, `createGame.ts`,
+  `dimensions.ts`, `palette.ts`, `textStyles.ts`, `scenes/` (Boot/Village/
+  KoperasiInterior), `interaction/makeInteractable.ts` (seam klik → nanti
+  proximity+E).
+- `src/world/rooms.config.ts` — data ruangan (netral; dipakai store, React, Phaser);
+  `position` sekaligus calon collider.
+- `src/components/game/GameCanvas.tsx` — jembatan React↔Phaser, StrictMode-safe.
+  Hanya mengimpor `createGame` (bukan `phaser`) agar ESLint boundary tetap patuh.
+- `src/components/hub/` — overlay & HUD React di atas canvas.
+- Interaksi masih **klik saja**; movement karakter menyusul (ganti di
+  `makeInteractable` saja).
+
+Aset dunia = primitif Phaser (rect/teks) yang digambar runtime — **tanpa file
+gambar**. Ganti dengan tileset/pixel-art nanti tanpa mengubah logika.
+
+## Dunia Tilemap + Gerak (Desa)
+
+Desa kini berupa **tilemap pixel-art asli** dengan **karakter yang bisa berjalan**:
+
+- Aset **Ninja Adventure (CC0)** di `public/assets/ninja/` (lihat `CREDITS.txt`):
+  `tileset_floor.png` (rumput/air/jalan), `tileset_village_abandoned.png`
+  (bangunan/pohon), `samurai_green.png` (karakter 16×16, animasi jalan 4 arah).
+- Peta = **Tiled JSON** (`village.json`, dapat diedit di editor Tiled): layer
+  Ground / Collision / Objects (spawn + zona pintu).
+- `src/game/scenes/PreloadScene.ts` memuat aset (progress bar);
+  `VillageScene.ts` merender tilemap, menempatkan bangunan/pohon (stamp dari
+  tileset) + collision, spawn `Player` (`entities/Player.ts`), dan kamera follow
+  (zoom 3, chunky). HUD desa di `VillageHudScene.ts` (scene terpisah agar tidak
+  ikut ter-zoom kamera).
+- Kontrol: **WASD / panah** untuk bergerak; dekati pintu koperasi lalu tekan
+  **E** (atau klik pintu) untuk masuk ke interior.
+
+Ganti placeholder → aset final: cukup ganti file PNG / edit `village.json`; logika
+tak berubah.
+
+## Keterbatasan (iterasi tilemap)
+
+- Interior koperasi masih berbasis klik (belum ada karakter berjalan di dalam).
+- Gudang & Marketplace berstatus "Segera Hadir".
+- Skenario RAT masih stub; mekaniknya menyusul.
+- Teks di canvas memakai font fallback monospace bila web font belum termuat.
+- Bundel menyertakan Phaser (~397 KB gz); pemisahan chunk ditunda.

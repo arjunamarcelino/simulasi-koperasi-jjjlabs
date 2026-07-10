@@ -95,6 +95,27 @@
     100% 100%;
 }
 
+/* Same subtle texture but flat (no bottom colour band) — used on the main menu. */
+@utility koperasi-bg-plain {
+  background-color: var(--color-cream);
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 39px,
+      rgba(122, 78, 45, 0.1) 39px 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 39px,
+      rgba(122, 78, 45, 0.1) 39px 40px
+    ),
+    radial-gradient(rgba(122, 78, 45, 0.06) 1px, transparent 1px);
+  background-size:
+    40px 40px,
+    40px 40px,
+    8px 8px;
+}
+
 /* Base page defaults */
 html,
 body,
