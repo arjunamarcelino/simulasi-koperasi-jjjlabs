@@ -11,7 +11,10 @@ export function HubOverlays() {
   const activeOverlay = useGameStore((s) => s.activeOverlay);
   const selectedRoomId = useGameStore((s) => s.selectedRoomId);
 
-  if (activeOverlay === "NONE") return null;
+  // Room prompts only — the MADING_* overlays render in their own components.
+  const isRoomOverlay =
+    activeOverlay === "CONFIRM_ENTER" || activeOverlay === "COMING_SOON";
+  if (!isRoomOverlay) return null;
 
   const room = KOPERASI_ROOMS.find((r) => r.id === selectedRoomId) ?? null;
   const close = () => gameStore.getState().clearSelection();
