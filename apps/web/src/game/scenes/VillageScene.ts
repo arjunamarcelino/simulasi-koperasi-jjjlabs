@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { SceneKey } from "./sceneKeys";
 import { makeInteractable } from "../interaction/makeInteractable";
 import { Player } from "../entities/Player";
+import { VILLAGER } from "../entities/characters";
 
 const VILLAGE_COLS = 20; // columns in tileset_village_abandoned spritesheet
 const NEAR_DOOR_KEY = "villageNearDoor";
@@ -62,7 +63,7 @@ export class VillageScene extends Phaser.Scene {
     this.placeScatter();
 
     const spawn = map.findObject("Objects", (o) => o.name === "player_spawn");
-    this.player = new Player(this, spawn?.x ?? 328, spawn?.y ?? 336);
+    this.player = new Player(this, spawn?.x ?? 328, spawn?.y ?? 336, VILLAGER);
     this.physics.add.collider(this.player.sprite, collision);
     this.physics.add.collider(this.player.sprite, this.solids);
 

@@ -1,27 +1,32 @@
 import Phaser from "phaser";
+import { type CharacterConfig, SAMURAI_GREEN } from "./characters";
 
 const SPEED = 90;
 type Dir = "down" | "up" | "left" | "right";
 
-/** Idle frame per direction (first frame of each walk row). */
-const IDLE_FRAME: Record<Dir, number> = { down: 0, up: 4, left: 8, right: 12 };
-
 /**
  * Player character: an arcade-physics sprite with WASD/arrow movement and
- * 4-direction walk animations. Movement logic lives here so it slots into any
- * scene; the sprite is exposed for colliders/camera.
+ * config-driven 4-direction walk animations (left/right mirror the `side`
+ * frames via flipX). Pass a CharacterConfig to switch the sprite.
  */
 export class Player {
   readonly sprite: Phaser.Physics.Arcade.Sprite;
   private readonly cursors: Phaser.Types.Input.Keyboard.CursorKeys;
   private readonly wasd: Record<"W" | "A" | "S" | "D", Phaser.Input.Keyboard.Key>;
+  private readonly cfg: CharacterConfig;
   private lastDir: Dir = "down";
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
-    this.sprite = scene.physics.add.sprite(x, y, "samurai", IDLE_FRAME.down);
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    cfg: CharacterConfig = SAMURAI_GREEN,
+  ) {
+    this.cfg = cfg;
+    this.sprite = scene.physics.add.sprite(x, y, cfg.key, cfg.walk.down[0] ?? 0);
     this.sprite.setCollideWorldBounds(true);
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
-    body.setSize(12, 12).setOffset(2, 3); // tighter body than the 16px frame
+    body.setSize(12, 12).setOffset(2, 3);
 
     const keyboard = scene.input.keyboard;
     if (!keyboard) throw new Error("Keyboard input is unavailable");
@@ -31,25 +36,23 @@ export class Player {
       Phaser.Input.Keyboard.Key
     >;
 
-    Player.ensureAnims(scene);
+    this.ensureAnims(scene);
   }
 
-  /** Animations are global on the AnimationManager — guard against re-create on scene restart. */
-  private static ensureAnims(scene: Phaser.Scene): void {
-    const make = (key: string, start: number, end: number) => {
+  private ensureAnims(scene: Phaser.Scene): void {
+    const make = (name: string, frames: readonly number[]) => {
+      const key = `${this.cfg.key}-${name}`;
       if (scene.anims.exists(key)) return;
       scene.anims.create({
         key,
-        frames: scene.anims.generateFrameNumbers("samurai", { start, end }),
-        frameRate: 8,
+        frames: scene.anims.generateFrameNumbers(this.cfg.key, { frames: [...frames] }),
+        frameRate: this.cfg.frameRate ?? 8,
         repeat: -1,
       });
     };
-    // samurai_green: 4 cols x 7 rows. Rows 0-3 = walk down/up/left/right.
-    make("walk-down", 0, 3);
-    make("walk-up", 4, 7);
-    make("walk-left", 8, 11);
-    make("walk-right", 12, 15);
+    make("down", this.cfg.walk.down);
+    make("up", this.cfg.walk.up);
+    make("side", this.cfg.walk.side);
   }
 
   update(): void {
@@ -62,23 +65,45 @@ export class Player {
       (right ? 1 : 0) - (left ? 1 : 0),
       (down ? 1 : 0) - (up ? 1 : 0),
     );
-    vec.normalize().scale(SPEED); // normalize prevents faster diagonals
+    vec.normalize().scale(SPEED);
     this.sprite.setVelocity(vec.x, vec.y);
-    this.sprite.setDepth(this.sprite.y); // y-sort against decor
+    this.sprite.setDepth(this.sprite.y);
+
+    const anim = (name: string) => `${this.cfg.key}-${name}`;
 
     if (vec.x === 0 && vec.y === 0) {
       this.sprite.anims.stop();
-      this.sprite.setFrame(IDLE_FRAME[this.lastDir]);
+      this.applyIdle();
       return;
     }
-    this.lastDir =
-      Math.abs(vec.x) > Math.abs(vec.y)
-        ? vec.x < 0
-          ? "left"
-          : "right"
-        : vec.y < 0
-          ? "up"
-          : "down";
-    this.sprite.anims.play(`walk-${this.lastDir}`, true);
+
+    if (Math.abs(vec.x) > Math.abs(vec.y)) {
+      const goRight = vec.x > 0;
+      this.lastDir = goRight ? "right" : "left";
+      this.sprite.setFlipX(goRight ? !this.cfg.sideFacesRight : this.cfg.sideFacesRight);
+      this.sprite.anims.play(anim("side"), true);
+    } else {
+      this.lastDir = vec.y < 0 ? "up" : "down";
+      this.sprite.setFlipX(false);
+      this.sprite.anims.play(anim(this.lastDir), true);
+    }
+  }
+
+  private applyIdle(): void {
+    const { walk, sideFacesRight } = this.cfg;
+    switch (this.lastDir) {
+      case "down":
+        this.sprite.setFlipX(false).setFrame(walk.down[0] ?? 0);
+        break;
+      case "up":
+        this.sprite.setFlipX(false).setFrame(walk.up[0] ?? 0);
+        break;
+      case "left":
+        this.sprite.setFlipX(sideFacesRight).setFrame(walk.side[0] ?? 0);
+        break;
+      case "right":
+        this.sprite.setFlipX(!sideFacesRight).setFrame(walk.side[0] ?? 0);
+        break;
+    }
   }
 }

@@ -23,6 +23,10 @@ export class PreloadScene extends Phaser.Scene {
       frameWidth: 16,
       frameHeight: 16,
     });
+    this.load.spritesheet("villager", `${ASSET_BASE}/villager.png`, {
+      frameWidth: 16,
+      frameHeight: 16,
+    });
     this.load.tilemapTiledJSON("village-map", `${ASSET_BASE}/village.json`);
   }
 
