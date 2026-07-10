@@ -1,6 +1,6 @@
 import { ErrorBoundary } from "../components/common/ErrorBoundary";
 import { MainMenuPage } from "../pages/MainMenuPage";
-import { ScenarioSelectionPage } from "../pages/ScenarioSelectionPage";
+import { HubPage } from "../pages/HubPage";
 import { GamePage } from "../pages/GamePage";
 import { EvaluationPage } from "../pages/EvaluationPage";
 import { useGameStore, type View } from "../stores/game.store";
@@ -10,7 +10,7 @@ function renderView(view: View) {
     case "MAIN_MENU":
       return <MainMenuPage />;
     case "SCENARIO_SELECTION":
-      return <ScenarioSelectionPage />;
+      return <HubPage />;
     case "GAME":
       return <GamePage />;
     case "EVALUATION":
