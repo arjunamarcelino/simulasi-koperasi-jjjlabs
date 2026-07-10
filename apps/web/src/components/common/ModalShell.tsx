@@ -14,6 +14,26 @@ const FOCUSABLE =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 /**
+ * A crisp 7×7 pixel-art "X" drawn from unit squares (shape-rendering: crispEdges)
+ * so it reads as hard tilemap pixels instead of a smooth font glyph. Inherits the
+ * button's text color via currentColor.
+ */
+function PixelX() {
+  const cells: [number, number][] = [];
+  for (let i = 0; i < 7; i++) {
+    cells.push([i, i]);
+    if (i !== 3) cells.push([i, 6 - i]); // the other diagonal (skip shared center)
+  }
+  return (
+    <svg viewBox="0 0 7 7" width="14" height="14" shapeRendering="crispEdges" aria-hidden="true">
+      {cells.map(([x, y]) => (
+        <rect key={`${x}-${y}`} x={x} y={y} width="1" height="1" fill="currentColor" />
+      ))}
+    </svg>
+  );
+}
+
+/**
  * Backdrop + framed panel shell shared by the mading overlays. Handles the
  * fiddly bits once: role="dialog"/aria-modal, focus move-in + restore, body
  * scroll lock, Escape (capture phase, so it beats Phaser's key polling), a
@@ -85,9 +105,9 @@ export function ModalShell({
             type="button"
             onClick={onClose}
             aria-label="Tutup"
-            className="pixel-raise active:pixel-press absolute -top-2 -right-2 z-10 h-8 w-8 select-none bg-cream font-display text-xs text-forest focus-visible:outline-none focus-visible:pixel-focus"
+            className="pixel-raise active:pixel-press absolute -top-2 -right-2 z-10 flex h-8 w-8 select-none items-center justify-center bg-mustard text-ink focus-visible:outline-none focus-visible:pixel-focus"
           >
-            ✕
+            <PixelX />
           </button>
           {/* Scroll lives on an inner wrapper so the outside ✕ is never clipped. */}
           <div className="max-h-[80vh] overflow-y-auto">{children}</div>
