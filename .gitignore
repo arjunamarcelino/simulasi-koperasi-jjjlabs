@@ -19,3 +19,7 @@ docs/
 .vscode/
 *.local
 *.log
+
+# vite cache
+.vite/
+**/.vite/

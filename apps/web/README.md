@@ -64,8 +64,30 @@ service (`GameApiService` + mock/http + pemilihan via `VITE_USE_MOCK_API`)
 ditambahkan pada iterasi berikutnya saat ada konsumennya (pemilihan skenario /
 dialog). Rahasia LLM tidak boleh diekspos di frontend.
 
-## Keterbatasan (iterasi-1)
+## Dunia Phaser — Hub World
 
-- Belum ada dunia Phaser (peta, pemain, NPC, dialog).
-- Skenario selain RAT berstatus "Segera Hadir".
-- Halaman GAME & EVALUATION masih placeholder.
+Pemilihan skenario berupa **hub spasial** (bukan menu). Alur:
+Main Menu → **Desa** (klik gedung koperasi) → **Interior Koperasi** (klik ruangan)
+→ overlay React → Ruang Meeting mengarah ke skenario RAT (stub).
+
+- `src/game/` — kode Phaser (tak pernah impor React): `config.ts`, `createGame.ts`,
+  `dimensions.ts`, `palette.ts`, `textStyles.ts`, `scenes/` (Boot/Village/
+  KoperasiInterior), `interaction/makeInteractable.ts` (seam klik → nanti
+  proximity+E).
+- `src/world/rooms.config.ts` — data ruangan (netral; dipakai store, React, Phaser);
+  `position` sekaligus calon collider.
+- `src/components/game/GameCanvas.tsx` — jembatan React↔Phaser, StrictMode-safe.
+  Hanya mengimpor `createGame` (bukan `phaser`) agar ESLint boundary tetap patuh.
+- `src/components/hub/` — overlay & HUD React di atas canvas.
+- Interaksi masih **klik saja**; movement karakter menyusul (ganti di
+  `makeInteractable` saja).
+
+Aset dunia = primitif Phaser (rect/teks) yang digambar runtime — **tanpa file
+gambar**. Ganti dengan tileset/pixel-art nanti tanpa mengubah logika.
+
+## Keterbatasan (iterasi hub)
+
+- Interaksi klik saja (belum ada gerak karakter/tabrakan/kamera).
+- Gudang & Marketplace berstatus "Segera Hadir".
+- Skenario RAT masih stub; mekaniknya menyusul.
+- Teks di canvas memakai font fallback monospace bila web font belum termuat.
