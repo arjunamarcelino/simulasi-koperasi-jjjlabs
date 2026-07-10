@@ -14,8 +14,18 @@ export type View =
   | "GAME"
   | "EVALUATION";
 
-/** Which React overlay (if any) is shown over the hub canvas. */
-export type OverlayKind = "NONE" | "CONFIRM_ENTER" | "COMING_SOON";
+/**
+ * Which React overlay (if any) is shown over the hub canvas. The non-NONE values
+ * partition cleanly across three self-guarding components: HubOverlays renders
+ * the room prompts (CONFIRM_ENTER / COMING_SOON), MadingInfoBoard renders
+ * MADING_INFO, MadingDataBoard renders MADING_DATA.
+ */
+export type OverlayKind =
+  | "NONE"
+  | "CONFIRM_ENTER"
+  | "COMING_SOON"
+  | "MADING_INFO"
+  | "MADING_DATA";
 
 const NAME_STORAGE_KEY = "koperasi.playerName";
 
@@ -42,6 +52,14 @@ export type GameState = {
   koperasiExitRequested: boolean;
   /** Trivia shown on a brief loading overlay during enter/exit; null = hidden. */
   sceneLoading: string | null;
+  /** Active slide of the mading data carousel (only meaningful under MADING_DATA). */
+  madingIndex: number;
+  /**
+   * Wall-clock (performance.now) until which the scene must ignore the E key.
+   * Stamped by clearSelection on every overlay close so a still-held / just-pressed
+   * E can't leak into a station's fire() the instant an overlay closes. 0 = free.
+   */
+  interactSuppressedUntil: number;
 
   setView: (view: View) => void;
   setPlayerName: (name: string) => void;
@@ -53,7 +71,16 @@ export type GameState = {
   consumeKoperasiExit: () => void;
   showSceneLoading: (text: string) => void;
   hideSceneLoading: () => void;
+  /** Open the sticky-note info board (no-op if another overlay is already open). */
+  openMadingInfo: () => void;
+  /** Open the data carousel at slide 0 (no-op if another overlay is already open). */
+  openMadingData: () => void;
+  /** Jump to an absolute carousel slide; wrap math lives with the caller/content. */
+  setMadingIndex: (index: number) => void;
 };
+
+/** How long (ms) the scene ignores E after an overlay closes — see interactSuppressedUntil. */
+const INTERACT_SUPPRESS_MS = 250;
 
 /**
  * Vanilla Zustand store — the single bridge between React and Phaser.
@@ -74,6 +101,8 @@ export const gameStore = createStore<GameState>()(
     activeHubScene: "Village",
     koperasiExitRequested: false,
     sceneLoading: null,
+    madingIndex: 0,
+    interactSuppressedUntil: 0,
 
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
@@ -100,7 +129,14 @@ export const gameStore = createStore<GameState>()(
       });
     },
 
-    clearSelection: () => set({ selectedRoomId: null, activeOverlay: "NONE" }),
+    // Closes any hub overlay (room prompts + mading boards). Stamps a brief E
+    // suppression window so the key can't re-trigger a station on the close frame.
+    clearSelection: () =>
+      set({
+        selectedRoomId: null,
+        activeOverlay: "NONE",
+        interactSuppressedUntil: performance.now() + INTERACT_SUPPRESS_MS,
+      }),
 
     enterScenario: (scenarioId) =>
       set({
@@ -116,6 +152,17 @@ export const gameStore = createStore<GameState>()(
     consumeKoperasiExit: () => set({ koperasiExitRequested: false }),
     showSceneLoading: (text) => set({ sceneLoading: text }),
     hideSceneLoading: () => set({ sceneLoading: null }),
+
+    // Mading boards. Guarded like selectRoom so an overlay can't stack on another.
+    openMadingInfo: () => {
+      if (get().activeOverlay !== "NONE") return;
+      set({ activeOverlay: "MADING_INFO" });
+    },
+    openMadingData: () => {
+      if (get().activeOverlay !== "NONE") return;
+      set({ activeOverlay: "MADING_DATA", madingIndex: 0 });
+    },
+    setMadingIndex: (index) => set({ madingIndex: index }),
   })),
 );
 
