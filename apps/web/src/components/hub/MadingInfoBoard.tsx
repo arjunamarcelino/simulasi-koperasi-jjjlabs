@@ -33,7 +33,7 @@ export function MadingInfoBoard() {
     <ModalShell
       titleId="mading-info-title"
       onClose={close}
-      panelClassName="w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+      panelClassName="w-full max-w-2xl"
     >
       {/* Identity plaque */}
       <header className="mb-5 text-center">

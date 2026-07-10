@@ -85,11 +85,12 @@ export function ModalShell({
             type="button"
             onClick={onClose}
             aria-label="Tutup"
-            className="pixel-raise active:pixel-press absolute -top-2 -right-2 h-8 w-8 select-none bg-cream font-display text-xs text-forest focus-visible:outline-none focus-visible:pixel-focus"
+            className="pixel-raise active:pixel-press absolute -top-2 -right-2 z-10 h-8 w-8 select-none bg-cream font-display text-xs text-forest focus-visible:outline-none focus-visible:pixel-focus"
           >
             ✕
           </button>
-          {children}
+          {/* Scroll lives on an inner wrapper so the outside ✕ is never clipped. */}
+          <div className="max-h-[80vh] overflow-y-auto">{children}</div>
         </div>
       </PixelPanel>
     </div>
