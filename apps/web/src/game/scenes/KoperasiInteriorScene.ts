@@ -246,7 +246,7 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     this.lzStamp(133, 88, LZ.deskExt);
     // Label sits in the open floor in front of the counter (gap below the desk),
     // so the "SEGERA HADIR" badge never covers the desk furniture above it.
-    this.stationLabel(150, 100, "KASIR", false);
+    this.stationLabel(150, 100, "KASIR", true);
     this.lzStamp(165, 156, LZ.kasir);
     this.lzStamp(149, 156, LZ.deskExt);
     this.lzStamp(133, 156, LZ.deskExt);
@@ -280,7 +280,7 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     this.lzStamp(300, 48, LZ.poster, false);
     this.lzStamp(340, 48, LZ.poster, false);
     this.lzStamp(320, 200, LZ.computer);
-    this.stationLabel(320, 150, "KUIS", false);
+    this.stationLabel(320, 150, "KUIS", true);
 
     const spot: Record<RoomId, { x: number; y: number }> = {
       kasir: { x: 165, y: 112 },
@@ -291,14 +291,19 @@ export class KoperasiInteriorScene extends Phaser.Scene {
 
     for (const room of KOPERASI_ROOMS) {
       const at = spot[room.id];
+      // The kasir desk opens voucher redemption instead of the room prompt.
+      const fire =
+        room.id === "kasir"
+          ? () => gameStore.getState().openKasirVoucher()
+          : () => gameStore.getState().selectRoom(room.id);
       this.stations.push({
         id: room.id,
         label: room.label,
         x: at.x,
         y: at.y,
         radiusSq: INTERACT_RADIUS * INTERACT_RADIUS,
-        locked: room.status !== "AVAILABLE",
-        fire: () => gameStore.getState().selectRoom(room.id),
+        locked: room.id !== "kasir" && room.status !== "AVAILABLE",
+        fire,
       });
     }
 
@@ -320,7 +325,7 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     this.addPoi("mading", "Info Koperasi", 340, 54, () => gameStore.getState().openMadingKnowledge());
     this.addPoi("mading", "Papan Data", 410, 250, () => gameStore.getState().openMadingData());
     this.addPoi("mading", "Papan Info", 540, 246, () => gameStore.getState().openMadingInfo());
-    this.addPoi("quiz", "Kuis Koperasi", 320, 150);
+    this.addPoi("quiz", "Kuis Koperasi", 320, 150, () => gameStore.getState().openQuiz());
     this.addPoi("simpan-pinjam", "Simpan Pinjam", 165, 180);
   }
 
