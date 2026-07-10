@@ -57,6 +57,7 @@ export class VillageScene extends Phaser.Scene {
     this.placeKoperasi();
     this.placeBuildings();
     this.placeTreeBorder();
+    this.placeMiddleTrees();
     this.placeScatter();
 
     const spawn = map.findObject("Objects", (o) => o.name === "player_spawn");
@@ -112,9 +113,25 @@ export class VillageScene extends Phaser.Scene {
 
   private placeKoperasi(): void {
     const x = 280;
-    const y = 8;
+    const y = 28; // lowered a little
     this.stamp(KOPERASI, x, y);
     this.addSolid(x + KOPERASI.w * 8, y + (KOPERASI.h * 16) / 2, (KOPERASI.w - 1) * 16, KOPERASI.h * 16);
+  }
+
+  /** Standalone trees dotted through the open middle (not just the border). */
+  private placeMiddleTrees(): void {
+    const trees: Array<readonly [Stamp, number, number]> = [
+      [BIG_TREE, 196, 150],
+      [BIG_TREE, 404, 150],
+      [BIG_TREE, 150, 188],
+      [BIG_TREE, 410, 188],
+      [BIG_TREE, 180, 300],
+      [SMALL_TREE, 420, 302],
+    ];
+    for (const [s, x, y] of trees) {
+      this.stamp(s, x, y);
+      this.addSolid(x + (s.w * 16) / 2, y + s.h * 16 - 8, s.w * 16 - 10, 10);
+    }
   }
 
   private placeBuildings(): void {
