@@ -4,7 +4,7 @@ import { GameButton } from "../components/common/GameButton";
 import { gameStore } from "../stores/game.store";
 
 export function MainMenuPage() {
-  const start = () => gameStore.getState().setView("SCENARIO_SELECTION");
+  const start = () => gameStore.getState().setView("LOADING");
 
   // Match the "Tekan Enter untuk mulai" hint with a real keyboard shortcut.
   useEffect(() => {

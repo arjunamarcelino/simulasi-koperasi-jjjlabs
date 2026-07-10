@@ -7,7 +7,12 @@ import { KOPERASI_ROOMS } from "../world/rooms.config";
  * The four top-level views. This union is the single source of truth for
  * navigation and is checked exhaustively in App.tsx.
  */
-export type View = "MAIN_MENU" | "SCENARIO_SELECTION" | "GAME" | "EVALUATION";
+export type View =
+  | "MAIN_MENU"
+  | "LOADING"
+  | "SCENARIO_SELECTION"
+  | "GAME"
+  | "EVALUATION";
 
 /** Which React overlay (if any) is shown over the hub canvas. */
 export type OverlayKind = "NONE" | "CONFIRM_ENTER" | "COMING_SOON";
