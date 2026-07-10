@@ -95,6 +95,32 @@
     100% 100%;
 }
 
+/* Cork bulletin-board surface for the mading info board (behind the notes). */
+@utility corkboard {
+  background-color: #b5834d;
+  background-image:
+    radial-gradient(rgba(43, 32, 22, 0.22) 1px, transparent 1.4px),
+    radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1.4px);
+  background-size:
+    7px 7px,
+    7px 7px;
+  background-position:
+    0 0,
+    3px 3px;
+}
+
+/* One-shot slide-in for the mading data carousel body on index change. */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Same subtle texture but flat (no bottom colour band) — used on the main menu. */
 @utility koperasi-bg-plain {
   background-color: var(--color-cream);
