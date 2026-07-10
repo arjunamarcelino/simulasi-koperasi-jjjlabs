@@ -14,7 +14,8 @@ type Stamp = { col: number; row: number; w: number; h: number };
 const KOPERASI: Stamp = { col: 11, row: 6, w: 5, h: 5 }; // tall lodge (full bounds)
 const MOSSY_A: Stamp = { col: 11, row: 0, w: 3, h: 3 }; // green-roof mossy house
 const MOSSY_B: Stamp = { col: 11, row: 3, w: 3, h: 3 }; // beige mossy house
-const BIG_TREE: Stamp = { col: 1, row: 6, w: 3, h: 3 };
+const BIG_TREE: Stamp = { col: 0, row: 6, w: 5, h: 3 }; // full canopy (bulges to cols 0 & 4)
+const BIG_TREE_SKIP: ReadonlySet<number> = new Set([124, 164]); // stray neighbour tiles
 const SMALL_TREE: Stamp = { col: 4, row: 6, w: 2, h: 2 };
 
 const SCATTER_FRAMES = [104, 105, 164, 165, 224, 225, 88, 89, 90] as const;
@@ -88,11 +89,12 @@ export class VillageScene extends Phaser.Scene {
     }
   }
 
-  private stamp(s: Stamp, x: number, y: number): void {
+  private stamp(s: Stamp, x: number, y: number, skip?: ReadonlySet<number>): void {
     const baseDepth = y + s.h * 16;
     for (let dr = 0; dr < s.h; dr++) {
       for (let dc = 0; dc < s.w; dc++) {
         const frame = (s.row + dr) * VILLAGE_COLS + (s.col + dc);
+        if (skip?.has(frame)) continue;
         this.add
           .image(x + dc * 16, y + dr * 16, "villageTiles", frame)
           .setOrigin(0, 0)
@@ -108,29 +110,26 @@ export class VillageScene extends Phaser.Scene {
   }
 
   private placeTree(s: Stamp, x: number, y: number): void {
-    this.stamp(s, x, y);
+    this.stamp(s, x, y, s === BIG_TREE ? BIG_TREE_SKIP : undefined);
   }
 
   private placeKoperasi(): void {
     const x = 280;
-    const y = 28; // lowered a little
+    const y = 44; // lowered
     this.stamp(KOPERASI, x, y);
     this.addSolid(x + KOPERASI.w * 8, y + (KOPERASI.h * 16) / 2, (KOPERASI.w - 1) * 16, KOPERASI.h * 16);
   }
 
   /** Standalone trees dotted through the open middle (not just the border). */
   private placeMiddleTrees(): void {
-    const trees: Array<readonly [Stamp, number, number]> = [
-      [BIG_TREE, 196, 150],
-      [BIG_TREE, 404, 150],
-      [BIG_TREE, 150, 188],
-      [BIG_TREE, 410, 188],
-      [BIG_TREE, 180, 300],
-      [SMALL_TREE, 420, 302],
-    ];
-    for (const [s, x, y] of trees) {
-      this.stamp(s, x, y);
-      this.addSolid(x + (s.w * 16) / 2, y + s.h * 16 - 8, s.w * 16 - 10, 10);
+    for (const [x, y] of [
+      [110, 150],
+      [372, 150],
+      [120, 296],
+      [380, 296],
+    ] as const) {
+      this.placeTree(BIG_TREE, x, y);
+      this.addSolid(x + BIG_TREE.w * 8, y + BIG_TREE.h * 16 - 8, 26, 10); // trunk collider
     }
   }
 
@@ -144,18 +143,17 @@ export class VillageScene extends Phaser.Scene {
     }
   }
 
-  /** Dense tree frame around the screen (aligned columns/rows). */
+  /** Dense tree frame around the screen. Top row is continuous (no gaps). */
   private placeTreeBorder(): void {
-    for (let x = 0; x < MAP_W - 24; x += 40) {
-      if (x > 244 && x < 372) continue; // gap for the koperasi
-      this.placeTree(BIG_TREE, x, -6);
+    for (let x = -48; x < MAP_W + 8; x += 34) {
+      this.placeTree(BIG_TREE, x, -18); // full top wall, koperasi sits lower/in front
     }
-    for (let y = 40; y < MAP_H - 56; y += 50) {
-      this.placeTree(BIG_TREE, 0, y);
-      this.placeTree(BIG_TREE, MAP_W - 48, y);
+    for (let y = 30; y < MAP_H - 50; y += 46) {
+      this.placeTree(BIG_TREE, -24, y);
+      this.placeTree(BIG_TREE, MAP_W - 56, y);
     }
-    for (let x = 8, i = 0; x < MAP_W - 24; x += 56, i++) {
-      this.placeTree(i % 2 === 0 ? SMALL_TREE : BIG_TREE, x, MAP_H - 44);
+    for (let x = -16, i = 0; x < MAP_W + 8; x += 40, i++) {
+      this.placeTree(i % 3 === 2 ? SMALL_TREE : BIG_TREE, x, MAP_H - 44);
     }
   }
 
