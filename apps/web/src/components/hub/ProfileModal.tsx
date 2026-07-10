@@ -98,7 +98,7 @@ export function ProfileModal() {
       </div>
 
       <div className="flex items-center justify-between border-t-2 border-line pt-4 font-body text-lg">
-        <span className="ml-3 min-w-0 truncate text-right text-ink">{KOPERASI_IDENTITAS.nama}</span>
+        <span className="min-w-0 truncate text-right text-ink">{KOPERASI_IDENTITAS.nama}</span>
       </div>
       <p className="mt-1 text-right font-body text-base text-ink-soft">
         {voucherCount} voucher ditukar
