@@ -25,7 +25,7 @@ export const MADING_KNOWLEDGE_CARDS: readonly KnowledgeCard[] = [
   },
   {
     kind: "fact",
-    text: "Koperasi Desa/Kelurahan Merah Putih adalah program nasional untuk memperkuat ekonomi desa dan memangkas rantai tengkulak.",
+    text: "NIB, NPWP, dan rekening bank adalah penanda kesiapan koperasi berbisnis secara legal dan bankable.",
   },
   {
     kind: "stat",
@@ -35,7 +35,7 @@ export const MADING_KNOWLEDGE_CARDS: readonly KnowledgeCard[] = [
   },
   {
     kind: "fact",
-    text: "Satu koperasi desa dapat menaungi banyak unit usaha sekaligus: sembako, simpan pinjam, apotek/klinik desa, hingga gudang & logistik.",
+    text: "Simpanan pokok dibayar sekali saat mendaftar, sedangkan simpanan wajib disetor rutin — keduanya membentuk modal bersama koperasi.",
   },
   {
     kind: "stat",
@@ -53,7 +53,7 @@ export const MADING_KNOWLEDGE_CARDS: readonly KnowledgeCard[] = [
   },
   {
     kind: "fact",
-    text: "RAT (Rapat Anggota Tahunan) wajib digelar tiap tahun sebagai forum pertanggungjawaban pengurus kepada anggota.",
+    text: "Pelaksanaan RAT dipantau bertahap di SIMKOPDES: draft → dilaporkan → diverifikasi Dinas Koperasi.",
   },
   {
     kind: "stat",
