@@ -1,0 +1,11 @@
+Modern Interiors — RPG Tileset [16x16]
+by LimeZu
+https://limezu.itch.io/moderninteriors
+
+Files used in this project (from the FREE version, v2.2):
+- interiors_16x16.png     (furniture: desks, shelves, tables, boards, plants, monitor)
+
+License: FREE version — NON-COMMERCIAL use only, credit to LimeZu required.
+This project is a non-commercial hackathon/education build, which complies.
+Do NOT redistribute the raw assets. For any commercial use, purchase the paid
+version of Modern Interiors or replace these with CC0 assets.

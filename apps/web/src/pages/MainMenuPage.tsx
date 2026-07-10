@@ -25,9 +25,9 @@ export function MainMenuPage() {
         </span>
 
         <h1 className="font-display text-2xl leading-tight text-forest drop-shadow-[3px_3px_0_var(--color-mustard)] md:text-3xl">
-          Koperasi
+          Simulasi
           <br />
-          Simulator
+          Koperasi
         </h1>
 
         <p className="mb-8 mt-5 font-body text-xl leading-snug text-ink-soft md:text-2xl">

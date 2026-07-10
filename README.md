@@ -1,4 +1,4 @@
-# Koperasi Simulator — `simulasi-koperasi-jjjlabs`
+# Simulasi Koperasi — `simulasi-koperasi-jjjlabs`
 
 Game edukasi RPG tilemap 2D yang mengenalkan tata kelola dan pengambilan
 keputusan koperasi di Indonesia. Pemain berjalan di lingkungan koperasi,
@@ -36,6 +36,37 @@ pnpm lint             # ESLint
 ```
 
 Semua perintah root mendelegasikan ke `apps/web` via `pnpm --filter web`.
+
+## Library & Teknologi
+
+Frontend (`apps/web`):
+
+- **Phaser 3** (`^3.90`) — engine game 2D: tilemap, sprite, arcade physics.
+- **React 19** + **react-dom** — UI/chrome & overlay di atas kanvas game.
+- **Zustand 5** — state bridge tunggal antara React ↔ Phaser.
+- **Vite 7** — bundler & dev server.
+- **Tailwind CSS v4** (`@tailwindcss/vite`) — styling UI.
+- **TypeScript 5.6** (strict) + **ESLint 9** / **typescript-eslint** — kualitas kode.
+
+Tooling dev:
+
+- **Pillow** (Python) — dipakai `apps/web/tools/tile-inspect.py` untuk memilih tile dari tileset.
+
+## Aset & Kredit
+
+Aset seni dipakai dengan lisensi bebas. Detail per-berkas juga ada di
+`apps/web/public/assets/ninja/CREDITS.txt`.
+
+| Aset | Sumber | Lisensi |
+|------|--------|---------|
+| Tileset ground / desa / interior + sprite samurai | [Ninja Adventure Asset Pack](https://pixel-boy.itch.io/ninja-adventure-asset-pack) — Pixel-boy (& AAA) | **CC0 1.0** (public domain) |
+| Sprite pemain "villager" (Man Sprite 16x16) | [OpenGameArt](https://opengameart.org/content/man-sprite-16x16) — Ivan Voirol dkk | **CC0** |
+| Furniture interior (meja, kursi, rak, mading) — *sedang diintegrasikan* | [Modern Interiors](https://limezu.itch.io/moderninteriors) — **LimeZu** | Free version: **non-komersial**, **wajib kredit LimeZu** (bukan CC0) |
+
+> **Catatan lisensi LimeZu:** versi gratis hanya untuk penggunaan **non-komersial** dan
+> **wajib mencantumkan kredit ke LimeZu**. Proyek ini non-komersial (hackathon/edukasi),
+> jadi sesuai syarat. Untuk penggunaan komersial: beli versi berbayar LimeZu atau ganti
+> dengan aset CC0 (mis. [ArMM1998 Zelda-like](https://opengameart.org/content/zelda-like-tilesets-and-sprites), CC0).
 
 ## Status
 

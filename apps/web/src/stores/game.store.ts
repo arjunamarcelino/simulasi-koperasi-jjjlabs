@@ -36,12 +36,23 @@ export type GameState = {
   activeOverlay: OverlayKind;
   /** Set on entering a scenario; read by GamePage after the view switch. */
   selectedScenarioId: string | null;
+  /** Which hub scene Phaser is showing (drives the top-right exit affordance). */
+  activeHubScene: "Village" | "KoperasiInterior";
+  /** React→Phaser signal: leave the koperasi interior back to the village. */
+  koperasiExitRequested: boolean;
+  /** Trivia shown on a brief loading overlay during enter/exit; null = hidden. */
+  sceneLoading: string | null;
 
   setView: (view: View) => void;
   setPlayerName: (name: string) => void;
   selectRoom: (roomId: string) => void;
   clearSelection: () => void;
   enterScenario: (scenarioId: string) => void;
+  setActiveHubScene: (scene: "Village" | "KoperasiInterior") => void;
+  requestKoperasiExit: () => void;
+  consumeKoperasiExit: () => void;
+  showSceneLoading: (text: string) => void;
+  hideSceneLoading: () => void;
 };
 
 /**
@@ -60,6 +71,9 @@ export const gameStore = createStore<GameState>()(
     selectedRoomId: null,
     activeOverlay: "NONE",
     selectedScenarioId: null,
+    activeHubScene: "Village",
+    koperasiExitRequested: false,
+    sceneLoading: null,
 
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
@@ -95,6 +109,13 @@ export const gameStore = createStore<GameState>()(
         activeOverlay: "NONE",
         selectedRoomId: null,
       }),
+
+    setActiveHubScene: (scene) =>
+      set({ activeHubScene: scene, koperasiExitRequested: false }),
+    requestKoperasiExit: () => set({ koperasiExitRequested: true }),
+    consumeKoperasiExit: () => set({ koperasiExitRequested: false }),
+    showSceneLoading: (text) => set({ sceneLoading: text }),
+    hideSceneLoading: () => set({ sceneLoading: null }),
   })),
 );
 

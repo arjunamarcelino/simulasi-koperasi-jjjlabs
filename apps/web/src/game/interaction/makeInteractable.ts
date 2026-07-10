@@ -1,9 +1,11 @@
 import Phaser from "phaser";
 
 /**
- * The interaction seam. v1 trigger = click. When character movement lands later,
- * swap the `pointerdown` wiring for proximity + key press in this one file —
- * callers pass the same `onFire` action and are untouched.
+ * The click/pointer interaction seam, used by `VillageScene`'s koperasi door.
+ * With character movement, walkable scenes drive interaction by proximity + E
+ * instead: that logic lives inline in the scene's `update()` loop (see the
+ * station handling in `KoperasiInteriorScene`), not here. Keep this for pointer
+ * zones; callers pass the same `onFire` action.
  */
 export function makeInteractable(
   target: Phaser.GameObjects.Zone | Phaser.GameObjects.Rectangle,

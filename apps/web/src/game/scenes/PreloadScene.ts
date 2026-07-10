@@ -19,6 +19,15 @@ export class PreloadScene extends Phaser.Scene {
       frameWidth: 16,
       frameHeight: 16,
     });
+    this.load.spritesheet("interiorTiles", `${ASSET_BASE}/tileset_interior_floor.png`, {
+      frameWidth: 16,
+      frameHeight: 16,
+    });
+    // LimeZu Modern Interiors (free, non-commercial) — furniture for the koperasi.
+    this.load.spritesheet("lzInterior", "/assets/limezu/interiors_16x16.png", {
+      frameWidth: 16,
+      frameHeight: 16,
+    });
     this.load.spritesheet("samurai", `${ASSET_BASE}/samurai_green.png`, {
       frameWidth: 16,
       frameHeight: 16,

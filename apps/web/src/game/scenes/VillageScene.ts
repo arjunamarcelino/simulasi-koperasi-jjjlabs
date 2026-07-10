@@ -12,6 +12,10 @@ const DOOR_RADIUS = 44;
 const MAP_W = 640;
 const MAP_H = 368;
 
+// Brief loading trivia (hardcoded) shown when entering the koperasi.
+const ENTER_TRIVIA =
+  "Koperasi Desa/Kelurahan Merah Putih adalah program Presiden Prabowo untuk mendirikan koperasi di tiap desa & kelurahan — ditargetkan lebih dari 80.000 koperasi di seluruh Indonesia.";
+
 /** A multi-tile "stamp" region from the village tileset. */
 type Stamp = { col: number; row: number; w: number; h: number };
 const KOPERASI: Stamp = { col: 11, row: 6, w: 5, h: 5 }; // tall lodge (full bounds)
@@ -42,6 +46,7 @@ export class VillageScene extends Phaser.Scene {
   private doorPrompt: Phaser.GameObjects.Container | undefined = undefined;
   private readonly doorCenter = new Phaser.Math.Vector2();
   private readonly solids: Phaser.GameObjects.GameObject[] = [];
+  private entering = false;
 
   constructor() {
     super(SceneKey.Village);
@@ -49,6 +54,9 @@ export class VillageScene extends Phaser.Scene {
 
   create(): void {
     this.solids.length = 0;
+    this.entering = false;
+    gameStore.getState().setActiveHubScene("Village");
+    gameStore.getState().hideSceneLoading(); // village ready — clear the exit overlay
 
     const map = this.make.tilemap({ key: "village-map" });
     const tiles = map.addTilesetImage("floor", "floorTiles");
@@ -61,13 +69,25 @@ export class VillageScene extends Phaser.Scene {
     collision.setVisible(false).setCollisionByExclusion([-1]);
 
     this.placeKoperasi();
+    this.addKoperasiBanner();
     this.placeBuildings();
     this.placeTreeBorder();
     this.placeMiddleTrees();
     this.placeScatter();
 
+    // Returning from the koperasi drops the player at the doorstep; a fresh play
+    // uses the map's player_spawn (where the greeting shows). Flag set on exit.
+    const fromKoperasi = this.registry.get("villageEntry") === "koperasi";
+    if (fromKoperasi) this.registry.remove("villageEntry");
     const spawn = map.findObject("Objects", (o) => o.name === "player_spawn");
-    this.player = new Player(this, spawn?.x ?? 328, spawn?.y ?? 336, VILLAGER);
+    const door = map.findObject("Objects", (o) => o.name === "door");
+    const spawnX = fromKoperasi
+      ? (door?.x ?? 304) + (door?.width ?? 32) / 2
+      : (spawn?.x ?? 328);
+    const spawnY = fromKoperasi
+      ? (door?.y ?? 108) + (door?.height ?? 44) + 6
+      : (spawn?.y ?? 336);
+    this.player = new Player(this, spawnX, spawnY, VILLAGER);
     this.physics.add.collider(this.player.sprite, collision);
     this.physics.add.collider(this.player.sprite, this.solids);
 
@@ -283,7 +303,30 @@ export class VillageScene extends Phaser.Scene {
     this.eKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
   }
 
+  /** A small "KOPERASI" signboard at the upper-left of the lodge (doesn't overlap it). */
+  private addKoperasiBanner(): void {
+    const label = this.add
+      .text(0, 0, "KOPERASI", {
+        fontFamily: LABEL_STYLE.fontFamily ?? "monospace",
+        fontSize: "9px",
+        color: "#2B2016",
+      })
+      .setResolution(3)
+      .setOrigin(0.5);
+    const w = Math.ceil(label.width) + 10;
+    const h = Math.ceil(label.height) + 6;
+    const bg = this.add
+      .rectangle(0, 0, w, h, PALETTE.mustard, 1)
+      .setStrokeStyle(2, PALETTE.ink);
+    // Left of the lodge (x≈288-352), a bit above its middle — clear of the building.
+    this.add.container(250, 60, [bg, label]).setDepth(10000);
+  }
+
   private enterKoperasi(): void {
-    this.scene.start(SceneKey.KoperasiInterior);
+    if (this.entering) return;
+    this.entering = true;
+    // Brief loading + trivia, then transition (KoperasiInteriorScene.create clears it).
+    gameStore.getState().showSceneLoading(ENTER_TRIVIA);
+    this.time.delayedCall(4500, () => this.scene.start(SceneKey.KoperasiInterior));
   }
 }

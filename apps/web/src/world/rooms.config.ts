@@ -1,38 +1,44 @@
 import type { ScenarioStatus } from "../types/scenario";
 
+/** The interior sections. Union is the single source of truth for room ids. */
+export type RoomId = "marketplace" | "kasir" | "gudang" | "ruang-meeting";
+
 /**
- * A room in the Koperasi interior. `position` is in Phaser world pixels and
- * doubles as the future collider/spawn geometry when movement is added.
- * `scenarioId` is a foreign key into SCENARIOS (null while a room has no scenario).
+ * A room (section) in the Koperasi interior. Pure data (no Phaser types) so it
+ * stays importable from the React layer. Spatial geometry lives in the
+ * KoperasiInteriorScene (stations), not here. `scenarioId` is a foreign key into
+ * SCENARIOS (null while a room has no scenario).
  */
 export type Room = {
-  id: string;
+  id: RoomId;
   label: string;
-  position: { x: number; y: number; width: number; height: number };
   status: ScenarioStatus;
   scenarioId: string | null;
 };
 
 export const KOPERASI_ROOMS: readonly Room[] = [
   {
-    id: "ruang-meeting",
-    label: "Ruang Meeting",
-    position: { x: 120, y: 230, width: 300, height: 300 },
-    status: "AVAILABLE",
-    scenarioId: "rapat-anggota-tahunan",
+    id: "marketplace",
+    label: "Marketplace",
+    status: "COMING_SOON",
+    scenarioId: null,
+  },
+  {
+    id: "kasir",
+    label: "Kasir",
+    status: "COMING_SOON",
+    scenarioId: null,
   },
   {
     id: "gudang",
     label: "Gudang",
-    position: { x: 490, y: 230, width: 300, height: 300 },
     status: "COMING_SOON",
     scenarioId: null,
   },
   {
-    id: "marketplace",
-    label: "Marketplace",
-    position: { x: 860, y: 230, width: 300, height: 300 },
-    status: "COMING_SOON",
-    scenarioId: null,
+    id: "ruang-meeting",
+    label: "Ruang Rapat",
+    status: "AVAILABLE",
+    scenarioId: "rapat-anggota-tahunan",
   },
 ];

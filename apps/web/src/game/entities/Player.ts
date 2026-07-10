@@ -16,6 +16,8 @@ export class Player {
   private readonly wasd: Record<"W" | "A" | "S" | "D", Phaser.Input.Keyboard.Key>;
   private readonly cfg: CharacterConfig;
   private lastDir: Dir = "down";
+  /** Reused each frame to avoid per-frame allocation in the movement hot loop. */
+  private readonly moveVec = new Phaser.Math.Vector2();
 
   constructor(
     scene: Phaser.Scene,
@@ -57,6 +59,10 @@ export class Player {
   }
 
   update(): void {
+    // Y-sort every frame (before any early return) so a stationary player still
+    // draws correctly in front of / behind furniture and counters.
+    this.sprite.setDepth(this.sprite.y);
+
     // Frozen until the player has entered their name (welcome prompt is open).
     if (gameStore.getState().playerName === null) {
       this.sprite.setVelocity(0, 0);
@@ -69,13 +75,11 @@ export class Player {
     const up = this.cursors.up.isDown || this.wasd.W.isDown;
     const down = this.cursors.down.isDown || this.wasd.S.isDown;
 
-    const vec = new Phaser.Math.Vector2(
-      (right ? 1 : 0) - (left ? 1 : 0),
-      (down ? 1 : 0) - (up ? 1 : 0),
-    );
-    vec.normalize().scale(SPEED);
+    const vec = this.moveVec
+      .set((right ? 1 : 0) - (left ? 1 : 0), (down ? 1 : 0) - (up ? 1 : 0))
+      .normalize()
+      .scale(SPEED);
     this.sprite.setVelocity(vec.x, vec.y);
-    this.sprite.setDepth(this.sprite.y);
 
     const anim = (name: string) => `${this.cfg.key}-${name}`;
 
