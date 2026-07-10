@@ -1,4 +1,4 @@
-# Koperasi Simulator — `simulasi-koperasi-jjjlabs`
+# Simulasi Koperasi — `simulasi-koperasi-jjjlabs`
 
 Game edukasi RPG tilemap 2D yang mengenalkan tata kelola dan pengambilan
 keputusan koperasi di Indonesia. Pemain berjalan di lingkungan koperasi,

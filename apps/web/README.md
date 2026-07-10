@@ -1,6 +1,6 @@
-# Koperasi Simulator — Web (Frontend)
+# Simulasi Koperasi — Web (Frontend)
 
-Frontend untuk **Koperasi Simulator**. Iterasi-1 (fondasi): aplikasi boot sampai
+Frontend untuk **Simulasi Koperasi**. Iterasi-1 (fondasi): aplikasi boot sampai
 **Main Menu**. Belum ada gameplay Phaser.
 
 ## Stack
