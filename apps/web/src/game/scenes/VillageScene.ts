@@ -9,8 +9,8 @@ const NEAR_DOOR_KEY = "villageNearDoor";
 /** A multi-tile "stamp" region from the village tileset. */
 type Stamp = { col: number; row: number; w: number; h: number };
 const KOPERASI: Stamp = { col: 13, row: 6, w: 3, h: 5 }; // tall wooden lodge w/ door
-const BIG_TREE: Stamp = { col: 0, row: 6, w: 4, h: 5 };
-const SMALL_TREE: Stamp = { col: 4, row: 6, w: 2, h: 4 };
+const BIG_TREE: Stamp = { col: 1, row: 6, w: 3, h: 3 }; // full lush tree (clean bounds)
+const SMALL_TREE: Stamp = { col: 4, row: 6, w: 2, h: 2 }; // compact tree
 
 /**
  * The village hub as a real pixel-art tilemap (Ninja Adventure, CC0) with a
@@ -52,9 +52,10 @@ export class VillageScene extends Phaser.Scene {
     this.physics.add.collider(this.player.sprite, collision);
     this.physics.add.collider(this.player.sprite, this.solids);
 
-    this.cameras.main.startFollow(this.player.sprite, true);
+    // Single fixed screen: static camera showing the whole map (no scrolling).
+    this.cameras.main.setZoom(2);
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
-    this.cameras.main.setZoom(3);
+    this.cameras.main.centerOn(map.widthInPixels / 2, map.heightInPixels / 2);
     this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
     this.setupDoor(map, koperasiDoor);
@@ -97,8 +98,8 @@ export class VillageScene extends Phaser.Scene {
   }
 
   private placeKoperasi(): { x: number; y: number } {
-    const x = 272; // tile col 17
-    const y = 48; // tile row 3
+    const x = 288; // tile col 18
+    const y = 16; // tile row 1
     this.stamp(KOPERASI, x, y);
     // Solid over the whole footprint so the player stops just BELOW the building
     // (rendered in front via y-sort) right on the door zone.
@@ -112,17 +113,21 @@ export class VillageScene extends Phaser.Scene {
   }
 
   private placeDecor(): void {
+    // Framing decor within the single 640x352 screen (clear of path/building/spawn).
     const trees: Array<[Stamp, number, number]> = [
-      [BIG_TREE, 48, 112],
-      [BIG_TREE, 496, 96],
-      [BIG_TREE, 80, 336],
-      [SMALL_TREE, 224, 150],
-      [SMALL_TREE, 384, 352],
-      [SMALL_TREE, 540, 336],
+      [BIG_TREE, 16, 24],
+      [BIG_TREE, 24, 176],
+      [BIG_TREE, 96, 280],
+      [BIG_TREE, 512, 32],
+      [BIG_TREE, 560, 200],
+      [BIG_TREE, 480, 288],
+      [SMALL_TREE, 176, 112],
+      [SMALL_TREE, 208, 288],
+      [SMALL_TREE, 416, 168],
     ];
     for (const [s, x, y] of trees) {
       this.stamp(s, x, y);
-      this.addSolid(x + (s.w * 16) / 2, y + s.h * 16 - 10, 20, 12);
+      this.addSolid(x + (s.w * 16) / 2, y + s.h * 16 - 8, s.w * 16 - 8, 10);
     }
   }
 
