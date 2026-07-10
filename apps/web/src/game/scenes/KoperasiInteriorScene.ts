@@ -97,7 +97,6 @@ export class KoperasiInteriorScene extends Phaser.Scene {
   private readonly solids: Phaser.GameObjects.GameObject[] = [];
   private readonly stations: Station[] = [];
   private lastStationId: StationKind | null = null;
-  private wasOverlayOpen = false;
   private exiting = false;
   private toast: Phaser.GameObjects.Container | undefined = undefined;
 
@@ -109,7 +108,6 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     this.solids.length = 0;
     this.stations.length = 0;
     this.lastStationId = null;
-    this.wasOverlayOpen = false;
     this.exiting = false;
     this.toast = undefined;
     // Fresh entry starts from a known overlay state (guards a stale soft-lock).
@@ -154,20 +152,21 @@ export class KoperasiInteriorScene extends Phaser.Scene {
       this.player.sprite.setVelocity(0, 0);
       this.prompt.setVisible(false);
       Phaser.Input.Keyboard.JustDown(this.eKey); // consume so it can't leak out
-      this.wasOverlayOpen = true;
+      return;
+    }
+
+    // Close-edge suppression: for a brief wall-clock window after an overlay
+    // closes (stamped by the store's clearSelection), keep the player frozen and
+    // keep draining E so a still-held / just-pressed key can't re-fire a station
+    // — immune to the frame-timing mismatch between Phaser rAF and React unmount.
+    if (performance.now() < gameStore.getState().interactSuppressedUntil) {
+      this.player.sprite.setVelocity(0, 0);
+      this.prompt.setVisible(false);
+      Phaser.Input.Keyboard.JustDown(this.eKey);
       return;
     }
 
     this.player.update();
-
-    // Close-edge latch: on the frame the overlay just closed, swallow E so a
-    // still-held key can't immediately re-open it (overlay whack-a-mole).
-    if (this.wasOverlayOpen) {
-      this.wasOverlayOpen = false;
-      Phaser.Input.Keyboard.JustDown(this.eKey);
-      this.prompt.setVisible(false);
-      return;
-    }
 
     const nearest = this.nearestStation();
     if (nearest) {
@@ -273,6 +272,7 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     for (const cx of [412, 444, 476, 508, 540]) this.lzStamp(cx, 284, LZ.chair, false);
     this.lzStamp(410, 236, LZ.rapatDeco, false); // left of the rapat door
     this.lzStamp(540, 230, LZ.rapatDeco2, false); // right of the rapat door
+    this.lzStamp(360, 240, LZ.poster, false); // data board on the left rapat wall
     this.stationLabel(476, 236, "RUANG RAPAT", true);
     this.lzStamp(606, 346, LZ.plant);
 
@@ -314,22 +314,31 @@ export class KoperasiInteriorScene extends Phaser.Scene {
       fire: () => this.exitToVillage(),
     });
 
-    // Points of interest — mapped now, real content wired later (show a stub toast).
-    this.addPoi("mading", "Papan Info", 200, 54);
-    this.addPoi("mading", "Papan Info", 340, 54);
+    // Points of interest. The entrance boards open the sticky-note info board;
+    // the ruang-rapat board opens the data carousel. Quiz + simpan-pinjam still stub.
+    this.addPoi("mading", "Papan Info", 200, 54, () => gameStore.getState().openMadingInfo());
+    this.addPoi("mading", "Papan Info", 340, 54, () => gameStore.getState().openMadingInfo());
+    this.addPoi("mading", "Papan Data", 360, 250, () => gameStore.getState().openMadingData());
     this.addPoi("quiz", "Kuis Koperasi", 320, 150);
     this.addPoi("simpan-pinjam", "Simpan Pinjam", 165, 180);
   }
 
-  private addPoi(id: "mading" | "quiz" | "simpan-pinjam", label: string, x: number, y: number): void {
+  private addPoi(
+    id: "mading" | "quiz" | "simpan-pinjam",
+    label: string,
+    x: number,
+    y: number,
+    onFire: () => void = () =>
+      this.showToast(x, y < 60 ? y + 44 : y - 44, `${label} — segera hadir`),
+  ): void {
     this.stations.push({
       id,
       label,
       x,
       y,
       radiusSq: INTERACT_RADIUS * INTERACT_RADIUS,
-      locked: true,
-      fire: () => this.showToast(x, y < 60 ? y + 44 : y - 44, `${label} — segera hadir`),
+      locked: false,
+      fire: onFire,
     });
   }
 
