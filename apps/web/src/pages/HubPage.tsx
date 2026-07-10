@@ -10,6 +10,8 @@ import { QuizBoard } from "../components/hub/QuizBoard";
 import { KasirVoucherBoard } from "../components/hub/KasirVoucherBoard";
 import { ProfileModal } from "../components/hub/ProfileModal";
 import { ProfileButton } from "../components/hub/ProfileButton";
+import { MissionIcon } from "../components/hub/MissionIcon";
+import { MissionBoard } from "../components/hub/MissionBoard";
 import { NamePrompt } from "../components/hub/NamePrompt";
 import { useGameStore } from "../stores/game.store";
 
@@ -27,6 +29,7 @@ export function HubPage() {
       <GameCanvas />
       <HubGuide />
       <ProfileButton />
+      <MissionIcon />
       <KoperasiExitButton />
       <HubOverlays />
       <MadingInfoBoard />
@@ -36,6 +39,7 @@ export function HubPage() {
       {activeOverlay === "QUIZ" && <QuizBoard />}
       {activeOverlay === "KASIR_VOUCHER" && <KasirVoucherBoard />}
       {activeOverlay === "PROFILE" && <ProfileModal />}
+      {activeOverlay === "MISSION" && <MissionBoard />}
       <SceneLoadingOverlay />
       {needsName && <NamePrompt />}
     </main>
