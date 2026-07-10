@@ -14,7 +14,7 @@ type Stamp = { col: number; row: number; w: number; h: number };
 const KOPERASI: Stamp = { col: 11, row: 6, w: 5, h: 5 }; // tall lodge (full bounds)
 const MOSSY_A: Stamp = { col: 11, row: 0, w: 3, h: 3 }; // green-roof mossy house
 const MOSSY_B: Stamp = { col: 11, row: 3, w: 3, h: 3 }; // beige mossy house
-const BIG_TREE: Stamp = { col: 0, row: 6, w: 5, h: 3 }; // full canopy (bulges to cols 0 & 4)
+const BIG_TREE: Stamp = { col: 0, row: 6, w: 4, h: 3 }; // full canopy (bulges to cols 0 & 4)
 const BIG_TREE_SKIP: ReadonlySet<number> = new Set([124, 164]); // stray neighbour tiles
 const SMALL_TREE: Stamp = { col: 4, row: 6, w: 2, h: 2 };
 
