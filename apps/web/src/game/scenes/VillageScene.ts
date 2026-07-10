@@ -11,7 +11,7 @@ const MAP_H = 352;
 
 /** A multi-tile "stamp" region from the village tileset. */
 type Stamp = { col: number; row: number; w: number; h: number };
-const KOPERASI: Stamp = { col: 13, row: 6, w: 3, h: 5 }; // tall wooden lodge w/ door
+const KOPERASI: Stamp = { col: 11, row: 6, w: 5, h: 5 }; // tall wooden lodge (full bounds incl. moss)
 const MOSSY_HOUSE: Stamp = { col: 11, row: 0, w: 3, h: 3 }; // mossy green-roof house
 const WOOD_HOUSE: Stamp = { col: 16, row: 8, w: 4, h: 2 }; // wooden A-frame house (clean bounds)
 const BIG_TREE: Stamp = { col: 1, row: 6, w: 3, h: 3 };
@@ -118,10 +118,11 @@ export class VillageScene extends Phaser.Scene {
   }
 
   private placeKoperasi(): void {
-    const x = 288; // tile col 18
-    const y = 16; // tile row 1
+    const x = 272; // door tile (stamp col+2) lands at world x ~312
+    const y = 16;
     this.stamp(KOPERASI, x, y);
-    this.addSolid(x + (KOPERASI.w * 16) / 2, y + (KOPERASI.h * 16) / 2, KOPERASI.w * 16, KOPERASI.h * 16);
+    // Collide only the solid body (skip the outer moss fringe columns).
+    this.addSolid(x + KOPERASI.w * 8, y + (KOPERASI.h * 16) / 2, (KOPERASI.w - 1) * 16, KOPERASI.h * 16);
   }
 
   /** Decorative neighbour buildings (not enterable) with collision. */
