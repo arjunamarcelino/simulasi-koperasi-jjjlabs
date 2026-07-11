@@ -13,6 +13,7 @@ import { ProfileButton } from "../components/hub/ProfileButton";
 import { MissionIcon } from "../components/hub/MissionIcon";
 import { MissionBoard } from "../components/hub/MissionBoard";
 import { NamePrompt } from "../components/hub/NamePrompt";
+import { SessionOverlay } from "../components/session/SessionOverlay";
 import { useGameStore } from "../stores/game.store";
 
 /**
@@ -27,10 +28,17 @@ export function HubPage() {
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-forest-2">
       <GameCanvas />
-      <HubGuide />
-      <ProfileButton />
-      <MissionIcon />
-      <KoperasiExitButton />
+      {/* Hub chrome is inert while any overlay is open — the SESSION overlay is
+          semi-transparent, so leaving these clickable would let a stray tap punch
+          through (e.g. the exit door, swapping scenes with a session mounted). */}
+      {activeOverlay === "NONE" && (
+        <>
+          <HubGuide />
+          <ProfileButton />
+          <MissionIcon />
+          <KoperasiExitButton />
+        </>
+      )}
       <HubOverlays />
       <MadingInfoBoard />
       <MadingDataBoard />
@@ -40,6 +48,7 @@ export function HubPage() {
       {activeOverlay === "KASIR_VOUCHER" && <KasirVoucherBoard />}
       {activeOverlay === "PROFILE" && <ProfileModal />}
       {activeOverlay === "MISSION" && <MissionBoard />}
+      {activeOverlay === "SESSION" && <SessionOverlay />}
       <SceneLoadingOverlay />
       {needsName && <NamePrompt />}
     </main>

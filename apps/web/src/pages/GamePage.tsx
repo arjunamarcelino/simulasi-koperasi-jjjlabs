@@ -2,21 +2,15 @@ import { PixelPanel } from "../components/common/PixelPanel";
 import { GameButton } from "../components/common/GameButton";
 import { gameStore, useGameStore } from "../stores/game.store";
 import { SCENARIOS } from "../scenarios/scenario.config";
-import { SessionPage } from "./SessionPage";
 
 /**
- * Routes a selected scenario: voice scenarios render the live SessionPage; the
- * rest show a stub until their mechanics are built.
+ * Stub view for scenarios whose mechanics aren't built yet. (The tutorial voice
+ * session now runs as an in-hub overlay — see SessionOverlay — not this view.)
  */
 export function GamePage() {
   const scenarioId = useGameStore((s) => s.selectedScenarioId);
   const scenario = SCENARIOS.find((sc) => sc.id === scenarioId) ?? null;
   const back = () => gameStore.getState().setView("SCENARIO_SELECTION");
-
-  // Scenario 1 (tutorial) runs as a live voice session.
-  if (scenarioId === "tutorial-koperasi-konsumen") {
-    return <SessionPage scenarioId={scenarioId} />;
-  }
 
   return (
     <main className="koperasi-bg flex min-h-screen w-full items-center justify-center px-4 py-8">

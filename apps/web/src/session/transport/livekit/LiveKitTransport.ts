@@ -261,6 +261,9 @@ export class LiveKitTransport implements SessionTransport {
     this.connection.clear();
     this.sessionEnded.clear();
     this.agentReady.clear();
+    // Explicitly release the mic before tearing down so the OS mic indicator
+    // goes dark immediately on cancel/close (don't rely on disconnect alone).
+    void room?.localParticipant.setMicrophoneEnabled(false);
     await room?.disconnect();
   }
 

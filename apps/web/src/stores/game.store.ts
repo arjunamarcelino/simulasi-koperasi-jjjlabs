@@ -9,6 +9,7 @@ import {
   type RedeemedVoucher,
 } from "../content/vouchers";
 import { MISSIONS, isStringArray, type MissionReward } from "../content/missions";
+import { SCENARIOS } from "../scenarios/scenario.config";
 
 /**
  * The four top-level views. This union is the single source of truth for
@@ -27,7 +28,8 @@ export type View =
  * prompts (CONFIRM_ENTER / COMING_SOON), MadingInfoBoard renders MADING_INFO,
  * MadingDataBoard renders MADING_DATA, MadingKnowledgeBoard renders MADING_KNOWLEDGE,
  * QuizBoard renders QUIZ, KasirVoucherBoard renders KASIR_VOUCHER, ProfileModal
- * renders PROFILE, MissionBoard renders MISSION.
+ * renders PROFILE, MissionBoard renders MISSION, SessionOverlay renders SESSION
+ * (the visual-novel voice conversation, layered over the live koperasi map).
  */
 export type OverlayKind =
   | "NONE"
@@ -39,7 +41,8 @@ export type OverlayKind =
   | "QUIZ"
   | "KASIR_VOUCHER"
   | "PROFILE"
-  | "MISSION";
+  | "MISSION"
+  | "SESSION";
 
 /** Result of completeMission — carries the granted reward on success. */
 export type MissionResult =
@@ -137,6 +140,12 @@ export type GameState = {
   redeemVoucher: (voucherId: string) => RedeemedVoucher | null;
   /** Open the mission overlay (no-op if another overlay is already open). */
   openMission: () => void;
+  /**
+   * Open the visual-novel voice session for a scenario (no-op if another overlay
+   * is open, the scenario id is unknown, or we're still inside the post-close
+   * E-suppression window — the latter blocks an immediate re-open on the same key).
+   */
+  openSession: (scenarioId: string) => void;
   /**
    * Complete a mission (one-time). Live-reads completedMissionIds as the gate;
    * real-life missions require a matching code. Banks the reward + persists in a
@@ -288,6 +297,18 @@ export const gameStore = createStore<GameState>()(
     openMission: () => {
       if (get().activeOverlay !== "NONE") return;
       set({ activeOverlay: "MISSION" });
+    },
+
+    openSession: (scenarioId) => {
+      if (get().activeOverlay !== "NONE") return;
+      // Belt-and-suspenders alongside the scene's E-drain: refuse to re-open
+      // during the brief post-close suppression window.
+      if (performance.now() < get().interactSuppressedUntil) return;
+      if (!SCENARIOS.some((s) => s.id === scenarioId)) {
+        console.warn(`openSession: skenario tidak dikenal: ${scenarioId}`);
+        return;
+      }
+      set({ activeOverlay: "SESSION", selectedScenarioId: scenarioId });
     },
 
     completeMission: (missionId, code) => {

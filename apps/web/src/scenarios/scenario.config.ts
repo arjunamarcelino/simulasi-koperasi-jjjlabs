@@ -37,5 +37,16 @@ export const SCENARIOS: readonly ScenarioConfig[] = [
       "Pelajari pergerakan, interaksi NPC, dan transaksi koperasi sederhana.",
     difficulty: "Tutorial",
     status: "AVAILABLE",
+    npcName: "Ibu Rumah Tangga",
+    blurb:
+      "Pelajari alur dasar: melayani calon anggota, menjelaskan manfaat, lalu menuntaskan pendaftaran & Simpanan Pokok.",
+    mission:
+      "Layani ibu yang belanja minyak goreng, tawarkan keanggotaan, lalu tuntaskan pendaftaran + Simpanan Pokok.",
+    steps: [
+      "Sapa ibu dan layani pembelian minyak gorengnya lebih dulu.",
+      "Tawarkan keanggotaan: harga anggota lebih murah dan tiap belanja dicatat untuk bonus SHU akhir tahun.",
+      "Jelaskan Simpanan Pokok (sekali bayar, tetap milik anggota) dan Simpanan Wajib (berkala) dengan sabar.",
+      "Setelah ibu setuju, tekan 'Bayar & Daftar' untuk menuntaskan pendaftaran sekaligus pembayaran.",
+    ],
   },
 ];
