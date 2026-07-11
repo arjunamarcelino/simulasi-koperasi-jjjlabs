@@ -72,7 +72,7 @@ const WALLS: readonly Rect[] = [
   [312, 224, 16, 128], // vertical wall between gudang & ruang rapat
 ];
 
-type StationKind = RoomId | "exit" | "mading" | "quiz" | "simpan-pinjam" | "npc";
+type StationKind = RoomId | "exit" | "mading" | "quiz" | "simpan-pinjam" | "npc" | "npc-kredit";
 
 type Station = {
   id: StationKind;
@@ -341,7 +341,6 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     this.addPoi("mading", "Papan Data", 410, 250, () => gameStore.getState().openMadingData());
     this.addPoi("mading", "Papan Info", 540, 246, () => gameStore.getState().openMadingInfo());
     this.addPoi("quiz", "Kuis Koperasi", 320, 150, () => gameStore.getState().openQuiz());
-    this.addPoi("simpan-pinjam", "Simpan Pinjam", 165, 180);
 
     // Customer NPC near the entrance/kasir — opens Scenario 1 (visual-novel voice
     // session) as an overlay over the live map. A different sprite than the
@@ -357,6 +356,23 @@ export class KoperasiInteriorScene extends Phaser.Scene {
       radiusSq: INTERACT_RADIUS * INTERACT_RADIUS,
       locked: false,
       fire: () => gameStore.getState().openSession("tutorial-koperasi-konsumen"),
+    });
+
+    // Pak Joko at the simpan-pinjam (loan) desk — opens Scenario 2 (Kredit Macet).
+    // Reuses the samurai sheet with a warm tint so he reads as a different person
+    // than the tutorial NPC. Placed clear of that NPC's radius; tune with a
+    // screenshot if he overlaps the desk tile.
+    const joko = new NPC(this, 165, 180, SAMURAI_GREEN);
+    joko.sprite.setTint(0xd08a5a);
+    this.solids.push(joko.sprite);
+    this.stations.push({
+      id: "npc-kredit",
+      label: "Pak Joko",
+      x: 165,
+      y: 180,
+      radiusSq: INTERACT_RADIUS * INTERACT_RADIUS,
+      locked: false,
+      fire: () => gameStore.getState().openSession("kredit-macet"),
     });
   }
 
