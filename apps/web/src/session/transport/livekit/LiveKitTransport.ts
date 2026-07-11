@@ -64,6 +64,10 @@ export class LiveKitTransport implements SessionTransport {
   private room: Room | null = null;
   private agentIdentity: string | null = null;
   private ended = false;
+  // Synchronous latch for the manual-end path: `ended` only flips AFTER the
+  // awaited end_session RPC, so two fast clicks would both pass the `ended` gate
+  // and fire the RPC twice. This closes that in-flight window.
+  private endingInFlight = false;
   // Set true by disconnect(). connect() checks it after every await so an
   // unmount mid-connect can never enable the mic / play audio on a dead room.
   private aborted = false;
@@ -178,6 +182,7 @@ export class LiveKitTransport implements SessionTransport {
   }
 
   sendText(text: string): void {
+    if (this.ended || this.aborted) return;
     const trimmed = text.trim();
     if (!trimmed) return;
     // Echo locally so the player's text shows immediately (STT produces no
@@ -193,6 +198,7 @@ export class LiveKitTransport implements SessionTransport {
   }
 
   async setMicEnabled(enabled: boolean): Promise<boolean> {
+    if (this.ended || this.aborted) return false;
     const lp = this.room?.localParticipant;
     if (!lp) return false;
     // Actually mute/unmute (and publish on first unmute). Return the real state
@@ -207,6 +213,7 @@ export class LiveKitTransport implements SessionTransport {
   }
 
   async requestHint(): Promise<string> {
+    if (this.ended || this.aborted) return "";
     const raw = await this.rpc("petunjuk", "");
     try {
       const { hint } = JSON.parse(raw) as { hint?: string };
@@ -250,6 +257,7 @@ export class LiveKitTransport implements SessionTransport {
   }
 
   advancePhase(): void {
+    if (this.ended || this.aborted) return;
     void this.rpc("advance_phase", "");
   }
 
@@ -275,7 +283,8 @@ export class LiveKitTransport implements SessionTransport {
     this.goalReached.clear();
     // Explicitly release the mic before tearing down so the OS mic indicator
     // goes dark immediately on cancel/close (don't rely on disconnect alone).
-    void room?.localParticipant.setMicrophoneEnabled(false);
+    // May run on an already-torn-down participant during teardown — swallow.
+    void room?.localParticipant.setMicrophoneEnabled(false).catch(() => {});
     await room?.disconnect();
   }
 
@@ -288,8 +297,9 @@ export class LiveKitTransport implements SessionTransport {
   }
 
   private async finish(trigger: FinalDecisionTrigger): Promise<void> {
-    if (this.ended) return;
-    void this.room?.localParticipant.setMicrophoneEnabled(false);
+    if (this.ended || this.endingInFlight) return;
+    this.endingInFlight = true;
+    void this.room?.localParticipant.setMicrophoneEnabled(false).catch(() => {});
     try {
       const raw = await this.rpc("end_session", "");
       const parsed = JSON.parse(raw) as SessionEnded["result"];
@@ -299,8 +309,12 @@ export class LiveKitTransport implements SessionTransport {
       this.sessionEnded.emit({ trigger, result: { ...parsed, trigger } });
       await this.disconnect();
     } catch (cause: unknown) {
+      if (this.ended) return; // a force-quit already ended us; the reject is fallout
       console.error("RPC 'end_session' gagal:", cause);
+      this.ended = true; // terminal by any door — a late data msg can't re-pop
       this.connection.emit("error");
+    } finally {
+      this.endingInFlight = false;
     }
   }
 
@@ -309,7 +323,7 @@ export class LiveKitTransport implements SessionTransport {
     try {
       const parsed = JSON.parse(new TextDecoder().decode(payload)) as SessionEnded["result"];
       this.ended = true;
-      void this.room?.localParticipant.setMicrophoneEnabled(false);
+      void this.room?.localParticipant.setMicrophoneEnabled(false).catch(() => {});
       this.connection.emit("ended");
       this.sessionEnded.emit({ trigger: parsed.trigger, result: parsed });
       void this.disconnect();

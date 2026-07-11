@@ -183,11 +183,36 @@
   }
 }
 
+/* Sustained tension pulse for the end action at drift L1. Rings via `outline`
+   only — never transform/box-shadow — so it composes with pixel-raise's shadow
+   and nudgePop's scale, and a stable class means no flicker on 1→0→1. */
+@keyframes driftPulse {
+  0%,
+  100% {
+    outline: 3px solid transparent;
+    outline-offset: 2px;
+  }
+  50% {
+    outline: 3px solid var(--color-orange);
+    outline-offset: 4px;
+  }
+}
+
+@utility drift-nudge {
+  animation: driftPulse 1200ms ease-in-out infinite;
+}
+
 /* Respect reduced-motion: drop decorative animation + tween the state changes to
    near-instant (the opacity/emphasis deltas still convey meaning). */
 @media (prefers-reduced-motion: reduce) {
   .streaming-caret {
     animation: none;
+  }
+  /* The pulse would collapse to its transparent frame — keep a static ring so
+     the L1 warning meaning survives. */
+  .drift-nudge {
+    outline: 3px solid var(--color-orange);
+    outline-offset: 3px;
   }
   *,
   *::before,

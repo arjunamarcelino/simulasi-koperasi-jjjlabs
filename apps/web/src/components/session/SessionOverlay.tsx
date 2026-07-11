@@ -241,6 +241,7 @@ export function SessionOverlay() {
         hintLoading={hintLoading}
         phase={phase}
         canEnd={canEnd}
+        nudgeEnd={driftLevel >= 1 && canEnd}
         hasEvidence={!!config.evidence}
         onHint={() => sessionController.requestHint()}
         onToggleBriefing={toggleBriefing}

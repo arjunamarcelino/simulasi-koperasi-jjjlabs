@@ -15,6 +15,8 @@ type Props = {
   phase: PhaseState | null;
   /** When false, the end button is locked (goal not yet reached). */
   canEnd: boolean;
+  /** Drift at Level 1 — sustain attention on the end button (PRD §6). */
+  nudgeEnd?: boolean;
   /** When true, the scenario exposes a "Periksa Bukti" evidence panel. */
   hasEvidence?: boolean;
   onHint: () => void;
@@ -30,6 +32,7 @@ export const ActionRail = memo(function ActionRail({
   hintLoading,
   phase,
   canEnd,
+  nudgeEnd = false,
   hasEvidence = false,
   onHint,
   onToggleBriefing,
@@ -77,6 +80,8 @@ export const ActionRail = memo(function ActionRail({
         disabled={!ready || !canEnd}
         // Draw the eye the moment it unlocks.
         highlight={canEnd}
+        // Sustained ring while tension is at Level 1.
+        pulse={nudgeEnd}
       >
         {canEnd ? <EndIcon /> : <LockIcon />}
       </RailButton>
@@ -90,6 +95,7 @@ function RailButton({
   onClick,
   disabled = false,
   highlight = false,
+  pulse = false,
   children,
 }: {
   label: string;
@@ -98,6 +104,8 @@ function RailButton({
   disabled?: boolean;
   /** Play a one-shot pop when the button (un)locks, to draw attention. */
   highlight?: boolean;
+  /** Sustained ring while a condition holds (drift L1). Distinct from highlight. */
+  pulse?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -109,7 +117,7 @@ function RailButton({
       title={label}
       className={`group pixel-raise active:pixel-press flex h-12 items-center overflow-hidden border-3 border-border px-3 transition-transform duration-75 focus-visible:pixel-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${tone} ${
         highlight && !disabled ? "animate-[nudgePop_450ms_ease-out]" : ""
-      }`}
+      } ${pulse && !disabled ? "drift-nudge" : ""}`}
     >
       <span aria-hidden="true" className="shrink-0">
         {children}

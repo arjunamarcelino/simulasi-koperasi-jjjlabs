@@ -69,7 +69,11 @@ export function createSessionController(): SessionController {
         next.onConnectionState(getState().setConnection),
         next.onTranscript(getState().upsertTranscript),
         next.onDriftLevel(getState().setDriftLevel),
-        next.onSessionEnded(getState().setEnded),
+        next.onSessionEnded((e) => {
+          // Reset mic so the store matches the physically-released track.
+          getState().setEnded(e);
+          getState().setMicEnabled(false);
+        }),
       ];
       if (next.onAgentReady) {
         unsubs.push(next.onAgentReady(() => getState().setAgentJoined(true)));
@@ -93,10 +97,15 @@ export function createSessionController(): SessionController {
     }
   };
 
+  // Once the session has ended (any path), user actions must be inert — firing
+  // an RPC into a torn-down room would surface a spurious error scrim over the
+  // ResultPanel.
+  const hasEnded = (): boolean => sessionStore.getState().ended != null;
+
   const guarded =
     (fn: (transport: SessionTransport) => void) =>
     (): void => {
-      if (!transport) return;
+      if (!transport || hasEnded()) return;
       try {
         fn(transport);
       } catch (cause: unknown) {
@@ -122,7 +131,7 @@ export function createSessionController(): SessionController {
     },
 
     toggleMic: () => {
-      if (!transport) return;
+      if (!transport || hasEnded()) return;
       const t = transport;
       const next = !sessionStore.getState().micEnabled;
       // Optimistic flip for snappy UI, then reconcile to the REAL track state the
@@ -148,7 +157,7 @@ export function createSessionController(): SessionController {
 
     // Hint failure must NOT drop the session (mentor is optional).
     requestHint: () => {
-      if (!transport) return;
+      if (!transport || hasEnded()) return;
       const t = transport;
       const store = sessionStore.getState();
       store.setHintLoading(true);
