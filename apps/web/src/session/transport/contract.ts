@@ -71,8 +71,12 @@ export interface SessionTransport {
   /** Request ONE contextual mentor hint (RPC `petunjuk` on LiveKit; scripted in mock). */
   requestHint(): Promise<string>;
 
-  /** Toggle mic. No-op in mock; enables the mic track on LiveKit. */
-  setMicEnabled(enabled: boolean): void;
+  /**
+   * Toggle the mic track. Resolves to the ACTUAL resulting enabled state so the
+   * UI reflects reality (e.g. permission denied → stays false), not just intent.
+   * On LiveKit this publishes/unpublishes + mutes the real track; mock echoes.
+   */
+  setMicEnabled(enabled: boolean): Promise<boolean>;
 
   onTranscript(cb: (item: TranscriptItem) => void): Unsubscribe;
   onDriftLevel(cb: (level: DriftLevel) => void): Unsubscribe;

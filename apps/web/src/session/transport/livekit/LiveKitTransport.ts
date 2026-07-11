@@ -188,8 +188,13 @@ export class LiveKitTransport implements SessionTransport {
     void this.rpc("send_text", trimmed);
   }
 
-  setMicEnabled(enabled: boolean): void {
-    void this.room?.localParticipant.setMicrophoneEnabled(enabled);
+  async setMicEnabled(enabled: boolean): Promise<boolean> {
+    const lp = this.room?.localParticipant;
+    if (!lp) return false;
+    // Actually mute/unmute (and publish on first unmute). Return the real state
+    // so a denied-permission unmute reports false instead of a lying "on" icon.
+    await lp.setMicrophoneEnabled(enabled);
+    return lp.isMicrophoneEnabled;
   }
 
   /** Re-arm autoplay from a user gesture (call on any early button click). */

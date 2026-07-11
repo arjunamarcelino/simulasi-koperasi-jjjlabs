@@ -119,11 +119,19 @@ export function createSessionController(): SessionController {
     },
 
     toggleMic: () => {
+      if (!transport) return;
+      const t = transport;
       const next = !sessionStore.getState().micEnabled;
-      guarded((t) => {
-        t.setMicEnabled(next);
-        sessionStore.getState().setMicEnabled(next);
-      })();
+      // Optimistic flip for snappy UI, then reconcile to the REAL track state the
+      // transport reports (permission denied / no device → back to muted, so the
+      // icon can't claim the mic is live when it isn't).
+      sessionStore.getState().setMicEnabled(next);
+      Promise.resolve(t.setMicEnabled(next))
+        .then((actual) => sessionStore.getState().setMicEnabled(actual))
+        .catch((cause: unknown) => {
+          console.warn("Mic toggle gagal:", cause);
+          sessionStore.getState().setMicEnabled(false);
+        });
     },
 
     // Re-arm browser audio autoplay from a real user gesture.

@@ -164,8 +164,8 @@ export class MockTransport implements SessionTransport {
     return Promise.resolve(hint);
   }
 
-  setMicEnabled(enabled: boolean): void {
-    if (this.ended || this.disposed) return;
+  setMicEnabled(enabled: boolean): Promise<boolean> {
+    if (this.ended || this.disposed) return Promise.resolve(false);
     this.transcript.emit({
       id: this.nextId("system"),
       speaker: "system",
@@ -173,6 +173,7 @@ export class MockTransport implements SessionTransport {
       streaming: false,
       at: Date.now(),
     });
+    return Promise.resolve(enabled);
   }
 
   onTranscript(cb: (item: TranscriptItem) => void): Unsubscribe {
