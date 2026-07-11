@@ -15,8 +15,11 @@ type Props = {
   phase: PhaseState | null;
   /** When false, the end button is locked (goal not yet reached). */
   canEnd: boolean;
+  /** When true, the scenario exposes a "Periksa Bukti" evidence panel. */
+  hasEvidence?: boolean;
   onHint: () => void;
   onToggleBriefing: () => void;
+  onCheckEvidence?: () => void;
   onAdvancePhase: () => void;
   onEnd: () => void;
 };
@@ -27,8 +30,10 @@ export const ActionRail = memo(function ActionRail({
   hintLoading,
   phase,
   canEnd,
+  hasEvidence = false,
   onHint,
   onToggleBriefing,
+  onCheckEvidence,
   onAdvancePhase,
   onEnd,
 }: Props) {
@@ -45,6 +50,16 @@ export const ActionRail = memo(function ActionRail({
       >
         <HintIcon />
       </RailButton>
+      {hasEvidence && (
+        <RailButton
+          label="Periksa Bukti"
+          tone="bg-cream text-forest"
+          onClick={() => onCheckEvidence?.()}
+          disabled={!ready}
+        >
+          <EvidenceIcon />
+        </RailButton>
+      )}
       {phase && (
         <RailButton
           label={phase.advanceActionLabel ?? "Maju Fase"}
@@ -129,6 +144,21 @@ function BriefingIcon() {
       <rect x="2" y="12" width="12" height="2" fill="#7a4e2d" />
       <rect x="5" y="6" width="6" height="1" fill="#5a4a38" />
       <rect x="5" y="9" width="6" height="1" fill="#5a4a38" />
+    </svg>
+  );
+}
+
+function EvidenceIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="26" height="26" shapeRendering="crispEdges" aria-hidden="true">
+      {/* magnifier glass ring + handle — "inspect the case file" */}
+      <rect x="3" y="2" width="7" height="2" fill="#7a4e2d" />
+      <rect x="2" y="4" width="2" height="5" fill="#7a4e2d" />
+      <rect x="9" y="4" width="2" height="5" fill="#7a4e2d" />
+      <rect x="3" y="9" width="7" height="2" fill="#7a4e2d" />
+      <rect x="5" y="5" width="3" height="3" fill="#fbf3de" />
+      <rect x="10" y="11" width="2" height="2" fill="#2b2016" />
+      <rect x="12" y="13" width="2" height="1" fill="#2b2016" />
     </svg>
   );
 }

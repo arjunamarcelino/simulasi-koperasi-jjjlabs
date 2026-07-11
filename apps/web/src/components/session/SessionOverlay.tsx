@@ -3,7 +3,7 @@ import { gameStore, useGameStore } from "../../stores/game.store";
 import { sessionStore, useSessionStore } from "../../stores/session.store";
 import { sessionController } from "../../session/controller";
 import { SCENARIOS } from "../../scenarios/scenario.config";
-import type { ScenarioConfig } from "../../types/scenario";
+import type { EvidenceContent, EvidenceTone, ScenarioConfig } from "../../types/scenario";
 import type { ScenarioId } from "../../session/transport/contract";
 import { PixelPanel } from "../common/PixelPanel";
 import { GameButton } from "../common/GameButton";
@@ -40,7 +40,22 @@ export function SessionOverlay() {
   const hintLoading = useSessionStore((s) => s.hintLoading);
 
   // Briefing opens by default so the player sees the mission before talking.
+  // Evidence ("Periksa Bukti") is a second left panel; the two are mutually
+  // exclusive so they never overlap.
   const [showBriefing, setShowBriefing] = useState(true);
+  const [showEvidence, setShowEvidence] = useState(false);
+  const toggleBriefing = useCallback(() => {
+    setShowBriefing((v) => {
+      if (!v) setShowEvidence(false);
+      return !v;
+    });
+  }, []);
+  const toggleEvidence = useCallback(() => {
+    setShowEvidence((v) => {
+      if (!v) setShowBriefing(false);
+      return !v;
+    });
+  }, []);
 
   // Tear the session down + unfreeze the player. stop() here is immediate (mic
   // release); the unmount effect calls it again — idempotent via the gen token.
@@ -89,8 +104,7 @@ export function SessionOverlay() {
   if (!config || !scenarioId) return null; // unknown id — openSession pre-guards this
 
   const npcName = config.npcName ?? "Pelanggan";
-  const endLabel =
-    scenarioId === "tutorial-koperasi-konsumen" ? "Bayar & Daftar" : "Keputusan Akhir";
+  const endLabel = config.endActionLabel ?? "Keputusan Akhir";
   // Re-gate on connection so actions disable the instant a live pipe drops.
   const ready = agentJoined && connection !== "ended" && connection !== "error";
   // The end action is locked until the scenario goal is reached (for scenarios
@@ -227,8 +241,10 @@ export function SessionOverlay() {
         hintLoading={hintLoading}
         phase={phase}
         canEnd={canEnd}
+        hasEvidence={!!config.evidence}
         onHint={() => sessionController.requestHint()}
-        onToggleBriefing={() => setShowBriefing((v) => !v)}
+        onToggleBriefing={toggleBriefing}
+        onCheckEvidence={toggleEvidence}
         onAdvancePhase={() => sessionController.advancePhase()}
         onEnd={() => sessionController.endSession()}
       />
@@ -239,6 +255,10 @@ export function SessionOverlay() {
 
       {showBriefing && (
         <BriefingPanel config={config} onClose={() => setShowBriefing(false)} />
+      )}
+
+      {showEvidence && config.evidence && (
+        <EvidencePanel evidence={config.evidence} onClose={() => setShowEvidence(false)} />
       )}
 
       <div className="absolute inset-x-0 bottom-0 z-20 p-3">
@@ -291,6 +311,45 @@ function HintBanner({ text, onDismiss }: { text: string; onDismiss: () => void }
           💡
         </span>
         <p className="flex-1 font-body text-lg leading-snug">{text}</p>
+      </div>
+    </div>
+  );
+}
+
+const EVIDENCE_TONE: Record<EvidenceTone, string> = {
+  good: "text-forest",
+  bad: "text-orange",
+  neutral: "text-ink",
+};
+
+/**
+ * "Periksa Bukti" — the koperasi's static case file, toggled from the rail.
+ * Styled as a dossier (parchment + brown, tabular rows) so it never reads like
+ * the briefing "scroll". Content only; it does NOT reveal the force-majeure
+ * cause — the player must draw that out in conversation.
+ */
+function EvidencePanel({ evidence, onClose }: { evidence: EvidenceContent; onClose: () => void }) {
+  return (
+    <div className="pointer-events-auto absolute left-3 top-20 z-30 w-full max-w-sm">
+      <div className="pixel-panel relative bg-parchment text-left animate-[lineIn_140ms_ease-out]">
+        <CloseButton onClick={onClose} label="Tutup bukti" />
+        {evidence.eyebrow && (
+          <p className="font-display text-[8px] tracking-wide text-ink-soft">{evidence.eyebrow}</p>
+        )}
+        <h2 className="mb-2 flex items-center gap-1.5 pr-6 font-display text-[11px] text-brown">
+          <span aria-hidden="true">📁</span>
+          {evidence.title}
+        </h2>
+        <dl className="divide-y divide-ink-soft/20 border-t-2 border-border">
+          {evidence.items.map((item) => (
+            <div key={item.label} className="py-2">
+              <dt className="font-display text-[8px] tracking-wide text-ink-soft">{item.label}</dt>
+              <dd className={`font-body text-lg leading-snug ${EVIDENCE_TONE[item.tone ?? "neutral"]}`}>
+                {item.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
       </div>
     </div>
   );
