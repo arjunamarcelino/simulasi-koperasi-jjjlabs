@@ -20,7 +20,33 @@ export const SCENARIOS: readonly ScenarioConfig[] = [
     shortDescription:
       "Selidiki penyebab seorang anggota gagal membayar angsuran pinjaman dan tentukan penyelesaian yang tepat.",
     difficulty: "Menengah",
-    status: "COMING_SOON",
+    status: "AVAILABLE",
+    npcName: "Pak Joko",
+    blurb:
+      "Gali sebab tunggakan Pak Joko lewat percakapan dan bukti, lalu ambil keputusan penyelesaian yang tepat prosedur.",
+    mission:
+      "Selidiki alasan Pak Joko menunggak cicilan secara objektif, lalu tawarkan penyelesaian yang sesuai aturan (bukan menyita sepihak, bukan pula membebaskan utang tanpa dasar).",
+    steps: [
+      "Sapa Pak Joko dengan tenang; ia defensif dan cemas — jangan langsung menuduh.",
+      "Gali sebab tunggakan: tanyakan kondisi usahanya dan minta izin melihat bukti (buka 'Periksa Bukti').",
+      "Pastikan itikad & kondisinya sebelum menyimpulkan — alasan awal bisa terdengar mengada-ada.",
+      "Setelah paham, sampaikan penyelesaian lewat percakapan (mis. perpanjang tempo / ringankan cicilan), lalu tekan 'Keputusan Akhir'.",
+    ],
+    evidence: {
+      title: "Periksa Bukti",
+      eyebrow: "BERKAS PERKARA — Pak Joko",
+      items: [
+        { label: "Jumlah Pinjaman", value: "Rp 15.000.000" },
+        { label: "Sisa Angsuran", value: "Rp 6.200.000" },
+        { label: "Tunggakan", value: "2 bulan (Mei, Jun)", tone: "bad" },
+        { label: "Agunan", value: "Sertifikat sawah 0,4 ha" },
+        { label: "Riwayat Bayar", value: "Lancar 10 bulan pertama", tone: "good" },
+        {
+          label: "Catatan Petugas",
+          value: "Anggota menyebut usaha sedang sepi — perlu digali langsung.",
+        },
+      ],
+    },
   },
   {
     id: "keanggotaan-fiktif",
@@ -38,6 +64,7 @@ export const SCENARIOS: readonly ScenarioConfig[] = [
     difficulty: "Tutorial",
     status: "AVAILABLE",
     gatesEndOnGoal: true,
+    endActionLabel: "Bayar & Daftar",
     npcName: "Ibu Rumah Tangga",
     blurb:
       "Pelajari alur dasar: melayani calon anggota, menjelaskan manfaat, lalu menuntaskan pendaftaran & Simpanan Pokok.",

@@ -1,5 +1,24 @@
 export type ScenarioStatus = "AVAILABLE" | "COMING_SOON";
 
+/** Visual tone for an evidence row value. Defaults to neutral (plain ink). */
+export type EvidenceTone = "good" | "bad" | "neutral";
+
+/** One record row shown in the "Periksa Bukti" panel. Static FE content. */
+export type EvidenceItem = {
+  label: string;
+  value: string;
+  tone?: EvidenceTone;
+};
+
+/** Static case-file content backing the "Periksa Bukti" panel. */
+export type EvidenceContent = {
+  /** Panel title (e.g. "Periksa Bukti"). */
+  title: string;
+  /** Optional eyebrow/framing line (e.g. "BERKAS PERKARA — Pak Joko"). */
+  eyebrow?: string;
+  items: readonly EvidenceItem[];
+};
+
 /**
  * Display-level scenario contract for iteration-1 (foundation).
  * Gameplay fields (map keys, NPC ids, completion type, etc.) are added in a
@@ -25,4 +44,11 @@ export type ScenarioConfig = {
    * goal signal leave this false → end is available once the agent is ready.
    */
   gatesEndOnGoal?: boolean;
+  /** Label for the end-session rail button. Defaults to "Keputusan Akhir". */
+  endActionLabel?: string;
+  /**
+   * When present, the scenario exposes a "Periksa Bukti" panel with this static
+   * content. Presence is the capability — absent → no evidence button.
+   */
+  evidence?: EvidenceContent;
 };
