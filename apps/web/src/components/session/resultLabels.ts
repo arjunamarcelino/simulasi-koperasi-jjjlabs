@@ -13,6 +13,8 @@ export type Tone = "good" | "bad" | "warn" | "neutral";
 const STATE_KEY_LABELS: Record<string, string> = {
   State_Analisis_Masalah: "Analisis Masalah",
   State_Jalur_Remedi: "Jalur Remedi",
+  State_Verifikasi_Data: "Verifikasi Data",
+  State_Relasi_NPC: "Relasi Pengurus",
 };
 
 /** Label + tone for a state-classification VALUE. Partial by design — these are
@@ -23,6 +25,10 @@ const STATE_VALUE_LABELS: Record<string, { label: string; tone: Tone }> = {
   SALAH: { label: "Salah", tone: "bad" },
   MELANGGAR_PROSEDUR: { label: "Melanggar Prosedur", tone: "bad" },
   NAIF: { label: "Terlalu Naif", tone: "warn" },
+  DIBERSIHKAN: { label: "Data Dibersihkan", tone: "good" },
+  DIBIARKAN: { label: "Data Dibiarkan", tone: "bad" },
+  TERJAGA: { label: "Relasi Terjaga", tone: "good" },
+  RUSAK: { label: "Relasi Rusak", tone: "bad" },
 };
 
 /** Human label for a score KEY (e.g. "member_centric"). */
@@ -30,6 +36,7 @@ const SCORE_KEY_LABELS: Record<string, string> = {
   member_centric: "Member-Centric",
   compliance: "Kepatuhan",
   soft_skills: "Diplomasi",
+  integritas_data: "Integritas Data",
 };
 
 /** "State_Jalur_Remedi" / "member_centric" → "Jalur Remedi" / "member centric". */

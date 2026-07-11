@@ -54,7 +54,33 @@ export const SCENARIOS: readonly ScenarioConfig[] = [
     shortDescription:
       "Ungkap dugaan keanggotaan fiktif dan jaga integritas data anggota koperasi.",
     difficulty: "Lanjutan",
-    status: "COMING_SOON",
+    status: "AVAILABLE",
+    npcName: "Pak Bambang",
+    blurb:
+      "Audit rutin menemukan ~50 nama anggota tanpa NIK/simpanan. Konfrontasi Bendahara Senior secara bijak tanpa merusak hubungan di desa.",
+    mission:
+      "Verifikasi kejanggalan Daftar Anggota lewat 'Periksa Dokumen', lalu ajak Pak Bambang membereskan data secara kooperatif — bukan menuduh, bukan pula membiarkan demi sungkan.",
+    steps: [
+      "Sapa Pak Bambang dengan hormat; ia bendahara senior yang disegani — jangan langsung menuduh.",
+      "Buka 'Periksa Dokumen' untuk melihat kejanggalan: NIK kosong, nomor anggota ganda, tanpa Simpanan Pokok.",
+      "Sebut satu kejanggalan konkret dengan sopan, tanyakan latarnya, dan jelaskan bahwa data tak jelas mengurangi hak SHU anggota asli.",
+      "Ajak sepakati verifikasi ulang (mis. ke ketua RT/dusun), lalu tekan 'Keputusan Akhir'.",
+    ],
+    evidence: {
+      title: "Periksa Dokumen",
+      eyebrow: "BUKU DAFTAR ANGGOTA — cuplikan (5 dari ~50 entri janggal)",
+      items: [
+        { label: "Siti Aminah — KOP-0142", value: "Data lengkap, simpanan rutin", tone: "good" },
+        { label: "Budi Santoso — KOP-0155", value: "Data lengkap, simpanan rutin", tone: "good" },
+        { label: "(kosong) — KOP-0161", value: "Tanpa NIK / alamat", tone: "bad" },
+        { label: "R. Wibowo — KOP-0161", value: "Nomor anggota ganda", tone: "bad" },
+        { label: "(kosong) — KOP-0178", value: "Tanpa riwayat Simpanan Pokok", tone: "bad" },
+        {
+          label: "Catatan Pengawas",
+          value: "~50 nama baru tanpa NIK & tanpa Simpanan Wajib — perlu dicocokkan ulang.",
+        },
+      ],
+    },
   },
   {
     id: "tutorial-koperasi-konsumen",

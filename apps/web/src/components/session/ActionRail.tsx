@@ -6,7 +6,8 @@ import type { PhaseState } from "../../session/transport/contract";
  * AND keyboard focus to reveal its label (into pre-reserved space, so no layout
  * shift). Always-on: Petunjuk, Deskripsi, Akhiri. Maju-Fase appears only when the
  * scenario emits phases (RAT) — the tutorial never shows it. (Mic lives in the
- * dialogue box; Periksa-Dokumen is deferred until the backend supports it.)
+ * dialogue box.) The evidence button ("Periksa Bukti" / "Periksa Dokumen") shows
+ * only when the scenario declares evidence content.
  */
 type Props = {
   ready: boolean;
@@ -17,8 +18,10 @@ type Props = {
   canEnd: boolean;
   /** Drift at Level 1 — sustain attention on the end button (PRD §6). */
   nudgeEnd?: boolean;
-  /** When true, the scenario exposes a "Periksa Bukti" evidence panel. */
+  /** When true, the scenario exposes an evidence panel. */
   hasEvidence?: boolean;
+  /** Label for the evidence rail button (defaults to "Periksa Bukti"). */
+  evidenceLabel?: string;
   onHint: () => void;
   onToggleBriefing: () => void;
   onCheckEvidence?: () => void;
@@ -34,6 +37,7 @@ export const ActionRail = memo(function ActionRail({
   canEnd,
   nudgeEnd = false,
   hasEvidence = false,
+  evidenceLabel = "Periksa Bukti",
   onHint,
   onToggleBriefing,
   onCheckEvidence,
@@ -55,7 +59,7 @@ export const ActionRail = memo(function ActionRail({
       </RailButton>
       {hasEvidence && (
         <RailButton
-          label="Periksa Bukti"
+          label={evidenceLabel}
           tone="bg-cream text-forest"
           onClick={() => onCheckEvidence?.()}
           disabled={!ready}
