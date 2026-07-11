@@ -104,6 +104,9 @@ export function SessionOverlay() {
   if (!config || !scenarioId) return null; // unknown id — openSession pre-guards this
 
   const npcName = config.npcName ?? "Pelanggan";
+  // Multi-NPC (RAT) capability: two personas staged at once → 3-slot layout.
+  const npcNames = config.npcNames;
+  const multiNpc = !!npcNames && npcNames.length >= 2;
   const endLabel = config.endActionLabel ?? "Keputusan Akhir";
   // Re-gate on connection so actions disable the instant a live pipe drops.
   const ready = agentJoined && connection !== "ended" && connection !== "error";
@@ -214,7 +217,10 @@ export function SessionOverlay() {
   const line = visible.at(-1) ?? null;
   const systemNote =
     [...transcript].reverse().find((t) => t.speaker === "system")?.text ?? null;
-  const activeSpeaker: "player" | "npc" = line?.speaker === "player" ? "player" : "npc";
+  const playerActive = line?.speaker === "player";
+  // For the multi-NPC stage, the active persona is matched by the last line's
+  // `name` label; single-NPC scenarios just toggle the one npc slot.
+  const activeNpcName = !playerActive && line ? (line.name ?? null) : null;
 
   return (
     <div className="absolute inset-0 z-30 flex select-none flex-col overflow-hidden">
@@ -229,10 +235,26 @@ export function SessionOverlay() {
         onClose={close}
       />
 
-      {/* Actors, bottom-anchored above the dialogue box. */}
+      {/* Actors, bottom-anchored above the dialogue box. RAT stages two NPCs on
+          the left (each name-plated so the pair is distinguishable), player right. */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between px-8 pb-[200px] md:px-24">
-        <BigCharacter role="npc" active={activeSpeaker === "npc"} />
-        <BigCharacter role="player" active={activeSpeaker === "player"} />
+        {multiNpc && npcNames ? (
+          <div className="flex items-end gap-5 md:gap-10">
+            <NpcActor
+              role="npc"
+              name={npcNames[0] ?? ""}
+              active={activeNpcName === npcNames[0]}
+            />
+            <NpcActor
+              role="npc-alt"
+              name={npcNames[1] ?? ""}
+              active={activeNpcName === npcNames[1]}
+            />
+          </div>
+        ) : (
+          <BigCharacter role="npc" active={!playerActive} />
+        )}
+        <BigCharacter role="player" active={playerActive} />
       </div>
 
       <ActionRail
@@ -271,10 +293,41 @@ export function SessionOverlay() {
           ready={ready}
           frozen={false}
           micEnabled={micEnabled}
+          npcRole={multiNpc && npcNames && activeNpcName === npcNames[1] ? "npc-alt" : "npc"}
           onSend={send}
           onToggleMic={toggleMic}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * One name-plated NPC in the multi-NPC (RAT) stage. The plate above the sprite is
+ * the load-bearing cue for telling two same-side personas apart; it brightens for
+ * the active speaker while the sprite itself dims/steps back via BigCharacter.
+ */
+function NpcActor({
+  role,
+  name,
+  active,
+}: {
+  role: "npc" | "npc-alt";
+  name: string;
+  active: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span
+        className={`whitespace-nowrap border-2 px-1.5 py-0.5 font-display text-[8px] transition-opacity duration-200 ${
+          active
+            ? "border-border bg-mustard text-ink opacity-100"
+            : "border-border/50 bg-cream/80 text-ink-soft opacity-70"
+        }`}
+      >
+        {name}
+      </span>
+      <BigCharacter role={role} active={active} />
     </div>
   );
 }

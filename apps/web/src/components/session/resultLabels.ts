@@ -15,6 +15,8 @@ const STATE_KEY_LABELS: Record<string, string> = {
   State_Jalur_Remedi: "Jalur Remedi",
   State_Verifikasi_Data: "Verifikasi Data",
   State_Relasi_NPC: "Relasi Pengurus",
+  State_Proses_Rapat: "Proses Rapat",
+  State_Keabsahan_Keputusan: "Keabsahan Keputusan",
 };
 
 /** Label + tone for a state-classification VALUE. Partial by design — these are
@@ -29,6 +31,11 @@ const STATE_VALUE_LABELS: Record<string, { label: string; tone: Tone }> = {
   DIBIARKAN: { label: "Data Dibiarkan", tone: "bad" },
   TERJAGA: { label: "Relasi Terjaga", tone: "good" },
   RUSAK: { label: "Relasi Rusak", tone: "bad" },
+  TUNTAS: { label: "Rapat Tuntas", tone: "good" },
+  BUBAR: { label: "Rapat Bubar", tone: "bad" },
+  SAH_DEMOKRATIS: { label: "Sah & Demokratis", tone: "good" },
+  TUNDUK_TEKANAN_MODAL: { label: "Tunduk Tekanan Modal", tone: "bad" },
+  TIDAK_BERLAKU: { label: "Tidak Berlaku", tone: "warn" },
 };
 
 /** Human label for a score KEY (e.g. "member_centric"). */

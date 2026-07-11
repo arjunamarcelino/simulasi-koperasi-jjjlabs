@@ -19,12 +19,14 @@ import type {
 import { TUTORIAL_SCRIPT } from "./scripts/tutorial.script";
 import { KREDIT_MACET_SCRIPT } from "./scripts/kredit-macet.script";
 import { KEANGGOTAAN_FIKTIF_SCRIPT } from "./scripts/keanggotaan-fiktif.script";
+import { RAT_SCRIPT } from "./scripts/rat.script";
 
 // Scenarios plug in here as their scripts land.
 const SCRIPTS: Partial<Record<ScenarioId, ScenarioScript>> = {
   "tutorial-koperasi-konsumen": TUTORIAL_SCRIPT,
   "kredit-macet": KREDIT_MACET_SCRIPT,
   "keanggotaan-fiktif": KEANGGOTAAN_FIKTIF_SCRIPT,
+  "rapat-anggota-tahunan": RAT_SCRIPT,
 };
 
 const CONNECT_DELAY_MS = 400;

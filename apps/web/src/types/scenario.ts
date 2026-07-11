@@ -32,6 +32,13 @@ export type ScenarioConfig = {
   status: ScenarioStatus;
   /** Persona name of the scenario's main NPC (shown in the session status bar). */
   npcName?: string;
+  /**
+   * Persona names when a scenario stages MORE THAN ONE NPC on screen at once
+   * (RAT: Pak Darma & Ibu Sri). Presence + length ≥ 2 is the capability that
+   * switches the session overlay to its multi-character layout. Names must match
+   * the transcript `name` labels so the active speaker highlights correctly.
+   */
+  npcNames?: readonly string[];
   /** One-line briefing blurb shown in the in-session Deskripsi panel. */
   blurb?: string;
   /** One-line mission goal for the Deskripsi panel. */

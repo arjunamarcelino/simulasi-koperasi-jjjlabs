@@ -6,18 +6,22 @@ import { memo, type CSSProperties } from "react";
  * nearest-neighbour. No new art — the same sheets Phaser already loads.
  *
  * NPC = samurai_green (4 cols × 7 rows), player = villager (8 cols × 4 rows).
+ * "npc-alt" reuses the samurai sheet with a hue-rotate so a second on-screen NPC
+ * (RAT: Ibu Sri vs Pak Darma) reads as a distinct character without new art —
+ * hue-rotate shifts colour only, so scaled pixels stay crisp (unlike blur).
  * The active speaker stays full; the listener dims + steps back a hair. Emphasis
  * is opacity + translate only (never blur/filter, which muddies scaled pixels).
  */
-type Role = "player" | "npc";
+type Role = "player" | "npc" | "npc-alt";
 
-const SHEETS: Record<Role, { src: string; cols: number; rows: number }> = {
+const SHEETS: Record<Role, { src: string; cols: number; rows: number; hue?: number }> = {
   player: { src: "/assets/ninja/villager.png", cols: 8, rows: 4 },
   npc: { src: "/assets/ninja/samurai_green.png", cols: 4, rows: 7 },
+  "npc-alt": { src: "/assets/ninja/samurai_green.png", cols: 4, rows: 7, hue: 200 },
 };
 
 function cropStyle(role: Role, px: number): CSSProperties {
-  const { src, cols, rows } = SHEETS[role];
+  const { src, cols, rows, hue } = SHEETS[role];
   const scale = px / 16; // frames are 16px
   return {
     width: px,
@@ -27,6 +31,8 @@ function cropStyle(role: Role, px: number): CSSProperties {
     backgroundPosition: "0 0", // frame 0 = top-left
     backgroundRepeat: "no-repeat",
     imageRendering: "pixelated",
+    // Colour-only shift for a distinct second persona; keeps pixels crisp.
+    filter: hue ? `hue-rotate(${hue}deg)` : undefined,
   };
 }
 

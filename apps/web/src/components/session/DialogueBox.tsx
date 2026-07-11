@@ -16,6 +16,9 @@ type Props = {
   /** True once the session ended / disconnected — kills the streaming caret. */
   frozen: boolean;
   micEnabled: boolean;
+  /** Which NPC sprite the face avatar shows — lets a second persona (RAT: Ibu
+   *  Sri) use its hue-shifted sheet instead of the default green. */
+  npcRole?: "npc" | "npc-alt";
   onSend: (text: string) => void;
   onToggleMic: () => void;
 };
@@ -27,13 +30,14 @@ export const DialogueBox = memo(function DialogueBox({
   ready,
   frozen,
   micEnabled,
+  npcRole = "npc",
   onSend,
   onToggleMic,
 }: Props) {
   const [draft, setDraft] = useState("");
 
   const isPlayer = line?.speaker === "player";
-  const role: "player" | "npc" = isPlayer ? "player" : "npc";
+  const role: "player" | "npc" | "npc-alt" = isPlayer ? "player" : npcRole;
   const speakerLabel = isPlayer ? "Anda" : line?.name ?? npcName;
   const showCaret = !!line?.streaming && !frozen;
 

@@ -67,12 +67,12 @@ export const ActionRail = memo(function ActionRail({
           <EvidenceIcon />
         </RailButton>
       )}
-      {phase && (
+      {phase && phase.advanceActionLabel !== null && (
         <RailButton
-          label={phase.advanceActionLabel ?? "Maju Fase"}
+          label={phase.advanceActionLabel}
           tone="bg-forest text-cream"
           onClick={onAdvancePhase}
-          disabled={!ready || phase.advanceActionLabel === null}
+          disabled={!ready}
         >
           <ArrowIcon />
         </RailButton>
