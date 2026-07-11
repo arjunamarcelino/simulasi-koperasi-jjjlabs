@@ -20,6 +20,8 @@ export type SessionState = {
   connection: ConnectionState;
   /** True once the NPC agent is ready for RPC (gate mic/text/final on THIS). */
   agentJoined: boolean;
+  /** True once the scenario goal is reached (gate the end-session action). */
+  goalReached: boolean;
   transcript: TranscriptItem[];
   driftLevel: DriftLevel;
   phase: PhaseState | null;
@@ -33,6 +35,7 @@ export type SessionState = {
   setScenarioId: (id: ScenarioId) => void;
   setConnection: (state: ConnectionState) => void;
   setAgentJoined: (joined: boolean) => void;
+  setGoalReached: (reached: boolean) => void;
   upsertTranscript: (item: TranscriptItem) => void;
   setDriftLevel: (level: DriftLevel) => void;
   setPhase: (phase: PhaseState) => void;
@@ -47,6 +50,7 @@ export type SessionState = {
 const INITIAL = {
   connection: "idle",
   agentJoined: false,
+  goalReached: false,
   transcript: [],
   driftLevel: 0,
   phase: null,
@@ -68,6 +72,7 @@ export const sessionStore = createStore<SessionState>()(
     setScenarioId: (scenarioId) => set({ scenarioId }),
     setConnection: (connection) => set({ connection }),
     setAgentJoined: (agentJoined) => set({ agentJoined }),
+    setGoalReached: (goalReached) => set({ goalReached }),
 
     // Partial streaming arrives with the same id → replace-by-id, not append.
     upsertTranscript: (item) =>

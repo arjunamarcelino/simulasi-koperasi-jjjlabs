@@ -13,6 +13,8 @@ type Props = {
   endLabel: string;
   hintLoading: boolean;
   phase: PhaseState | null;
+  /** When false, the end button is locked (goal not yet reached). */
+  canEnd: boolean;
   onHint: () => void;
   onToggleBriefing: () => void;
   onAdvancePhase: () => void;
@@ -24,6 +26,7 @@ export const ActionRail = memo(function ActionRail({
   endLabel,
   hintLoading,
   phase,
+  canEnd,
   onHint,
   onToggleBriefing,
   onAdvancePhase,
@@ -52,8 +55,15 @@ export const ActionRail = memo(function ActionRail({
           <ArrowIcon />
         </RailButton>
       )}
-      <RailButton label={endLabel} tone="bg-mustard text-ink" onClick={onEnd} disabled={!ready}>
-        <EndIcon />
+      <RailButton
+        label={canEnd ? endLabel : `${endLabel} (selesaikan tujuan dulu)`}
+        tone="bg-mustard text-ink"
+        onClick={onEnd}
+        disabled={!ready || !canEnd}
+        // Draw the eye the moment it unlocks.
+        highlight={canEnd}
+      >
+        {canEnd ? <EndIcon /> : <LockIcon />}
       </RailButton>
     </div>
   );
@@ -64,12 +74,15 @@ function RailButton({
   tone,
   onClick,
   disabled = false,
+  highlight = false,
   children,
 }: {
   label: string;
   tone: string;
   onClick: () => void;
   disabled?: boolean;
+  /** Play a one-shot pop when the button (un)locks, to draw attention. */
+  highlight?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -79,7 +92,9 @@ function RailButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className={`group pixel-raise active:pixel-press flex h-12 items-center overflow-hidden border-3 border-border px-3 transition-transform duration-75 focus-visible:pixel-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${tone}`}
+      className={`group pixel-raise active:pixel-press flex h-12 items-center overflow-hidden border-3 border-border px-3 transition-transform duration-75 focus-visible:pixel-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${tone} ${
+        highlight && !disabled ? "animate-[nudgePop_450ms_ease-out]" : ""
+      }`}
     >
       <span aria-hidden="true" className="shrink-0">
         {children}
@@ -138,6 +153,17 @@ function EndIcon() {
       <rect x="6" y="9" width="2" height="2" fill="#fbf3de" />
       <rect x="8" y="7" width="2" height="2" fill="#fbf3de" />
       <rect x="10" y="5" width="2" height="2" fill="#fbf3de" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="26" height="26" shapeRendering="crispEdges" aria-hidden="true">
+      {/* shackle + body + keyhole — signals the action is locked until goal */}
+      <rect x="5" y="3" width="6" height="4" fill="none" stroke="#5a4a38" strokeWidth="1" />
+      <rect x="4" y="7" width="8" height="7" fill="#7a4e2d" stroke="#2b2016" strokeWidth="1" />
+      <rect x="7" y="9" width="2" height="3" fill="#2b2016" />
     </svg>
   );
 }

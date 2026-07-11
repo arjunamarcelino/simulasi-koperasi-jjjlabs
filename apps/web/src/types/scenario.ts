@@ -19,4 +19,10 @@ export type ScenarioConfig = {
   mission?: string;
   /** Concrete "what to do" steps, listed in the Deskripsi panel. */
   steps?: readonly string[];
+  /**
+   * When true, the end-session action stays disabled until the scenario's goal
+   * signal (session store `goalReached`) fires. Scenarios without a discrete
+   * goal signal leave this false → end is available once the agent is ready.
+   */
+  gatesEndOnGoal?: boolean;
 };

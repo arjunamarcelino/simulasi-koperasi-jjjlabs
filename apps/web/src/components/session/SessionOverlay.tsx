@@ -29,6 +29,7 @@ export function SessionOverlay() {
 
   const connection = useSessionStore((s) => s.connection);
   const agentJoined = useSessionStore((s) => s.agentJoined);
+  const goalReached = useSessionStore((s) => s.goalReached);
   const micEnabled = useSessionStore((s) => s.micEnabled);
   const ended = useSessionStore((s) => s.ended);
   const error = useSessionStore((s) => s.error);
@@ -92,6 +93,9 @@ export function SessionOverlay() {
     scenarioId === "tutorial-koperasi-konsumen" ? "Bayar & Daftar" : "Keputusan Akhir";
   // Re-gate on connection so actions disable the instant a live pipe drops.
   const ready = agentJoined && connection !== "ended" && connection !== "error";
+  // The end action is locked until the scenario goal is reached (for scenarios
+  // that declare a goal signal); others can end once ready.
+  const canEnd = !config.gatesEndOnGoal || goalReached;
 
   const start = () => {
     sessionController.startScenario(scenarioId as ScenarioId);
@@ -222,6 +226,7 @@ export function SessionOverlay() {
         endLabel={endLabel}
         hintLoading={hintLoading}
         phase={phase}
+        canEnd={canEnd}
         onHint={() => sessionController.requestHint()}
         onToggleBriefing={() => setShowBriefing((v) => !v)}
         onAdvancePhase={() => sessionController.advancePhase()}

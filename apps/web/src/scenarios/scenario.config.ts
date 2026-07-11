@@ -37,6 +37,7 @@ export const SCENARIOS: readonly ScenarioConfig[] = [
       "Pelajari pergerakan, interaksi NPC, dan transaksi koperasi sederhana.",
     difficulty: "Tutorial",
     status: "AVAILABLE",
+    gatesEndOnGoal: true,
     npcName: "Ibu Rumah Tangga",
     blurb:
       "Pelajari alur dasar: melayani calon anggota, menjelaskan manfaat, lalu menuntaskan pendaftaran & Simpanan Pokok.",

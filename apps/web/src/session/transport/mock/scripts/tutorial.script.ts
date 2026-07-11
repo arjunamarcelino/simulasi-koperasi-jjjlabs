@@ -29,6 +29,8 @@ export const TUTORIAL_SCRIPT: ScenarioScript = {
       text: "Baik, saya sudah paham. Saya mau mendaftar sekalian membayar Simpanan Pokoknya. Bagaimana caranya, Mas?",
     },
   ],
+  // The ibu agrees to register on her 4th turn (index 3) → goal reached.
+  goalAtTurn: 3,
   hints: [
     "Layani dulu pembelian minyak gorengnya, lalu tawari ibu menjadi anggota agar harganya lebih murah.",
     "Jelaskan bedanya: sebagai anggota harganya turun (mis. dari Rp65.000 jadi Rp58.000) dan tiap belanja dicatat untuk bonus SHU akhir tahun.",

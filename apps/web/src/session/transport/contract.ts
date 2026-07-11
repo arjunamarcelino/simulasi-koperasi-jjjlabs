@@ -89,6 +89,14 @@ export interface SessionTransport {
    */
   onAgentReady?(cb: () => void): Unsubscribe;
 
+  /**
+   * Fires once when the scenario's goal is reached (e.g. the tutorial customer
+   * agrees to register). Drives enabling the "end session" action. On LiveKit
+   * this is the `goal_reached` participant attribute; mock fires it at a scripted
+   * beat. Absent for scenarios without a discrete goal signal.
+   */
+  onGoalReached?(cb: () => void): Unsubscribe;
+
   /** Fires once when the session ends via any path. */
   onSessionEnded(cb: (ended: SessionEnded) => void): Unsubscribe;
 

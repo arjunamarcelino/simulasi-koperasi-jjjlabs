@@ -45,6 +45,13 @@ export type ScenarioScript = {
   drift?: DriftConfig;
   forceQuitLine?: ScriptTurn;
   rat?: RatConfig;
+  /**
+   * Index into `npcTurns` whose completion means the scenario goal is reached
+   * (mirrors the backend `goal_reached` signal). Once that turn finishes
+   * streaming, the transport fires onGoalReached. Omit for scenarios without a
+   * discrete goal beat.
+   */
+  goalAtTurn?: number;
   endings: {
     good: AuditorResult;
     bad?: AuditorResult;

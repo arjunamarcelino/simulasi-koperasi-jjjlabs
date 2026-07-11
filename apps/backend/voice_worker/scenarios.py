@@ -88,6 +88,10 @@ class Scenario:
     auditor: AuditorSpec | None = None  # None → hasil terskrip (tutorial)
     scripted_result: ScenarioResult | None = None
     rat: RatSpec | None = None  # None → single-NPC; ada → alur dua-NPC + fase
+    # Deskripsi function-tool "tujuan tercapai" (single-NPC saja). None → tak ada
+    # sinyal goal; agent tak diberi tool. Bila ada, agent memanggilnya saat tujuan
+    # terpenuhi → publish attribute `goal_reached` (FE membuka tombol akhiri).
+    goal_tool_prompt: str | None = None
 
 
 # --- Skenario 1 — Tutorial (tanpa drift/auditor) ---------------------------
@@ -123,6 +127,13 @@ TUTORIAL = Scenario(
             "kebutuhan harian, keuntungan menjadi anggota (diskon harga + SHU), "
             "serta prinsip keanggotaan yang bersifat terbuka bagi masyarakat."
         ),
+    ),
+    goal_tool_prompt=(
+        "Tandai bahwa tujuan tutorial tercapai. Panggil fungsi ini TEPAT SATU "
+        "KALI, hanya pada saat ibu (pelanggan) sudah jelas-jelas MENYATAKAN "
+        "SETUJU menjadi anggota koperasi — yakni setuju mendaftar sekaligus "
+        "membayar Simpanan Pokok. JANGAN panggil bila ia masih bertanya, ragu, "
+        "atau baru tertarik; hanya setelah persetujuan tegas."
     ),
 )
 

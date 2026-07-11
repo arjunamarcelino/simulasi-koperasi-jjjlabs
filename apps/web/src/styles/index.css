@@ -170,6 +170,19 @@
   }
 }
 
+/* One-shot pop when a rail action unlocks (e.g. end button after goal reached). */
+@keyframes nudgePop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 /* Respect reduced-motion: drop decorative animation + tween the state changes to
    near-instant (the opacity/emphasis deltas still convey meaning). */
 @media (prefers-reduced-motion: reduce) {

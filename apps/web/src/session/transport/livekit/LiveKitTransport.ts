@@ -59,6 +59,7 @@ export class LiveKitTransport implements SessionTransport {
   private readonly connection = new Emitter<WireConnectionState>();
   private readonly sessionEnded = new Emitter<SessionEnded>();
   private readonly agentReady = new Emitter<void>();
+  private readonly goalReached = new Emitter<void>();
 
   private room: Room | null = null;
   private agentIdentity: string | null = null;
@@ -132,6 +133,9 @@ export class LiveKitTransport implements SessionTransport {
           console.error("Gagal parse phase:", cause);
         }
       }
+      // Scenario goal reached (e.g. tutorial customer agreed to register) →
+      // unlock the end-session action.
+      if (changed["goal_reached"] === "1") this.goalReached.emit();
     });
     room.on(RoomEvent.DataReceived, (payload, _p, _kind, topic) => {
       if (topic === "session_ended") {
@@ -229,6 +233,10 @@ export class LiveKitTransport implements SessionTransport {
     return this.agentReady.subscribe(cb);
   }
 
+  onGoalReached(cb: () => void): Unsubscribe {
+    return this.goalReached.subscribe(cb);
+  }
+
   onSessionEnded(cb: (ended: SessionEnded) => void): Unsubscribe {
     return this.sessionEnded.subscribe(cb);
   }
@@ -264,6 +272,7 @@ export class LiveKitTransport implements SessionTransport {
     this.connection.clear();
     this.sessionEnded.clear();
     this.agentReady.clear();
+    this.goalReached.clear();
     // Explicitly release the mic before tearing down so the OS mic indicator
     // goes dark immediately on cancel/close (don't rely on disconnect alone).
     void room?.localParticipant.setMicrophoneEnabled(false);

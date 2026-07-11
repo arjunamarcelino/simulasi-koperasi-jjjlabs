@@ -74,6 +74,9 @@ export function createSessionController(): SessionController {
       if (next.onAgentReady) {
         unsubs.push(next.onAgentReady(() => getState().setAgentJoined(true)));
       }
+      if (next.onGoalReached) {
+        unsubs.push(next.onGoalReached(() => getState().setGoalReached(true)));
+      }
       if (next.onPhase) unsubs.push(next.onPhase(getState().setPhase));
 
       next

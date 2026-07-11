@@ -62,6 +62,8 @@ export class MockTransport implements SessionTransport {
   private readonly sessionEnded = new Emitter<SessionEnded>();
   private readonly phase = new Emitter<PhaseState>();
   private readonly agentReady = new Emitter<void>();
+  private readonly goalReached = new Emitter<void>();
+  private goalEmitted = false;
 
   private readonly timers = new Set<number>();
 
@@ -99,6 +101,7 @@ export class MockTransport implements SessionTransport {
     this.phaseIndex = 0;
     this.activePersonaKey = null;
     this.ratCursor.clear();
+    this.goalEmitted = false;
 
     this.connection.emit("connecting");
 
@@ -141,14 +144,25 @@ export class MockTransport implements SessionTransport {
 
     if (this.npcBusy) return;
 
-    const turn = this.script.rat
-      ? this.nextRatTurn(this.script.rat, trimmed)
-      : this.nextLinearTurn();
+    const isLinear = !this.script.rat;
+    const turn = isLinear
+      ? this.nextLinearTurn()
+      : this.nextRatTurn(this.script.rat!, trimmed);
     if (!turn) return;
+    // nextLinearTurn() advanced turnIndex; the turn just taken is turnIndex - 1.
+    const playedIndex = isLinear ? this.turnIndex - 1 : -1;
 
     const think = THINK_MIN_MS + Math.random() * Math.max(0, THINK_MAX_MS - THINK_MIN_MS);
     this.npcBusy = true;
-    this.later(() => this.streamTurn(turn), think);
+    this.later(() => this.streamTurn(turn, () => this.maybeEmitGoal(playedIndex)), think);
+  }
+
+  /** Fire the goal signal once, when the scripted goal turn finishes streaming. */
+  private maybeEmitGoal(turnIndex: number): void {
+    if (this.goalEmitted || this.script?.goalAtTurn === undefined) return;
+    if (turnIndex !== this.script.goalAtTurn) return;
+    this.goalEmitted = true;
+    this.goalReached.emit();
   }
 
   requestHint(): Promise<string> {
@@ -190,6 +204,10 @@ export class MockTransport implements SessionTransport {
 
   onAgentReady(cb: () => void): Unsubscribe {
     return this.agentReady.subscribe(cb);
+  }
+
+  onGoalReached(cb: () => void): Unsubscribe {
+    return this.goalReached.subscribe(cb);
   }
 
   onSessionEnded(cb: (ended: SessionEnded) => void): Unsubscribe {
@@ -250,6 +268,7 @@ export class MockTransport implements SessionTransport {
     this.sessionEnded.clear();
     this.phase.clear();
     this.agentReady.clear();
+    this.goalReached.clear();
     return Promise.resolve();
   }
 
