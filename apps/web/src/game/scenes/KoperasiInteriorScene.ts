@@ -3,7 +3,8 @@ import { SceneKey } from "./sceneKeys";
 import { PALETTE } from "../palette";
 import { LABEL_STYLE } from "../textStyles";
 import { Player } from "../entities/Player";
-import { VILLAGER } from "../entities/characters";
+import { NPC } from "../entities/NPC";
+import { VILLAGER, SAMURAI_GREEN } from "../entities/characters";
 import { KOPERASI_ROOMS, type RoomId } from "../../world/rooms.config";
 import { gameStore } from "../../stores/game.store";
 
@@ -71,7 +72,7 @@ const WALLS: readonly Rect[] = [
   [312, 224, 16, 128], // vertical wall between gudang & ruang rapat
 ];
 
-type StationKind = RoomId | "exit" | "mading" | "quiz" | "simpan-pinjam";
+type StationKind = RoomId | "exit" | "mading" | "quiz" | "simpan-pinjam" | "npc";
 
 type Station = {
   id: StationKind;
@@ -137,34 +138,36 @@ export class KoperasiInteriorScene extends Phaser.Scene {
   }
 
   override update(): void {
+    const state = gameStore.getState();
+    const overlayOpen = state.activeOverlay !== "NONE";
+    const suppressed = performance.now() < state.interactSuppressedUntil;
+
     // Top-right React door icon requested an exit — leave via the same path as E.
-    if (gameStore.getState().koperasiExitRequested) {
-      gameStore.getState().consumeKoperasiExit();
+    // Only honored when nothing is overlaid (and past the suppression window):
+    // otherwise we'd swap scenes with a session/overlay still mounted, bypassing
+    // its teardown. The exit button is itself hidden while an overlay is open.
+    if (!overlayOpen && !suppressed && state.koperasiExitRequested) {
+      state.consumeKoperasiExit();
       this.exitToVillage();
       return;
     }
 
-    const overlayOpen = gameStore.getState().activeOverlay !== "NONE";
-
-    // Freeze movement + drain E while a React overlay is open above the canvas
-    // (the DOM backdrop blocks pointer events but NOT the keyboard).
-    if (overlayOpen) {
-      this.player.sprite.setVelocity(0, 0);
-      this.prompt.setVisible(false);
-      Phaser.Input.Keyboard.JustDown(this.eKey); // consume so it can't leak out
-      return;
-    }
-
-    // Close-edge suppression: for a brief wall-clock window after an overlay
-    // closes (stamped by the store's clearSelection), keep the player frozen and
-    // keep draining E so a still-held / just-pressed key can't re-fire a station
-    // — immune to the frame-timing mismatch between Phaser rAF and React unmount.
-    if (performance.now() < gameStore.getState().interactSuppressedUntil) {
+    // Freeze window = an overlay is open OR we're in the brief post-close
+    // suppression. The Phaser keyboard reads GLOBALLY (ignores DOM focus), so a
+    // dialogue-field keystroke or a still-held movement key would leak into the
+    // player. Disabling the whole keyboard for the ENTIRE window is the only real
+    // guard; also drain E so it can't re-fire a station on the close frame.
+    if (overlayOpen || suppressed) {
+      this.setKeyboardEnabled(false);
       this.player.sprite.setVelocity(0, 0);
       this.prompt.setVisible(false);
       Phaser.Input.Keyboard.JustDown(this.eKey);
       return;
     }
+
+    // Unfreeze edge: first free frame. Re-enable + resetKeys so a key held during
+    // the overlay doesn't move the player the very frame control returns.
+    this.setKeyboardEnabled(true);
 
     this.player.update();
 
@@ -183,6 +186,18 @@ export class KoperasiInteriorScene extends Phaser.Scene {
       this.lastStationId = null;
       this.prompt.setVisible(false);
     }
+  }
+
+  /**
+   * Toggle the scene's global keyboard capture. Disabled while an overlay is up
+   * (so keystrokes can't leak into the frozen player); on re-enable, resetKeys()
+   * clears any stuck isDown/JustDown so no buffered key moves the player.
+   */
+  private setKeyboardEnabled(enabled: boolean): void {
+    const kb = this.input.keyboard;
+    if (!kb || kb.enabled === enabled) return;
+    kb.enabled = enabled;
+    if (enabled) kb.resetKeys();
   }
 
   /** Nearest in-range station, computed once per frame; ties resolve by index. */
@@ -327,6 +342,22 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     this.addPoi("mading", "Papan Info", 540, 246, () => gameStore.getState().openMadingInfo());
     this.addPoi("quiz", "Kuis Koperasi", 320, 150, () => gameStore.getState().openQuiz());
     this.addPoi("simpan-pinjam", "Simpan Pinjam", 165, 180);
+
+    // Customer NPC near the entrance/kasir — opens Scenario 1 (visual-novel voice
+    // session) as an overlay over the live map. A different sprite than the
+    // player (samurai_green vs the player's villager) so the two read distinctly.
+    // Placed clear of the mading/quiz POIs; tune with a screenshot if needed.
+    const npc = new NPC(this, 300, 96, SAMURAI_GREEN);
+    this.solids.push(npc.sprite); // collide (built before the player collider)
+    this.stations.push({
+      id: "npc",
+      label: "Pelanggan",
+      x: 300,
+      y: 96,
+      radiusSq: INTERACT_RADIUS * INTERACT_RADIUS,
+      locked: false,
+      fire: () => gameStore.getState().openSession("tutorial-koperasi-konsumen"),
+    });
   }
 
   private addPoi(

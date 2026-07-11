@@ -28,7 +28,9 @@ from livekit.agents import (
     ConversationItemAddedEvent,
     JobContext,
     ModelSettings,
+    RunContext,
     cli,
+    function_tool,
     llm,
 )
 from livekit.plugins import azure, openai, silero
@@ -241,10 +243,40 @@ async def entrypoint(ctx: JobContext) -> None:
     rat_state: RatState | None = (
         RatState(scenario.rat.phases[0].default_persona) if scenario.rat else None
     )
+
+    # Sinyal "tujuan tercapai" (single-NPC): agent memanggil function-tool saat
+    # tujuan skenario terpenuhi → publish attribute `goal_reached` (FE membuka
+    # tombol akhiri). Idempotent — publish sekali saja.
+    goal_reached_done = False
+
+    async def _mark_goal() -> None:
+        nonlocal goal_reached_done
+        if goal_reached_done:
+            return
+        goal_reached_done = True
+        await ctx.room.local_participant.set_attributes({"goal_reached": "1"})
+        logger.info("Tujuan skenario tercapai — publish goal_reached=1")
+
+    def _goal_tools() -> list[llm.FunctionTool]:
+        if scenario.rat is not None or not scenario.goal_tool_prompt:
+            return []
+
+        async def catat_kesepakatan(context: RunContext) -> str:  # noqa: ARG001
+            await _mark_goal()
+            return "Tercatat. Lanjutkan menutup percakapan secara natural."
+
+        return [
+            function_tool(
+                catat_kesepakatan,
+                name="catat_kesepakatan",
+                description=scenario.goal_tool_prompt,
+            )
+        ]
+
     agent: Agent = (
         RatAgent(scenario.rat, rat_state, on_speak=_publish_speaker)
         if scenario.rat and rat_state
-        else Agent(instructions=scenario.prompt)
+        else Agent(instructions=scenario.prompt, tools=_goal_tools())
     )
 
     def _spawn(coro) -> None:

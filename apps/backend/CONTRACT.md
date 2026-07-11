@@ -105,6 +105,15 @@ mengakhiri sesi otomatis di **drift Level 2**. FE tampilkan hasil lalu disconnec
 (Untuk jalur **manual**, hasil datang sebagai balasan RPC `end_session`, bukan
 data message ini.)
 
+### 4f. Participant attribute `goal_reached` — tujuan skenario tercapai
+`RoomEvent.ParticipantAttributesChanged` → `changed["goal_reached"]` = `"1"`.
+Dikirim SEKALI saat agent menilai tujuan skenario sudah tercapai — untuk tutorial,
+saat ibu (pelanggan) menyatakan **setuju** menjadi anggota (mendaftar + membayar
+Simpanan Pokok). Agent memicunya lewat function-tool internal `catat_kesepakatan`.
+FE memakainya untuk **membuka tombol akhir** ("Bayar & Daftar" / "Keputusan Akhir")
+yang sebelumnya di-disable. Hanya skenario yang mendefinisikan sinyal ini
+(saat ini: tutorial); skenario lain tak pernah mengirimnya.
+
 ---
 
 ## 5. Bentuk data
@@ -133,7 +142,7 @@ Tutorial: `stateClassification` & `scores` = `{}` (pesan selamat terskrip).
 
 | scenario_id | State (nilai mungkin) | score keys | catatan |
 |---|---|---|---|
-| `tutorial-koperasi-konsumen` | — | — | tanpa drift/auditor; sinyal selesai "Bayar & Daftar" (RPC `end_session`) |
+| `tutorial-koperasi-konsumen` | — | — | tanpa drift/auditor; attribute `goal_reached=1` saat ibu setuju (buka tombol) → sinyal selesai "Bayar & Daftar" (RPC `end_session`) |
 | `kredit-macet` | `State_Analisis_Masalah`{BENAR,SALAH}; `State_Jalur_Remedi`{SESUAI,MELANGGAR_PROSEDUR,NAIF} | member_centric, compliance, soft_skills | NPC Pak Joko |
 | `keanggotaan-fiktif` | `State_Verifikasi_Data`{DIBERSIHKAN,DIBIARKAN}; `State_Relasi_NPC`{TERJAGA,RUSAK} | integritas_data, compliance, soft_skills | NPC Pak Bambang. "Periksa Dokumen" = fitur FE statis |
 | `rapat-anggota-tahunan` | `State_Proses_Rapat`{TUNTAS,BUBAR}; `State_Keabsahan_Keputusan`{SAH_DEMOKRATIS,TUNDUK_TEKANAN_MODAL,TIDAK_BERLAKU} | kepemimpinan, compliance, soft_skills | Dua NPC: Pak Darma & Ibu Sri. Fase 1→2→3 |

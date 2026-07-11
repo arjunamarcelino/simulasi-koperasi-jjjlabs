@@ -4,8 +4,8 @@ import { gameStore, useGameStore } from "../stores/game.store";
 import { SCENARIOS } from "../scenarios/scenario.config";
 
 /**
- * RAT scenario stub. The full scenario (map, dialogue, decision, evaluation)
- * arrives in a later iteration; for now it confirms the routing from the hub.
+ * Stub view for scenarios whose mechanics aren't built yet. (The tutorial voice
+ * session now runs as an in-hub overlay — see SessionOverlay — not this view.)
  */
 export function GamePage() {
   const scenarioId = useGameStore((s) => s.selectedScenarioId);

@@ -142,6 +142,62 @@
     8px 8px;
 }
 
+/* Blinking caret for streaming transcript text. */
+@keyframes caretBlink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.streaming-caret {
+  animation: caretBlink 1s steps(1) infinite;
+}
+
+/* Entrance for a NEW visual-novel line / name-plate (keyed by line id so it only
+   fires on a fresh line, not on every streamed token). Small upward snap. */
+@keyframes lineIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* One-shot pop when a rail action unlocks (e.g. end button after goal reached). */
+@keyframes nudgePop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Respect reduced-motion: drop decorative animation + tween the state changes to
+   near-instant (the opacity/emphasis deltas still convey meaning). */
+@media (prefers-reduced-motion: reduce) {
+  .streaming-caret {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
 /* Base page defaults */
 html,
 body,
