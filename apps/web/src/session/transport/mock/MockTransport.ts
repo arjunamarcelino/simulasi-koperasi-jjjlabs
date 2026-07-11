@@ -17,10 +17,12 @@ import type {
   ScriptTurn,
 } from "./scripts/script.types";
 import { TUTORIAL_SCRIPT } from "./scripts/tutorial.script";
+import { KREDIT_MACET_SCRIPT } from "./scripts/kredit-macet.script";
 
-// Only the tutorial is wired for now; the other scenarios plug in here later.
+// Scenarios plug in here as their scripts land.
 const SCRIPTS: Partial<Record<ScenarioId, ScenarioScript>> = {
   "tutorial-koperasi-konsumen": TUTORIAL_SCRIPT,
+  "kredit-macet": KREDIT_MACET_SCRIPT,
 };
 
 const CONNECT_DELAY_MS = 400;
