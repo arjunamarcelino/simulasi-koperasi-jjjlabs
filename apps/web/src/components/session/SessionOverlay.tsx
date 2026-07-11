@@ -243,6 +243,7 @@ export function SessionOverlay() {
         canEnd={canEnd}
         nudgeEnd={driftLevel >= 1 && canEnd}
         hasEvidence={!!config.evidence}
+        evidenceLabel={config.evidence?.title ?? "Periksa Bukti"}
         onHint={() => sessionController.requestHint()}
         onToggleBriefing={toggleBriefing}
         onCheckEvidence={toggleEvidence}

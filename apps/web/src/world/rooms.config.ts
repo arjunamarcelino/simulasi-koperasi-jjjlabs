@@ -1,4 +1,5 @@
 import type { ScenarioStatus } from "../types/scenario";
+import type { ScenarioId } from "../session/transport/contract";
 
 /** The interior sections. Union is the single source of truth for room ids. */
 export type RoomId = "marketplace" | "kasir" | "gudang" | "ruang-meeting";
@@ -42,3 +43,24 @@ export const KOPERASI_ROOMS: readonly Room[] = [
     scenarioId: "rapat-anggota-tahunan",
   },
 ];
+
+/**
+ * How a chosen scenario is launched from the room's picker:
+ * - "session" → in-map SESSION overlay (playable single-NPC, e.g. Pak Bambang).
+ * - "game"    → full GAME view (RAT — still a stub until its mechanics land).
+ */
+export type ScenarioLaunch = "session" | "game";
+export type RoomScenarioChoice = { scenarioId: ScenarioId; launch: ScenarioLaunch };
+
+/**
+ * Rooms that offer a CHOICE of scenarios render a picker instead of the single
+ * confirm. Keyed by room id; only Ruang Rapat needs it today (RAT vs Keanggotaan
+ * Fiktif). Kept local so the pure `Room` shape (and every other room) is untouched.
+ * A card's enabled/locked state is read from the scenario's own `status`.
+ */
+export const ROOM_SCENARIO_CHOICES: Record<string, readonly RoomScenarioChoice[]> = {
+  "ruang-meeting": [
+    { scenarioId: "rapat-anggota-tahunan", launch: "game" },
+    { scenarioId: "keanggotaan-fiktif", launch: "session" },
+  ],
+};

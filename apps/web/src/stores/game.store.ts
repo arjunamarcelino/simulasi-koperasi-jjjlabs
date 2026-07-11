@@ -147,6 +147,14 @@ export type GameState = {
    */
   openSession: (scenarioId: string) => void;
   /**
+   * Launch a playable session scenario from a room's scenario picker. Transitions
+   * CONFIRM_ENTER → SESSION atomically in one set() so a bubbled backdrop
+   * clearSelection can't interleave, and so it isn't blocked by openSession's
+   * NONE-guard / E-suppression window (both meant for the scene's E key, not a
+   * deliberate in-overlay click).
+   */
+  enterSessionScenario: (scenarioId: string) => void;
+  /**
    * Complete a mission (one-time). Live-reads completedMissionIds as the gate;
    * real-life missions require a matching code. Banks the reward + persists in a
    * single flat transaction. Returns the reward on success, else a failure reason.
@@ -309,6 +317,14 @@ export const gameStore = createStore<GameState>()(
         return;
       }
       set({ activeOverlay: "SESSION", selectedScenarioId: scenarioId });
+    },
+
+    enterSessionScenario: (scenarioId) => {
+      if (!SCENARIOS.some((s) => s.id === scenarioId)) {
+        console.warn(`enterSessionScenario: skenario tidak dikenal: ${scenarioId}`);
+        return;
+      }
+      set({ activeOverlay: "SESSION", selectedScenarioId: scenarioId, selectedRoomId: null });
     },
 
     completeMission: (missionId, code) => {
