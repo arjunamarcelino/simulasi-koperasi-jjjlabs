@@ -7,17 +7,21 @@ dievaluasi.
 
 Skenario unggulan: **Rapat Anggota Tahunan (RAT)**.
 
-> Monorepo. Fokus pengembangan saat ini: **frontend/interface** di `apps/web`.
+> Monorepo. Aplikasi utama ada di `apps/web`; pipeline suara & AI ada di `apps/backend`.
 
 ## Struktur Monorepo
 
 ```
 simulasi-koperasi-jjjlabs/
 ├── apps/
-│   └── web/          # Frontend (Vite + React + TS + Phaser 3 + Zustand + Tailwind v4)
-├── packages/         # (kode bersama, menyusul)
+│   ├── web/            # Frontend game utama (Vite + React + TS + Phaser 3 + Zustand + Tailwind v4)
+│   ├── web-sementara/  # FE validasi pipeline voice (React + Vite + @livekit/components-react)
+│   ├── backend/        # FastAPI (mint token) + voice worker (livekit-agents) + AI Auditor
+│   ├── backent-prd.md  # PRD backend & AI pipeline
+│   └── scenarios.md    # Definisi skenario
+├── docs/               # Brainstorm & rencana implementasi
 ├── pnpm-workspace.yaml
-└── package.json      # root workspace
+└── package.json        # root workspace
 ```
 
 ## Prasyarat
@@ -37,6 +41,38 @@ pnpm lint             # ESLint
 
 Semua perintah root mendelegasikan ke `apps/web` via `pnpm --filter web`.
 
+Mode default **`mock`** berjalan penuh tanpa backend (percakapan terskrip, offline)
+— cukup `pnpm install && pnpm dev`, langsung bisa dimainkan. Untuk pipeline suara
+nyata, salin `apps/web/.env.example` → `.env.local`, set `VITE_TRANSPORT=livekit`
++ `VITE_TOKEN_ENDPOINT`, lalu jalankan backend (lihat `apps/backend/README.md`).
+
+## Arsitektur
+
+Tiga lapis utama:
+
+1. **Dunia game (Phaser 3)** — tilemap 2D, pergerakan pemain, NPC, dan deteksi
+   kedekatan (mendekati stasiun/NPC lalu tekan `E`) di `apps/web/src/game`.
+2. **Antarmuka (React + Zustand)** — overlay UI di atas kanvas (menu, dialog,
+   panel skenario, hasil). Phaser dan React tidak saling impor; keduanya
+   berkomunikasi lewat satu jembatan Zustand (`stores/game.store.ts`,
+   `stores/session.store.ts`).
+3. **Sesi suara (transport seam)** — inti percakapan NPC berjalan di balik satu
+   antarmuka `SessionTransport` (`session/transport/contract.ts`) dengan dua
+   implementasi: **mock** (default, offline, terskrip) dan **livekit** (backend
+   nyata: STT/TTS + LLM + AI Auditor). Dipilih lewat `VITE_TRANSPORT`. UI ditulis
+   hanya terhadap kontrak — tak pernah mengimpor transport konkret.
+
+**Skenario** adalah data: profil di `scenarios/scenario.config.ts` (briefing, NPC,
+dokumen bukti) + skrip percakapan mock di `session/transport/mock/scripts/`.
+Menambah skenario = menambah data, bukan menyentuh mesin. Evaluasi akhir
+(klasifikasi state + skor + narasi) dihasilkan AI Auditor di backend saat mode
+livekit; mock memakai ending terskrip dengan kunci state yang sama
+(`components/session/resultLabels.ts`).
+
+Backend (`apps/backend`) memisahkan `api/` (FastAPI, mint token LiveKit) dari
+`voice_worker/` (livekit-agents: persona NPC, observer drift, Auditor). Kontrak
+FE↔BE terinci di `apps/backend/CONTRACT.md`.
+
 ## Library & Teknologi
 
 Frontend (`apps/web`):
@@ -46,7 +82,14 @@ Frontend (`apps/web`):
 - **Zustand 5** — state bridge tunggal antara React ↔ Phaser.
 - **Vite 7** — bundler & dev server.
 - **Tailwind CSS v4** (`@tailwindcss/vite`) — styling UI.
+- **livekit-client** (`^2.20`) — transport realtime (voice/data) saat mode `livekit`.
 - **TypeScript 5.6** (strict) + **ESLint 9** / **typescript-eslint** — kualitas kode.
+
+Backend (`apps/backend`, opsional untuk mode `livekit`):
+
+- **Python + FastAPI** — server token (`api/server.py`), dikelola dengan **uv**.
+- **livekit-agents** — voice worker (persona NPC, observer drift, AI Auditor).
+- **Azure Speech** (STT/TTS) + **Azure OpenAI** (LLM dialog & Auditor).
 
 Tooling dev:
 
@@ -80,5 +123,13 @@ diizinkan sepanjang menyertakan sumber:
 
 ## Status
 
-Iterasi-1 (fondasi): monorepo + boot ke **Main Menu**. Belum ada gameplay.
+Dunia koperasi bisa dijelajahi (Main Menu → peta interior), dengan sesi
+percakapan bernilai skor pada mode `mock`. Skenario yang tersedia:
+
+- **Tutorial — Koperasi Konsumen** (single-NPC, alur dasar tanpa skor).
+- **Kredit Macet** (single-NPC, investigasi + penyelesaian sesuai prosedur).
+- **Keanggotaan Fiktif** (single-NPC, audit data + diplomasi).
+- **Rapat Anggota Tahunan (RAT)** (multi-NPC: Pak Darma & Ibu Sri, 3 fase +
+  ketok palu, jalur TUNTAS/BUBAR).
+
 Lihat `apps/web/README.md` untuk detail arsitektur frontend.
