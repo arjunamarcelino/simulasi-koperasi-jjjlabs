@@ -158,13 +158,11 @@ export class LiveKitTransport implements SessionTransport {
     const existing = room.remoteParticipants.values().next().value;
     if (existing) this.markAgentReady(existing.identity);
 
-    // Mic is the primary path but NOT required — text is the fallback. A mic
-    // failure (permission denied / no device) must not tear down the session.
-    try {
-      await room.localParticipant.setMicrophoneEnabled(true);
-    } catch (cause: unknown) {
-      console.warn("Mic tidak aktif, lanjut lewat teks:", cause);
-    }
+    // Start MUTED — the mic button is the single source of truth (store starts
+    // micEnabled=false). Auto-enabling here would desync the UI (button shows
+    // "off" while the mic is live) and make the mute toggle feel broken; instead
+    // the first tap requests permission + unmutes from a real user gesture. Text
+    // is always the fallback.
     if (this.aborted) return;
     if (!room.canPlaybackAudio) {
       try {

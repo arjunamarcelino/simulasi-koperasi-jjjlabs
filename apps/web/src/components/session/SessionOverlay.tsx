@@ -38,7 +38,8 @@ export function SessionOverlay() {
   const hint = useSessionStore((s) => s.hint);
   const hintLoading = useSessionStore((s) => s.hintLoading);
 
-  const [showBriefing, setShowBriefing] = useState(false);
+  // Briefing opens by default so the player sees the mission before talking.
+  const [showBriefing, setShowBriefing] = useState(true);
 
   // Tear the session down + unfreeze the player. stop() here is immediate (mic
   // release); the unmount effect calls it again — idempotent via the gen token.
@@ -260,23 +261,31 @@ function Scrim({ children }: { children: ReactNode }) {
   );
 }
 
+/** Prominent pixel close button (matches the mading boards' ✕). */
+function CloseButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="pixel-raise active:pixel-press absolute -right-2 -top-2 z-10 flex h-8 w-8 select-none items-center justify-center bg-mustard font-display text-[11px] text-ink focus-visible:pixel-focus focus-visible:outline-none"
+    >
+      ✕
+    </button>
+  );
+}
+
 /** In-session hint, top-center. Pixel banner, dismissible. */
 function HintBanner({ text, onDismiss }: { text: string; onDismiss: () => void }) {
   return (
     <div className="pointer-events-auto absolute left-1/2 top-20 z-30 w-full max-w-md -translate-x-1/2 px-3">
-      <div className="pixel-panel flex items-start gap-2 bg-mustard p-3 text-ink animate-[lineIn_140ms_ease-out]">
+      <div className="pixel-panel relative flex items-start gap-2 bg-mustard p-3 pr-4 text-ink animate-[lineIn_140ms_ease-out]">
+        <CloseButton onClick={onDismiss} label="Tutup petunjuk" />
         <span aria-hidden="true" className="font-display text-[10px]">
           💡
         </span>
         <p className="flex-1 font-body text-lg leading-snug">{text}</p>
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label="Tutup petunjuk"
-          className="font-display text-[10px] text-ink hover:text-brown-2"
-        >
-          ✕
-        </button>
       </div>
     </div>
   );
@@ -286,17 +295,10 @@ function HintBanner({ text, onDismiss }: { text: string; onDismiss: () => void }
 function BriefingPanel({ config, onClose }: { config: ScenarioConfig; onClose: () => void }) {
   return (
     <div className="pointer-events-auto absolute left-3 top-20 z-30 w-full max-w-sm">
-      <PixelPanel className="text-left animate-[lineIn_140ms_ease-out]">
-        <div className="mb-2 flex items-center justify-between gap-2">
+      <PixelPanel className="relative text-left animate-[lineIn_140ms_ease-out]">
+        <CloseButton onClick={onClose} label="Tutup deskripsi" />
+        <div className="mb-2 flex items-center justify-between gap-2 pr-6">
           <h2 className="font-display text-[11px] text-forest">{config.title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Tutup deskripsi"
-            className="font-display text-[10px] text-ink hover:text-brown-2"
-          >
-            ✕
-          </button>
         </div>
         {config.mission && (
           <p className="mb-3 font-body text-lg leading-snug text-ink">{config.mission}</p>
