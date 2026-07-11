@@ -10,6 +10,9 @@ importers:
 
   apps/web:
     dependencies:
+      livekit-client:
+        specifier: ^2.20.1
+        version: 2.20.1(@types/dom-mediacapture-record@1.0.22)
       phaser:
         specifier: ^3.90.0
         version: 3.90.0
