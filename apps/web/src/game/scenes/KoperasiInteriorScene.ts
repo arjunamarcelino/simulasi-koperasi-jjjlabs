@@ -3,6 +3,7 @@ import { SceneKey } from "./sceneKeys";
 import { PALETTE } from "../palette";
 import { LABEL_STYLE } from "../textStyles";
 import { Player } from "../entities/Player";
+import { NPC } from "../entities/NPC";
 import { VILLAGER } from "../entities/characters";
 import { KOPERASI_ROOMS, type RoomId } from "../../world/rooms.config";
 import { gameStore } from "../../stores/game.store";
@@ -71,7 +72,7 @@ const WALLS: readonly Rect[] = [
   [312, 224, 16, 128], // vertical wall between gudang & ruang rapat
 ];
 
-type StationKind = RoomId | "exit" | "mading" | "quiz" | "simpan-pinjam";
+type StationKind = RoomId | "exit" | "mading" | "quiz" | "simpan-pinjam" | "npc";
 
 type Station = {
   id: StationKind;
@@ -327,6 +328,20 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     this.addPoi("mading", "Papan Info", 540, 246, () => gameStore.getState().openMadingInfo());
     this.addPoi("quiz", "Kuis Koperasi", 320, 150, () => gameStore.getState().openQuiz());
     this.addPoi("simpan-pinjam", "Simpan Pinjam", 165, 180);
+
+    // Customer NPC near the entrance/kasir — starts Scenario 1 (voice tutorial).
+    // Placed clear of the mading/quiz POIs; tune with a screenshot if needed.
+    const npc = new NPC(this, 300, 96, VILLAGER);
+    this.solids.push(npc.sprite); // collide (built before the player collider)
+    this.stations.push({
+      id: "npc",
+      label: "Pelanggan",
+      x: 300,
+      y: 96,
+      radiusSq: INTERACT_RADIUS * INTERACT_RADIUS,
+      locked: false,
+      fire: () => gameStore.getState().enterScenario("tutorial-koperasi-konsumen"),
+    });
   }
 
   private addPoi(

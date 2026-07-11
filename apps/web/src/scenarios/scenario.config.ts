@@ -36,6 +36,6 @@ export const SCENARIOS: readonly ScenarioConfig[] = [
     shortDescription:
       "Pelajari pergerakan, interaksi NPC, dan transaksi koperasi sederhana.",
     difficulty: "Tutorial",
-    status: "COMING_SOON",
+    status: "AVAILABLE",
   },
 ];
