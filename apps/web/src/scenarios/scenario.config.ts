@@ -13,6 +13,39 @@ export const SCENARIOS: readonly ScenarioConfig[] = [
       "Pimpin jalannya RAT: kelola agenda, dengarkan anggota, dan ambil keputusan yang menjaga amanah koperasi.",
     difficulty: "Lanjutan",
     status: "AVAILABLE",
+    npcName: "Pak Darma & Ibu Sri",
+    npcNames: ["Pak Darma", "Ibu Sri"],
+    endActionLabel: "Ketok Palu",
+    blurb:
+      "Pimpin RAT di balai desa: pastikan kuorum, hadapi tekanan Pak Darma (pemodal terbesar), dan lindungi hak suara Ibu Sri lewat aturan yang sah.",
+    mission:
+      "Buka rapat sesuai kuorum, kelola interupsi Pak Darma tanpa konflik pribadi, lalu arahkan perbedaan pendapat ke pemungutan suara sesuai Tata Tertib — bukan tunduk pada modal, bukan pula memancing forum bubar.",
+    steps: [
+      "Buka 'Periksa Dokumen' untuk memastikan kuorum (3 dari 4 hadir), lalu tekan 'Ketok Palu: Buka Rapat'.",
+      "Bacakan rencana kerja beras lokal. Pak Darma akan menginterupsi & mengancam menarik modal — tetap tenang, jangan menyerang pribadi.",
+      "Tegakkan Tata Tertib: satu orang satu suara. Ajak forum menyelesaikan perbedaan lewat pemungutan suara (voting).",
+      "Setelah keputusan diambil secara demokratis, tekan 'Ketok Palu' untuk menutup rapat.",
+    ],
+    evidence: {
+      title: "Periksa Dokumen",
+      eyebrow: "DOKUMEN RAPAT — Daftar Hadir & Tata Tertib",
+      items: [
+        { label: "Total Anggota", value: "4 orang" },
+        { label: "Hadir", value: "3 orang → kuorum 75% (>50%)", tone: "good" },
+        { label: "Kuorum Sah?", value: "Ya — rapat boleh dibuka", tone: "good" },
+        { label: "Agenda RAT", value: "Pengesahan LPJ, rencana kerja, & pembagian SHU" },
+        {
+          label: "Tata Tertib — Hak Suara",
+          value: "Satu Orang = Satu Suara, berapa pun besar simpanan",
+          tone: "good",
+        },
+        {
+          label: "Balas Jasa Modal",
+          value: "Dibatasi hukum (Pasal 5(1) huruf d) — modal besar tak membeli suara",
+          tone: "good",
+        },
+      ],
+    },
   },
   {
     id: "kredit-macet",

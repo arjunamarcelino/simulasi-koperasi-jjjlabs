@@ -46,8 +46,8 @@ export const KOPERASI_ROOMS: readonly Room[] = [
 
 /**
  * How a chosen scenario is launched from the room's picker:
- * - "session" → in-map SESSION overlay (playable single-NPC, e.g. Pak Bambang).
- * - "game"    → full GAME view (RAT — still a stub until its mechanics land).
+ * - "session" → in-map SESSION overlay (the playable path — RAT & Pak Bambang).
+ * - "game"    → full GAME view stub (kept for scenarios without session mechanics).
  */
 export type ScenarioLaunch = "session" | "game";
 export type RoomScenarioChoice = { scenarioId: ScenarioId; launch: ScenarioLaunch };
@@ -60,7 +60,7 @@ export type RoomScenarioChoice = { scenarioId: ScenarioId; launch: ScenarioLaunc
  */
 export const ROOM_SCENARIO_CHOICES: Record<string, readonly RoomScenarioChoice[]> = {
   "ruang-meeting": [
-    { scenarioId: "rapat-anggota-tahunan", launch: "game" },
+    { scenarioId: "rapat-anggota-tahunan", launch: "session" },
     { scenarioId: "keanggotaan-fiktif", launch: "session" },
   ],
 };
