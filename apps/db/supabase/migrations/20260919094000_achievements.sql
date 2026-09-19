@@ -7,7 +7,7 @@ create table public.badge_definition (
   code text primary key,
   title text not null,
   requirement text,
-  icon text not null check (icon in ('medal','book','ticket','compass','coin','flag','trophy','piggy','check')),
+  icon text not null,                           -- cosmetic; FE owns the icon set (no closed-set CHECK, cf. scenario.difficulty)
   criteria jsonb,                               -- mirrors BadgeCriteria; null = teaser
   sort_order int not null default 0
 );
