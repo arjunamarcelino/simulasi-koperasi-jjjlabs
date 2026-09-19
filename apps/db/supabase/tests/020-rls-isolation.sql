@@ -1,7 +1,7 @@
 -- RLS isolation: owners see their own rows, non-owners see nothing, writes can't
 -- forge another owner, catalogs are public-read-only, and secret codes stay hidden.
 begin;
-select plan(11);
+select plan(12);
 
 select tests.create_user('u1');
 select tests.create_user('u2');
@@ -31,6 +31,12 @@ select throws_ok(
 select throws_ok(
   $$ insert into public.user_badge (user_id, badge_id) values (tests.get_uid('u2'), 'penjelajah') $$,
   '42501', null, 'cannot insert a badge owned by another user');
+
+-- Negative: cannot insert an already-finalized session (finalize only via the RPC).
+select throws_ok(
+  $$ insert into public.sessions (user_id, scenario_id, ended_at, trigger, ending_type)
+     values (tests.get_uid('u1'), 'kredit-macet', now(), 'manual', 'good') $$,
+  '42501', null, 'cannot insert a pre-finalized session (finalize is RPC-only)');
 
 -- Catalogs are public-read for anonymous guests.
 select tests.login_as_anon();

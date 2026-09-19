@@ -70,6 +70,16 @@ create policy "scenario_definition: public read" on public.scenario_definition
 
 create policy "sessions: owner select" on public.sessions
   for select to authenticated using ((select auth.uid()) = user_id);
-create policy "sessions: owner insert" on public.sessions
-  for insert to authenticated with check ((select auth.uid()) = user_id);
--- No client UPDATE policy: finalize only via record_session_result.
+-- Clients may only OPEN a session (all result columns must be empty); finalization
+-- goes exclusively through record_session_result. This keeps a client from forging
+-- an already-scored session and bypassing the RPC. No client UPDATE policy either.
+create policy "sessions: owner insert open" on public.sessions
+  for insert to authenticated with check (
+    (select auth.uid()) = user_id
+    and ended_at is null
+    and trigger is null
+    and ending_type is null
+    and scores_json = '{}'::jsonb
+    and state_json = '{}'::jsonb
+    and narrative_feedback is null
+  );
