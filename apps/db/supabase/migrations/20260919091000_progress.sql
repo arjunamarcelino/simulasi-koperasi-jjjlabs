@@ -6,11 +6,11 @@
 create or replace function public.add_rewards(p_xp int, p_point int)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
-  insert into public.user_progress (user_id, xp, point)
+  insert into public.user_progress as up (user_id, xp, point)
   values ((select auth.uid()), greatest(p_xp, 0), greatest(p_point, 0))
   on conflict (user_id) do update
-    set xp = user_progress.xp + excluded.xp,
-        point = user_progress.point + excluded.point;
+    set xp = up.xp + excluded.xp,
+        point = up.point + excluded.point;
 end;
 $$;
 revoke execute on function public.add_rewards(int, int) from public, anon, authenticated;

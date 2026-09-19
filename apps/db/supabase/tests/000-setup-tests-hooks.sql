@@ -22,13 +22,13 @@ declare
 begin
   insert into auth.users (
     instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-    raw_app_meta_data, raw_user_meta_data, created_at, updated_at, is_anonymous
+    raw_app_meta_data, raw_user_meta_data, created_at, updated_at
   ) values (
     '00000000-0000-0000-0000-000000000000', v_uid, 'authenticated', 'authenticated',
     identifier || '@test.local', '', now(),
     '{"provider":"email","providers":["email"]}'::jsonb,
     jsonb_build_object('test_identifier', identifier) || coalesce(metadata, '{}'::jsonb),
-    now(), now(), false
+    now(), now()
   );
   return v_uid;
 end;
