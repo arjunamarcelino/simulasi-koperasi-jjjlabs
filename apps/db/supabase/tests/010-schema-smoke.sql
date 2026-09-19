@@ -1,7 +1,7 @@
 -- Schema smoke: RLS is on everywhere, seed loaded, level derivation, and the
 -- integrity constraints that protect real invariants (not exhaustive DDL mirroring).
 begin;
-select plan(27);
+select plan(28);
 
 -- RLS enabled on every public table (10).
 select tests.rls_enabled('public', 'profiles');
@@ -48,9 +48,14 @@ select throws_ok(
   '23505', null, 'mission_completion unique(user_id, mission_id) enforced');
 
 select throws_ok(
-  $$ insert into public.sessions (user_id, scenario_id, started_at, ended_at, trigger)
-     values (tests.get_uid('schema_user'), 'kredit-macet', now(), now() - interval '1 hour', 'manual') $$,
+  $$ insert into public.sessions (user_id, scenario_id, started_at, ended_at, trigger, ending_type)
+     values (tests.get_uid('schema_user'), 'kredit-macet', now(), now() - interval '1 hour', 'manual', 'good') $$,
   '23514', null, 'sessions.ended_at >= started_at enforced');
+
+select throws_ok(
+  $$ insert into public.sessions (user_id, scenario_id, ended_at, trigger)
+     values (tests.get_uid('schema_user'), 'kredit-macet', now(), 'manual') $$,
+  '23514', null, 'ended session must carry an ending_type');
 
 select throws_ok(
   $$ insert into public.mission_definition (code, kind, redeem_code) values ('x-game', 'game', 'SECRET') $$,

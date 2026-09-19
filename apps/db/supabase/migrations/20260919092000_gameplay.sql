@@ -21,8 +21,9 @@ create table public.sessions (
   scores_json jsonb not null default '{}'::jsonb,   -- per-scenario rubric, 0-100
   state_json jsonb not null default '{}'::jsonb,     -- AuditorResult.stateClassification
   narrative_feedback text,
-  -- A session is "ended" exactly when it carries a trigger.
+  -- A session is "ended" exactly when it carries a trigger AND an ending_type.
   constraint sessions_ended_has_trigger check ((ended_at is null) = (trigger is null)),
+  constraint sessions_ended_has_ending check ((ended_at is null) = (ending_type is null)),
   constraint sessions_time_order check (ended_at is null or ended_at >= started_at)
 );
 create index sessions_user_started_idx on public.sessions (user_id, started_at desc);
@@ -40,6 +41,13 @@ create or replace function public.record_session_result(
 declare
   v_id uuid;
 begin
+  -- Validate the closed-set inputs up front so bad input returns a structured
+  -- {ok:false} instead of raising a raw CHECK violation (23514) as a 500-class error.
+  if p_trigger is null or p_trigger not in ('manual', 'sinyal_level_1', 'force_quit_level_2')
+     or p_ending_type is null or p_ending_type not in ('good', 'bad', 'neutral') then
+    return jsonb_build_object('ok', false, 'reason', 'invalid');
+  end if;
+
   update public.sessions
      set ended_at = now(),
          trigger = p_trigger,

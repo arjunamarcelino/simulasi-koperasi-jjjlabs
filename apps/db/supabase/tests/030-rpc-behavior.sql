@@ -1,6 +1,6 @@
 -- RPC behavior: the atomicity/idempotency guarantees the RPCs exist to provide.
 begin;
-select plan(18);
+select plan(19);
 
 select tests.create_user('claimer');
 select tests.create_user('spender');
@@ -70,6 +70,9 @@ select tests.login_as('other');
 select is(
   (public.record_session_result('22222222-2222-2222-2222-222222222222'::uuid, 'manual', 'good') ->> 'reason'),
   'not_found_or_closed', 'cannot finalize another user''s session');
+select is(
+  (public.record_session_result('22222222-2222-2222-2222-222222222222'::uuid, 'BOGUS', 'good') ->> 'reason'),
+  'invalid', 'record_session_result rejects an invalid trigger with a structured reason');
 
 -- badges (plain insert, idempotent via unique) --------------------------------
 select tests.login_as('claimer');
