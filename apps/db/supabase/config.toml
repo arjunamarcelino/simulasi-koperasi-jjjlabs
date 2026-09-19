@@ -1,0 +1,29 @@
+# Supabase local config — Koperasi Simulator database (SIM-2).
+# Minimal, hand-authored (not via `supabase init`); the CLI fills defaults for
+# omitted sections. Real projects supply provider secrets via env, never here.
+project_id = "simulasi-koperasi"
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+# Guest play — anonymous sign-ins (see docs/data-model.md). Enable CAPTCHA in prod.
+enable_anonymous_sign_ins = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+# Google OAuth (guest → permanent upgrade via linkIdentity). Secrets come from env.
+[auth.external.google]
+enabled = false
+client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"

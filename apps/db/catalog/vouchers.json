@@ -1,0 +1,7 @@
+[
+  { "code": "belanja-5k", "name": "Voucher Belanja KDMP Rp5.000", "cost": 50, "description": "Potongan belanja di toko koperasi", "sort_order": 1 },
+  { "code": "belanja-10k", "name": "Voucher Belanja KDMP Rp10.000", "cost": 100, "description": "Potongan belanja di toko koperasi", "sort_order": 2 },
+  { "code": "pulsa-5k", "name": "Voucher Pulsa Rp5.000", "cost": 60, "description": "Isi ulang pulsa semua operator", "sort_order": 3 },
+  { "code": "sembako", "name": "Paket Sembako Hemat", "cost": 150, "description": "Beras 1kg + minyak + gula", "sort_order": 4 },
+  { "code": "simpan-pinjam", "name": "Diskon Biaya Simpan Pinjam", "cost": 200, "description": "Potongan administrasi pinjaman berikutnya", "sort_order": 5 }
+]

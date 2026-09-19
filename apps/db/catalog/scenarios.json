@@ -1,0 +1,6 @@
+[
+  { "code": "rapat-anggota-tahunan", "title": "Rapat Anggota Tahunan", "difficulty": "Lanjutan", "status": "AVAILABLE", "sort_order": 1 },
+  { "code": "kredit-macet", "title": "Kredit Macet", "difficulty": "Menengah", "status": "AVAILABLE", "sort_order": 2 },
+  { "code": "keanggotaan-fiktif", "title": "Keanggotaan Fiktif", "difficulty": "Lanjutan", "status": "AVAILABLE", "sort_order": 3 },
+  { "code": "tutorial-koperasi-konsumen", "title": "Tutorial — Koperasi Konsumen", "difficulty": "Tutorial", "status": "AVAILABLE", "sort_order": 4 }
+]

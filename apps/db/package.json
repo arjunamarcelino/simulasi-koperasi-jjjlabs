@@ -1,0 +1,13 @@
+{
+  "name": "@simkop/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Supabase/Postgres data model for the Koperasi Simulator (SIM-2).",
+  "scripts": {
+    "gen:seed": "node scripts/gen-seed.mjs",
+    "check:parity": "node scripts/gen-seed.mjs --check",
+    "db:reset": "supabase db reset",
+    "db:test": "supabase test db"
+  }
+}
