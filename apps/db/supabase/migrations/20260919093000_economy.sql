@@ -48,7 +48,10 @@ create table public.voucher_definition (
 
 create table public.voucher_redemption (
   id bigint generated always as identity primary key,
-  user_id uuid not null references public.profiles on delete cascade,
+  -- Nullable + SET NULL so this value-bearing ledger (unique minted codes, points
+  -- debited) survives account deletion as an anonymized tombstone. A null-owner row
+  -- is invisible to every client under RLS (auth.uid() = user_id never matches).
+  user_id uuid references public.profiles on delete set null,
   voucher_id text not null references public.voucher_definition (code),
   voucher_name text not null,                   -- denormalized (self-describing record)
   minted_code text not null unique,
