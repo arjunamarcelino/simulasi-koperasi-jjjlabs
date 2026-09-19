@@ -10,6 +10,10 @@
 
 create extension if not exists pgtap;
 
+-- This file only installs helpers; it runs no assertions. pg_prove still executes
+-- it as a test, so emit a valid empty TAP plan (1..0) — otherwise "No plan found".
+select plan(0);
+
 create schema if not exists tests;
 
 -- Create a real auth.users row (fires handle_new_user → provisions profiles +
@@ -88,3 +92,5 @@ $$;
 -- helpers — so those roles need USAGE + EXECUTE on the tests schema.
 grant usage on schema tests to anon, authenticated, service_role;
 grant execute on all functions in schema tests to anon, authenticated, service_role;
+
+select * from finish();
