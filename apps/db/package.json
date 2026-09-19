@@ -10,6 +10,7 @@
   "scripts": {
     "gen:seed": "node scripts/gen-seed.mjs",
     "check:parity": "node scripts/gen-seed.mjs --check",
+    "check:levels": "node scripts/check-levels.mjs",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db"
   }

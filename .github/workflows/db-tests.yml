@@ -25,6 +25,8 @@ jobs:
           node-version: 22
       - name: seed ⇄ catalog parity
         run: node scripts/gen-seed.mjs --check
+      - name: level_from_xp ⇄ catalog levels
+        run: node scripts/check-levels.mjs
       - name: catalog rows live only in seed.sql
         run: |
           if grep -riE "insert +into +public\.(scenario|mission|voucher|badge)_definition" supabase/migrations; then
