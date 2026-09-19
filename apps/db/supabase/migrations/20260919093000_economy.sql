@@ -120,7 +120,10 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'insufficient');
   end if;
 
-  v_code := 'KDMP-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8));
+  -- 12 hex chars (~48 bits) from a fresh uuid; the unique(minted_code) constraint is
+  -- the hard guarantee. A collision would raise 23505 and roll back the whole txn
+  -- (debit included) — no double-charge — but at this width it is astronomically rare.
+  v_code := 'KDMP-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 12));
 
   insert into public.voucher_redemption (user_id, voucher_id, voucher_name, minted_code, cost_point)
   values ((select auth.uid()), v.code, v.name, v_code, v.cost);
