@@ -4,8 +4,8 @@ Supabase/Postgres schema, seed, and pgTAP tests. The rest of the monorepo backen
 (`apps/backend`) stays database-free; `apps/web` is the only runtime consumer of
 this database (web-direct via `supabase-js`, guarded by RLS).
 
-Design doc (ERDs + gap table): [`docs/data-model.md`](../../docs/data-model.md).
-Plan: [`docs/plans/2026-09-19-feat-supabase-data-model-schema-plan.md`](../../docs/plans/2026-09-19-feat-supabase-data-model-schema-plan.md).
+Design doc (ERDs + gap table): [`DATA-MODEL.md`](./DATA-MODEL.md).
+Plan + brainstorm live under `docs/` (kept out of git per repo convention).
 
 ## Layout
 
