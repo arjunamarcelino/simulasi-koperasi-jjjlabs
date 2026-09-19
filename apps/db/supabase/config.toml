@@ -15,15 +15,11 @@ sql_paths = ["./seed.sql"]
 [auth]
 enabled = true
 site_url = "http://localhost:5173"
-# Guest play — anonymous sign-ins (see docs/data-model.md). Enable CAPTCHA in prod.
+# Guest play — anonymous sign-ins (see DATA-MODEL.md).
+# OPS: the hosted project MUST enable CAPTCHA/Turnstile + rate limits on this
+# endpoint (abuse / reward-farming vector); it is NOT enforced by this local config.
 enable_anonymous_sign_ins = true
 
-[auth.email]
-enable_signup = true
-enable_confirmations = false
-
-# Google OAuth (guest → permanent upgrade via linkIdentity). Secrets come from env.
-[auth.external.google]
-enabled = false
-client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
-secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
+# Google OAuth (guest → permanent upgrade via linkIdentity) is not wired yet. When it
+# lands, add [auth.external.google] with enabled = true + client_id/secret via env(...).
+# Left out for now so `supabase start` can never fail resolving unset placeholders.
