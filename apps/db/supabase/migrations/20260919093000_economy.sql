@@ -117,6 +117,11 @@ begin
   returning point into v_balance;
 
   if v_balance is null then
+    -- 0 rows matched: either the balance guard failed, or (should not happen — the
+    -- signup trigger seeds it) the user has no progress row. Distinguish the two.
+    if not exists (select 1 from public.user_progress where user_id = (select auth.uid())) then
+      return jsonb_build_object('ok', false, 'reason', 'no_progress');
+    end if;
     return jsonb_build_object('ok', false, 'reason', 'insufficient');
   end if;
 
