@@ -42,7 +42,7 @@ Level and badges are **derived** in the UI from live signals, also not stored.
 ## TARGET — Supabase schema
 
 10 tables. Owner-only RLS on user-scoped tables; public read on `*_definition` catalogs
-(except `mission_definition`, whose secret `redeem_code` is hidden behind the
+(except `mission_definition`, whose reallife `redeem_code` is kept out of clients behind the
 `mission_catalog` view). Session score is folded into `sessions` (written at start,
 finalized at end).
 
@@ -92,7 +92,7 @@ erDiagram
     text kind "CHECK game|reallife"
     int reward_xp
     int reward_point
-    text redeem_code "secret; reallife only; REVOKEd from clients"
+    text redeem_code "soft KDMP gate code; reallife only; REVOKEd from clients"
   }
   MISSION_COMPLETION {
     bigint id PK
@@ -133,7 +133,7 @@ function that publishes a bounded `display_name + xp + level` projection (owner-
 would otherwise hide other players).
 
 **Server-side integrity RPCs** (`SECURITY DEFINER`, `search_path=''`, `REVOKE EXECUTE
-FROM public`): `claim_mission` (validates secret code, credits reward atomically, idempotent
+FROM public`): `claim_mission` (validates the gate code server-side, credits reward atomically, idempotent
 via `unique(user_id, mission_id)`), `redeem_voucher` (race-safe balance debit, mints a unique
 code), `record_session_result` (finalizes an owned open session). `add_rewards` is a **private**
 helper, never client-callable. Badges are awarded by a plain RLS-guarded insert (idempotent via
@@ -155,11 +155,19 @@ helper, never client-callable. Badges are awarded by a plain RLS-guarded insert 
 ### Net-new (nothing persists these today)
 Identity/auth, `sessions` + score, `user_badge.awarded_at`, and the four `*_definition`
 catalog tables (formerly FE-only arrays; the DB is now the source of truth, with the FE
-arrays and the seed both derived from `apps/db/catalog/*.json`).
+and the seed both deriving from the shared `@simkop/catalog` package).
+
+> **On the reallife codes:** `redeem_code` (`KDMP2026` etc.) is a *soft* gate — printed at
+> the KDMP and typed by the player. It is **not** a cryptographic secret. The DB hides it
+> (REVOKE + `mission_catalog` view) as defense-in-depth only; the same codes still ship in
+> the client bundle today (see follow-up). Treat gate-code claims as best-effort, not anti-cheat.
 
 ## Follow-ups (out of scope for SIM-2 BE)
 - FE integration: `supabase-js` client, guest + Google auth (`linkIdentity`), writing the
   session row at start + `record_session_result` at end, reading catalogs from the DB.
+- **Stop shipping reallife codes in the client bundle** (they are still in `@simkop/catalog`,
+  which the FE imports). If they must be non-guessable, mint high-entropy codes into an
+  untracked source and enter them only via the KDMP, never bundle them.
 - Enable Auth settings in the Supabase project: anonymous sign-ins, manual linking, Google
   provider, CAPTCHA/rate-limit on anonymous sign-in.
 - `pg_cron` cleanup of stale anonymous users.

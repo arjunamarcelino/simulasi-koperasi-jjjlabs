@@ -9,17 +9,19 @@ create table public.mission_definition (
   description text,
   reward_xp int not null default 0 check (reward_xp >= 0),
   reward_point int not null default 0 check (reward_point >= 0),
-  redeem_code text,                             -- server-side secret; reallife only
+  redeem_code text,                             -- soft KDMP gate code (reallife only); not a cryptographic secret
   sort_order int not null default 0,
   constraint mission_reallife_has_code check ((kind = 'reallife') = (redeem_code is not null)),
   constraint mission_redeem_code_nonblank check (redeem_code is null or char_length(btrim(redeem_code)) > 0)
 );
 
--- Secret-code hiding: Supabase auto-grants new public tables to anon/authenticated,
--- so REVOKE explicitly. Clients read the catalog through a view that omits redeem_code.
--- The view is a PLAIN (owner-privileged) view — do NOT set security_invoker, or the
--- caller (who has no privilege on the base table) reads nothing. A Supabase linter
--- "security_definer_view" warning here is an expected false positive.
+-- Keep the reallife gate codes out of the client (defense-in-depth). They are soft
+-- gate codes (printed at the KDMP, typed by the player), NOT cryptographic secrets —
+-- so this only raises the bar, it is not an anti-cheat guarantee. Supabase auto-grants
+-- new public tables to anon/authenticated, so REVOKE explicitly; clients read the
+-- catalog through a view that omits redeem_code. The view is a PLAIN (owner-privileged)
+-- view — do NOT set security_invoker, or the caller (no privilege on the base table)
+-- reads nothing. A Supabase "security_definer_view" linter warning here is expected.
 alter table public.mission_definition enable row level security;
 revoke all on table public.mission_definition from anon, authenticated;
 

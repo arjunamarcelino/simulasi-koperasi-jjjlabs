@@ -41,8 +41,10 @@ Docker is not required locally to land a change — but is needed to run the DB 
 
 - **RLS is the security boundary.** Every `public` table has RLS enabled; user-scoped
   tables are owner-only (`(select auth.uid()) = user_id`) with `WITH CHECK` on writes.
-- **Secret codes never reach the client.** `mission_definition` is revoked from `anon`/
-  `authenticated`; the public `mission_catalog` view omits `redeem_code`.
+- **Reallife gate codes are kept out of the DB's client surface** (defense-in-depth):
+  `mission_definition` is revoked from `anon`/`authenticated`; the public `mission_catalog`
+  view omits `redeem_code`. Note these are *soft* KDMP gate codes, not cryptographic secrets
+  (and are still shipped in the client bundle today — see DATA-MODEL.md follow-ups).
 - **Server-side integrity via `SECURITY DEFINER` RPCs** (`search_path=''`, `REVOKE EXECUTE
   FROM public`): `claim_mission`, `redeem_voucher`, `record_session_result`, `leaderboard`.
   `add_rewards` is a private helper (never client-callable).
