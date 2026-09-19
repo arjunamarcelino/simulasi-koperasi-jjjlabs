@@ -20,9 +20,14 @@ jobs:
         working-directory: apps/db
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+      - name: Install workspace (links @simkop/catalog)
+        run: pnpm install --frozen-lockfile
+        working-directory: ${{ github.workspace }}
       - name: seed ⇄ catalog parity
         run: node scripts/gen-seed.mjs --check
       - name: level_from_xp ⇄ catalog levels
