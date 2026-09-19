@@ -83,3 +83,8 @@ returns text language sql as $$
     format('%I.%I has RLS enabled', p_schema, p_table)
   );
 $$;
+
+-- Tests impersonate anon/authenticated/service_role, then keep calling these
+-- helpers — so those roles need USAGE + EXECUTE on the tests schema.
+grant usage on schema tests to anon, authenticated, service_role;
+grant execute on all functions in schema tests to anon, authenticated, service_role;
