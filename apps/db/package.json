@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Supabase/Postgres data model for the Koperasi Simulator (SIM-2).",
+  "dependencies": {
+    "@simkop/catalog": "workspace:*"
+  },
   "scripts": {
     "gen:seed": "node scripts/gen-seed.mjs",
     "check:parity": "node scripts/gen-seed.mjs --check",

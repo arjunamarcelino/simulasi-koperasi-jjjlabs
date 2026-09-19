@@ -8,8 +8,17 @@ importers:
 
   .: {}
 
+  apps/db:
+    dependencies:
+      '@simkop/catalog':
+        specifier: workspace:*
+        version: link:../../packages/catalog
+
   apps/web:
     dependencies:
+      '@simkop/catalog':
+        specifier: workspace:*
+        version: link:../../packages/catalog
       livekit-client:
         specifier: ^2.20.1
         version: 2.20.1(@types/dom-mediacapture-record@1.0.22)
@@ -120,6 +129,8 @@ importers:
       vite:
         specifier: ^7.0.0
         version: 7.3.6(jiti@2.7.0)(lightningcss@1.32.0)
+
+  packages/catalog: {}
 
 packages:
 

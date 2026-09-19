@@ -1,9 +1,0 @@
-[
-  { "code": "main-kuis", "kind": "game", "title": "Main Kuis Koperasi", "description": "Selesaikan satu sesi kuis koperasi di komputer KUIS.", "reward_xp": 20, "reward_point": 20, "redeem_code": null, "sort_order": 1 },
-  { "code": "baca-mading", "kind": "game", "title": "Baca Papan Pengetahuan", "description": "Buka papan pengetahuan di mading dekat pintu masuk.", "reward_xp": 15, "reward_point": 10, "redeem_code": null, "sort_order": 2 },
-  { "code": "tukar-voucher", "kind": "game", "title": "Tukar Satu Voucher", "description": "Tukar satu voucher dengan poin di kasir.", "reward_xp": 15, "reward_point": 15, "redeem_code": null, "sort_order": 3 },
-  { "code": "keliling", "kind": "game", "title": "Kelilingi Interior Koperasi", "description": "Masuk dan jelajahi seluruh ruangan koperasi.", "reward_xp": 10, "reward_point": 10, "redeem_code": null, "sort_order": 4 },
-  { "code": "kunjungi-kdmp", "kind": "reallife", "title": "Kunjungi KDMP", "description": "Kunjungi satu Koperasi Desa Merah Putih terdekat, lalu masukkan kode yang tertera di sana.", "reward_xp": 50, "reward_point": 100, "redeem_code": "KDMP2026", "sort_order": 5 },
-  { "code": "impact-umkm", "kind": "reallife", "title": "Koperasi Impact Mission", "description": "Cari satu produk UMKM lokal dan beli melalui koperasi, lalu masukkan kode dari struk.", "reward_xp": 60, "reward_point": 120, "redeem_code": "UMKM2026", "sort_order": 6 },
-  { "code": "ajak-anggota", "kind": "reallife", "title": "Ajak Anggota Baru", "description": "Ajak satu orang mendaftar menjadi anggota koperasi, lalu masukkan kode konfirmasi.", "reward_xp": 40, "reward_point": 80, "redeem_code": "ANGGOTA2026", "sort_order": 7 }
-]

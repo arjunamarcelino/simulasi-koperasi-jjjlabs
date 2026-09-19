@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LEVELS } from "@simkop/catalog";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { KOPERASI_IDENTITAS } from "../../content/mading-info";
 import { BADGES, isEarned, type BadgeContext } from "../../content/badges";
@@ -6,18 +7,10 @@ import { ModalShell } from "../common/ModalShell";
 import { BadgeIcon } from "./BadgeIcon";
 
 /**
- * Level tiers (title + XP threshold). Ascending; first tier MUST start at 0.
- * Co-located here because ProfileModal is the only consumer.
+ * Level derivation. Tiers (title + XP threshold, ascending, first tier at 0) are
+ * sourced from the shared `@simkop/catalog` so the FE and the DB's `level_from_xp()`
+ * stay pinned to one threshold table.
  */
-const LEVELS = [
-  { title: "Calon Anggota", minXp: 0 },
-  { title: "Anggota", minXp: 100 },
-  { title: "Anggota Aktif", minXp: 300 },
-  { title: "Pengurus", minXp: 600 },
-  { title: "Pengawas", minXp: 1000 },
-  { title: "Ketua", minXp: 1500 },
-] as const;
-
 function levelFromXp(xp: number): {
   index: number;
   title: string;

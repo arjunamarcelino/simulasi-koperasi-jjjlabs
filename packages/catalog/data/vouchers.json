@@ -1,0 +1,7 @@
+[
+  { "id": "belanja-5k", "name": "Voucher Belanja KDMP Rp5.000", "cost": 50, "description": "Potongan belanja di toko koperasi" },
+  { "id": "belanja-10k", "name": "Voucher Belanja KDMP Rp10.000", "cost": 100, "description": "Potongan belanja di toko koperasi" },
+  { "id": "pulsa-5k", "name": "Voucher Pulsa Rp5.000", "cost": 60, "description": "Isi ulang pulsa semua operator" },
+  { "id": "sembako", "name": "Paket Sembako Hemat", "cost": 150, "description": "Beras 1kg + minyak + gula" },
+  { "id": "simpan-pinjam", "name": "Diskon Biaya Simpan Pinjam", "cost": 200, "description": "Potongan administrasi pinjaman berikutnya" }
+]

@@ -1,6 +1,6 @@
 -- GENERATED FILE — do not edit by hand.
--- Source: apps/db/catalog/*.json  •  Regenerate: pnpm --filter @simkop/db gen:seed
--- Catalog rows mirror apps/web/src/content/* exactly (parity enforced in CI).
+-- Source: @simkop/catalog (packages/catalog)  •  Regenerate: pnpm --filter @simkop/db gen:seed
+-- apps/web imports the same catalog, so seed and UI cannot drift (parity checked in CI).
 
 -- Scenarios (4)
 insert into public.scenario_definition (code, title, difficulty, status, sort_order) values
@@ -14,7 +14,7 @@ on conflict (code) do update set
   status = excluded.status,
   sort_order = excluded.sort_order;
 
--- Missions (7) — redeem_code is a server-side secret (reallife only)
+-- Missions (7) — redeem_code is a soft KDMP gate code (reallife only), not a cryptographic secret
 insert into public.mission_definition (code, kind, title, description, reward_xp, reward_point, redeem_code, sort_order) values
   ('main-kuis', 'game', 'Main Kuis Koperasi', 'Selesaikan satu sesi kuis koperasi di komputer KUIS.', 20, 20, NULL, 1),
   ('baca-mading', 'game', 'Baca Papan Pengetahuan', 'Buka papan pengetahuan di mading dekat pintu masuk.', 15, 10, NULL, 2),
