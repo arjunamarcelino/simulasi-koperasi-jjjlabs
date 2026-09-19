@@ -82,6 +82,9 @@ create policy "profiles: owner select" on public.profiles
   for select to authenticated using ((select auth.uid()) = id);
 create policy "profiles: owner update" on public.profiles
   for update to authenticated using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
+-- Defensive fallback only: the signup trigger normally creates the row, so this
+-- policy is rarely exercised — it lets a client self-heal its own profile if the
+-- trigger ever failed to.
 create policy "profiles: owner insert" on public.profiles
   for insert to authenticated with check ((select auth.uid()) = id);
 

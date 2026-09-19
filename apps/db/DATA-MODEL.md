@@ -63,6 +63,7 @@ erDiagram
     uuid id PK "→ auth.users.id"
     text display_name "≤16, nullable (← playerName)"
     timestamptz created_at
+    timestamptz updated_at
   }
   USER_PROGRESS {
     uuid user_id PK "→ profiles.id"
