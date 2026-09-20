@@ -49,7 +49,8 @@ Create a **GitHub Environment** named **`supabase-deploy`** (repo Settings → E
 Also give the FE its public env (`apps/web/.env` / hosting env): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
 
 > **Never** store the `service_role` key anywhere in the repo/CI/FE. The `guard-secrets` workflow +
-> GitHub native **secret scanning + push protection** (enable in Settings → Code security) enforce this.
+> GitHub **secret scanning + push protection** (already **enabled** on the repo) are the backstop that
+> catches an actual key *blob* (`eyJ…` / `sb_secret_…`) that the `guard-secrets` name/value grep can't.
 
 ## 4. Keep-alive ⚠️ default-branch requirement
 
