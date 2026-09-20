@@ -1,0 +1,11 @@
+[
+  { "id": "anggota-aktif", "title": "Anggota Aktif", "requirement": "Capai Level 3", "icon": "medal", "criteria": { "kind": "level", "min": 3 } },
+  { "id": "rajin-kuis", "title": "Rajin Kuis", "requirement": "Selesaikan kuis", "icon": "book", "criteria": { "kind": "missionDone", "missionId": "main-kuis" } },
+  { "id": "kolektor-voucher", "title": "Kolektor Voucher", "requirement": "Tukar 1 voucher", "icon": "ticket", "criteria": { "kind": "voucherCount", "min": 1 } },
+  { "id": "penjelajah", "title": "Penjelajah", "requirement": "Jelajahi koperasi", "icon": "compass", "criteria": { "kind": "missionDone", "missionId": "keliling" } },
+  { "id": "hartawan", "title": "Hartawan", "requirement": "Kumpulkan 100 poin", "icon": "coin", "criteria": { "kind": "point", "min": 100 } },
+  { "id": "misi-perdana", "title": "Misi Perdana", "requirement": "Selesaikan 1 misi", "icon": "flag", "criteria": { "kind": "missionCount", "min": 1 } },
+  { "id": "juara-rat", "title": "Juara RAT", "requirement": "Belum tersedia", "icon": "trophy", "criteria": null },
+  { "id": "simpanan-rutin", "title": "Simpanan Rutin", "requirement": "Belum tersedia", "icon": "piggy", "criteria": null },
+  { "id": "pinjaman-lancar", "title": "Pinjaman Lancar", "requirement": "Belum tersedia", "icon": "check", "criteria": null }
+]

@@ -1,0 +1,59 @@
+name: db-tests
+
+on:
+  push:
+    paths:
+      - "apps/db/**"
+      - ".github/workflows/db-tests.yml"
+  pull_request:
+    paths:
+      - "apps/db/**"
+      - ".github/workflows/db-tests.yml"
+
+jobs:
+  # Fast, Docker-free guards: seed is in sync with the catalog, and migrations
+  # carry no seed data (seeds belong in seed.sql).
+  guards:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install workspace (links @simkop/catalog)
+        run: pnpm install --frozen-lockfile
+        working-directory: ${{ github.workspace }}
+      - name: seed ⇄ catalog parity
+        run: node scripts/gen-seed.mjs --check
+      - name: level_from_xp ⇄ catalog levels
+        run: node scripts/check-levels.mjs
+      - name: catalog rows live only in seed.sql
+        run: |
+          if grep -riE "insert +into +public\.(scenario|mission|voucher|badge)_definition" supabase/migrations; then
+            echo "::error::catalog (*_definition) rows must be seeded in seed.sql, not in migrations"
+            exit 1
+          fi
+
+  # pgTAP suite against a real Supabase local stack.
+  pgtap:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0   # pinned; bump deliberately (avoids a CLI release breaking CI)
+      - name: Start Supabase (applies migrations + seed)
+        run: supabase start
+      - name: Run pgTAP tests
+        run: supabase test db
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop

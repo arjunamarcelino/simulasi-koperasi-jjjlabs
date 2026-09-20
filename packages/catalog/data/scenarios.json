@@ -1,0 +1,6 @@
+[
+  { "id": "rapat-anggota-tahunan", "title": "Rapat Anggota Tahunan", "difficulty": "Lanjutan", "status": "AVAILABLE" },
+  { "id": "kredit-macet", "title": "Kredit Macet", "difficulty": "Menengah", "status": "AVAILABLE" },
+  { "id": "keanggotaan-fiktif", "title": "Keanggotaan Fiktif", "difficulty": "Lanjutan", "status": "AVAILABLE" },
+  { "id": "tutorial-koperasi-konsumen", "title": "Tutorial — Koperasi Konsumen", "difficulty": "Tutorial", "status": "AVAILABLE" }
+]
