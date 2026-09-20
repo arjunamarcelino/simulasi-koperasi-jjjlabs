@@ -1,13 +1,10 @@
 # Keep the free-tier Supabase project awake (it pauses after ~7 days idle) so it's
 # up for the 16-Oct demo. A daily REST ping resets the pause timer.
 #
-# ┌──────────────────────────────────────────────────────────────────────────┐
-# │ ⚠️  MUST LIVE ON THE REPO'S DEFAULT BRANCH (currently `main`) TO FIRE.      │
-# │    GitHub runs `schedule:` triggers ONLY from the workflow file on the      │
-# │    default branch. This branch targets `develop`, so until this file        │
-# │    reaches `main` — or `develop` is made the default branch — the cron      │
-# │    NEVER runs and the project will pause. See apps/db/RUNBOOK.md.            │
-# └──────────────────────────────────────────────────────────────────────────┘
+# NOTE: GitHub runs `schedule:` triggers ONLY from the workflow file on the repo's
+# DEFAULT branch. The default is now `develop` (this branch's base), so the cron
+# fires once this merges to develop. If the default ever moves back to `main`,
+# this file must move with it or the cron stops and the project pauses.
 #
 # Belt-and-suspenders (RUNBOOK): also add an external monitor (UptimeRobot /
 # cron-job.org) hitting /rest/v1/ daily — GitHub cron is best-effort and can be

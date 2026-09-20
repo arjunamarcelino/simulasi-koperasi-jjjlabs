@@ -54,10 +54,10 @@ Also give the FE its public env (`apps/web/.env` / hosting env): `VITE_SUPABASE_
 ## 4. Keep-alive ⚠️ default-branch requirement
 
 Free-tier projects **pause after ~7 days idle** → the demo dies if idle. `supabase-keepalive.yml`
-pings daily — **but GitHub runs `schedule:` only from the workflow file on the repo's DEFAULT branch
-(`main`).** This branch targets `develop`. So do ONE of:
-- **make `develop` the default branch**, or
-- **merge `supabase-keepalive.yml` to `main`** as well.
+pings daily. GitHub runs `schedule:` only from the workflow file on the repo's **DEFAULT branch** —
+the default is now **`develop`** (done via `gh repo edit --default-branch develop`), so the cron fires
+once this workflow merges to `develop`. ⚠️ If the default is ever moved back to `main`, move
+`supabase-keepalive.yml` with it or the cron stops.
 
 Belt-and-suspenders: add an **external monitor** (UptimeRobot / cron-job.org) hitting
 `https://<ref>.supabase.co/rest/v1/` with the anon key daily — GitHub cron is best-effort, and a run
