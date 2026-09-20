@@ -97,27 +97,12 @@ you want the pause risk gone entirely.
 - **Code rollback** is independent: revert the commit; the DB doesn't roll back with code.
 
 ## 8. Post-handover hygiene (optional — NOT needed for the 26-day hackathon)
-Stale anonymous-user cleanup (anon users can't reach 30 days old within the hackathon, so defer).
-**Dry-run first** (manual-linking makes this delicate — a converted user whose `is_anonymous` didn't
-flip must not be deleted):
-```sql
--- 1) dry run — what WOULD be deleted right now? expect 0
-select id, created_at, last_sign_in_at from auth.users
- where is_anonymous and coalesce(last_sign_in_at, created_at) < now() - interval '30 days';
--- 2) confirm no converted (linked) user is caught — expect 0
-select count(*) from auth.users u
- where u.is_anonymous and coalesce(u.last_sign_in_at,u.created_at) < now() - interval '30 days'
-   and exists (select 1 from auth.identities i where i.user_id=u.id and i.provider<>'anonymous');
--- 3) only then schedule (idempotent — upserts by job name):
-create extension if not exists pg_cron;
-select cron.schedule('cleanup-anon-users','0 3 * * *', $$
-  delete from auth.users u
-   where u.is_anonymous
-     and coalesce(u.last_sign_in_at, u.created_at) < now() - interval '30 days'
-     and not exists (select 1 from auth.identities i where i.user_id=u.id and i.provider<>'anonymous') $$);
-```
-Cascade: deleting `auth.users` → `profiles` → user rows (`on delete cascade`); `voucher_redemption`
-survives as an anonymized tombstone (`on delete set null`).
+Stale anonymous-user cleanup — **defer**: anon users can't reach 30 days old within the hackathon.
+When it's eventually wanted (a `pg_cron` job deleting 30-day-old `is_anonymous` users), it's delicate
+because manual identity-linking means a *converted* user must be excluded — so **dry-run the DELETE as a
+SELECT and confirm zero linked users are caught before scheduling anything**. Write it up only if the
+project outlives the hackathon. Cascade if you do run it: `auth.users` → `profiles` → user rows
+(`on delete cascade`); `voucher_redemption` survives as an anonymized tombstone (`on delete set null`).
 
 ## 9. After the demo
 - **Rotate/revoke** the CI bot's `SUPABASE_ACCESS_TOKEN`.
