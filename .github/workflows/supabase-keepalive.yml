@@ -1,0 +1,38 @@
+# Keep the free-tier Supabase project awake (it pauses after ~7 days idle) so it's
+# up for the 16-Oct demo. A daily REST ping resets the pause timer.
+#
+# NOTE: GitHub runs `schedule:` triggers ONLY from the workflow file on the repo's
+# DEFAULT branch. The default is now `develop` (this branch's base), so the cron
+# fires once this merges to develop. If the default ever moves back to `main`,
+# this file must move with it or the cron stops and the project pauses.
+#
+# Belt-and-suspenders (RUNBOOK): also add an external monitor (UptimeRobot /
+# cron-job.org) hitting /rest/v1/ daily — GitHub cron is best-effort and can be
+# silently skipped, and a run that never happens raises no alert.
+name: supabase-keepalive
+
+on:
+  schedule:
+    - cron: "23 6 * * *" # daily, off-the-hour to dodge scheduler backlog
+  workflow_dispatch: {}
+
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    if: ${{ vars.SUPABASE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping REST (resets the 7-day pause timer)
+        env:
+          PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          curl -fsS "https://${PROJECT_ID}.supabase.co/rest/v1/" \
+            -H "apikey: ${ANON_KEY}" \
+            -H "Authorization: Bearer ${ANON_KEY}" >/dev/null
+      - name: Alert on failure
+        if: failure()
+        run: echo "::error::supabase-keepalive failed — the project may be paused or the key rotated"

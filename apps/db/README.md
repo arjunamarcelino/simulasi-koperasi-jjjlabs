@@ -5,6 +5,7 @@ Supabase/Postgres schema, seed, and pgTAP tests. The rest of the monorepo backen
 this database (web-direct via `supabase-js`, guarded by RLS).
 
 Design doc (ERDs + gap table): [`DATA-MODEL.md`](./DATA-MODEL.md).
+Hosted provisioning + deploy (SIM-1): [`RUNBOOK.md`](./RUNBOOK.md).
 Plan + brainstorm live under `docs/` (kept out of git per repo convention).
 
 ## Layout
