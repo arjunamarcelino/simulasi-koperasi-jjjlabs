@@ -15,6 +15,12 @@ rest() { curl -fsS "$BASE/rest/v1/$1" -H "apikey: $ANON" -H "Authorization: Bear
 status() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 fail() { echo "::error::smoke: $*"; exit 1; }
 
+# Preflight: setup-cli provides `supabase`, not psql/jq — assert them up front so a
+# missing tool fails loudly here instead of mid-check with a confusing error.
+for tool in psql jq curl; do
+  command -v "$tool" >/dev/null || fail "required tool '$tool' not on PATH"
+done
+
 echo "P1 — exactly the 10 SIM-2 base tables (view excluded)"
 got=$(psql -tA -v ON_ERROR_STOP=1 -c \
   "select string_agg(table_name, ',' order by table_name) \
@@ -33,11 +39,21 @@ echo "N2 — mission_definition base table is NOT client-readable (secret redeem
 code=$(status "$BASE/rest/v1/mission_definition?select=redeem_code" -H "apikey: $ANON" -H "Authorization: Bearer $ANON")
 [ "$code" -ge 400 ] || fail "mission_definition base readable by anon (HTTP $code) — REVOKE missing"
 
-echo "N3 — add_rewards RPC is NOT callable by anon (the xp/point printer stays private)"
+echo "N3 — add_rewards RPC exists AND is NOT callable by anon (the xp/point printer stays private)"
+# Positive existence check FIRST: a plain '>=400' can't tell REVOKE (401/403) from a
+# function that failed to deploy or drifted its signature (404) — that would false-pass
+# as 'denied' while the reward path is actually broken. Prove it exists, then prove it's denied.
+exists=$(psql -tA -v ON_ERROR_STOP=1 -c \
+  "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace \
+   where n.nspname='public' and p.proname='add_rewards'")
+[ "$exists" -ge 1 ] || fail "add_rewards is missing from schema public — the reward RPC failed to deploy"
 code=$(status -X POST "$BASE/rest/v1/rpc/add_rewards" \
   -H "apikey: $ANON" -H "Authorization: Bearer $ANON" -H "Content-Type: application/json" \
   -d '{"p_xp":1,"p_point":1}')
-[ "$code" -ge 400 ] || fail "add_rewards callable by anon (HTTP $code) — REVOKE EXECUTE missing"
+case "$code" in
+  401 | 403) : ;; # denied — REVOKE EXECUTE FROM public is in force
+  *) fail "add_rewards anon POST expected 401/403 (denied), got HTTP $code" ;;
+esac
 
 echo "P4 — JWKS advertises an ES256 signing key (for SIM-4 verification)"
 curl -fsS "$BASE/auth/v1/.well-known/jwks.json" \
