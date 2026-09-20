@@ -12,4 +12,8 @@ function readTransport(): TransportKind {
 export const ENV = {
   transport: readTransport(),
   tokenEndpoint: import.meta.env.VITE_TOKEN_ENDPOINT ?? "",
+  // Left `string | undefined` on purpose — NO eager validation here. The app must
+  // still boot with zero env (lib/supabase.ts degrades to a null client).
+  supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+  supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
 } as const;
