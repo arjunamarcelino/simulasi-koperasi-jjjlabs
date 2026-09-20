@@ -56,8 +56,10 @@ jobs:
           : "${DB_HOST:?missing SUPABASE_DB_HOST var}"
 
       - name: Apply migrations
+        env:
+          PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
-          supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_ID }}"
+          supabase link --project-ref "$PROJECT_ID"
           supabase db push
 
       # db push does NOT seed. Apply the idempotent catalog seed over the SESSION

@@ -26,10 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping REST (resets the 7-day pause timer)
+        env:
+          PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          curl -fsS "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/rest/v1/" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" >/dev/null
+          curl -fsS "https://${PROJECT_ID}.supabase.co/rest/v1/" \
+            -H "apikey: ${ANON_KEY}" \
+            -H "Authorization: Bearer ${ANON_KEY}" >/dev/null
       - name: Alert on failure
         if: failure()
         run: echo "::error::supabase-keepalive failed — the project may be paused or the key rotated"
