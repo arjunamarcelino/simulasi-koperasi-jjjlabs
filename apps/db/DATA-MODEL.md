@@ -151,7 +151,7 @@ helper, never client-callable. Badges are awarded by a plain RLS-guarded insert 
 | (derived in UI) level | `level_from_xp()` | never a column |
 | (derived in UI) badges | `badge_definition` + `user_badge.awarded_at` | **persisted**; `awarded_at` is the new fact |
 | (transient) `AuditorResult` | `sessions` (folded score columns) | transcript **not** persisted; row written at session start |
-| FE static content arrays | `*_definition` tables | seeded from `apps/db/catalog/*.json` (shared source, CI parity-checked) |
+| FE static content arrays | `*_definition` tables | seeded from `@simkop/catalog` (shared package the FE also imports, CI parity-checked) |
 
 ### Net-new (nothing persists these today)
 Identity/auth, `sessions` + score, `user_badge.awarded_at`, and the four `*_definition`

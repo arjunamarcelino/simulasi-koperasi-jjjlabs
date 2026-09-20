@@ -9,9 +9,12 @@ Plan + brainstorm live under `docs/` (kept out of git per repo convention).
 
 ## Layout
 
+Catalog content is the shared `@simkop/catalog` package (`packages/catalog`), imported
+by both `apps/web` and the seed generator here — the single source of truth.
+
 ```
-catalog/*.json          # single source of truth for catalog content (FE + seed derive from these)
-scripts/gen-seed.mjs    # catalog JSON → supabase/seed.sql (and --check parity guard)
+scripts/gen-seed.mjs    # @simkop/catalog → supabase/seed.sql (and --check parity guard)
+scripts/check-levels.mjs# pins level_from_xp() thresholds to @simkop/catalog levels.json
 supabase/
   config.toml
   migrations/           # dependency-ordered by timestamp (foundation < progress < gameplay < economy < achievements)
@@ -22,11 +25,14 @@ supabase/
 ## Common commands
 
 ```bash
-# Regenerate the seed after editing catalog/*.json
+# Regenerate the seed after editing packages/catalog/data/*.json
 pnpm --filter @simkop/db gen:seed
 
-# Fails if seed.sql is stale vs the catalog (also run in CI)
+# Fails if seed.sql is stale vs @simkop/catalog (also run in CI)
 pnpm --filter @simkop/db check:parity
+
+# Fails if level_from_xp() drifts from @simkop/catalog levels.json (also run in CI)
+pnpm --filter @simkop/db check:levels
 
 # Requires Supabase CLI + Docker running:
 supabase start                     # bring up the local stack
