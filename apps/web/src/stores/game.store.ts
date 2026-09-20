@@ -49,7 +49,6 @@ export type MissionResult =
   | { ok: true; reward: MissionReward }
   | { ok: false; reason: "already" | "wrong-code" | "unknown" };
 
-const NAME_STORAGE_KEY = "koperasi.playerName";
 const XP_STORAGE_KEY = "koperasi.xp";
 const POINT_STORAGE_KEY = "koperasi.point";
 const VOUCHERS_STORAGE_KEY = "koperasi.vouchers";
@@ -58,14 +57,6 @@ const MISSION_STORAGE_KEY = "koperasi.missions";
 /** Trim + case-insensitive on both sides so "kdmp2026 " matches "KDMP2026". */
 function codeMatches(expected: string, input?: string): boolean {
   return input != null && input.trim().toLowerCase() === expected.trim().toLowerCase();
-}
-
-function loadPlayerName(): string | null {
-  try {
-    return window.localStorage.getItem(NAME_STORAGE_KEY);
-  } catch {
-    return null;
-  }
 }
 
 /** Short mock voucher code, e.g. "KDMP-7X2A". Cosmetic only. */
@@ -78,7 +69,11 @@ function genCode(): string {
 
 export type GameState = {
   currentView: View;
-  /** Player name (frontend only, persisted to localStorage). Null until entered. */
+  /**
+   * Read-only mirror of `profiles.display_name`, projected by auth.store so Phaser
+   * (VillageScene/Player) keeps reading its single React↔Phaser bridge. Null until
+   * the player sets a name. Never written from the game layer — see auth.store.
+   */
   playerName: string | null;
   /** Hub room selection + overlay (serializable; Phaser owns scene transitions). */
   selectedRoomId: string | null;
@@ -107,7 +102,6 @@ export type GameState = {
   completedMissionIds: string[];
 
   setView: (view: View) => void;
-  setPlayerName: (name: string) => void;
   selectRoom: (roomId: string) => void;
   clearSelection: () => void;
   enterScenario: (scenarioId: string) => void;
@@ -177,7 +171,7 @@ const INTERACT_SUPPRESS_MS = 250;
 export const gameStore = createStore<GameState>()(
   subscribeWithSelector((set, get) => ({
     currentView: "MAIN_MENU",
-    playerName: loadPlayerName(),
+    playerName: null, // mirror; written only by auth.store's display_name projection
     selectedRoomId: null,
     activeOverlay: "NONE",
     selectedScenarioId: null,
@@ -198,16 +192,6 @@ export const gameStore = createStore<GameState>()(
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
       set({ currentView: view, activeOverlay: "NONE", selectedRoomId: null }),
-
-    setPlayerName: (name) => {
-      const clean = name.trim().slice(0, 16);
-      try {
-        window.localStorage.setItem(NAME_STORAGE_KEY, clean);
-      } catch {
-        // ignore (storage unavailable)
-      }
-      set({ playerName: clean });
-    },
 
     // No-op while an overlay is open (movement-later key-spam safety).
     selectRoom: (roomId) => {

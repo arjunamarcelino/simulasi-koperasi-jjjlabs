@@ -1,6 +1,5 @@
 import Phaser from "phaser";
 import { type CharacterConfig, SAMURAI_GREEN } from "./characters";
-import { gameStore } from "../../stores/game.store";
 
 const SPEED = 90;
 type Dir = "down" | "up" | "left" | "right";
@@ -63,13 +62,7 @@ export class Player {
     // draws correctly in front of / behind furniture and counters.
     this.sprite.setDepth(this.sprite.y);
 
-    // Frozen until the player has entered their name (welcome prompt is open).
-    if (gameStore.getState().playerName === null) {
-      this.sprite.setVelocity(0, 0);
-      this.applyIdle();
-      return;
-    }
-
+    // Name is optional now (guest plays immediately as "Tamu") — no movement gate.
     const left = this.cursors.left.isDown || this.wasd.A.isDown;
     const right = this.cursors.right.isDown || this.wasd.D.isDown;
     const up = this.cursors.up.isDown || this.wasd.W.isDown;
