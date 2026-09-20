@@ -2,7 +2,14 @@ import { createStore } from "zustand/vanilla";
 import { subscribeWithSelector } from "zustand/middleware";
 import { useStore } from "zustand";
 import { KOPERASI_ROOMS } from "../world/rooms.config";
-import { loadNumber, saveNumber, loadJson, saveJson } from "./persist";
+import {
+  loadNumber,
+  saveNumber,
+  loadJson,
+  saveJson,
+  loadString,
+  saveString,
+} from "./persist";
 import {
   VOUCHERS,
   isRedeemedVoucherArray,
@@ -53,6 +60,8 @@ const XP_STORAGE_KEY = "koperasi.xp";
 const POINT_STORAGE_KEY = "koperasi.point";
 const VOUCHERS_STORAGE_KEY = "koperasi.vouchers";
 const MISSION_STORAGE_KEY = "koperasi.missions";
+/** Which account currently owns the (device-local) wallet — see syncWalletOwner. */
+const WALLET_OWNER_KEY = "koperasi.walletOwner";
 
 /** Trim + case-insensitive on both sides so "kdmp2026 " matches "KDMP2026". */
 function codeMatches(expected: string, input?: string): boolean {
@@ -102,6 +111,15 @@ export type GameState = {
   completedMissionIds: string[];
 
   setView: (view: View) => void;
+  /**
+   * Bind the device-local wallet to an account. Called with the Supabase user id
+   * whenever auth resolves. If the id differs from the wallet's recorded owner,
+   * the wallet is RESET (bounds cross-account bleed on shared devices); a
+   * guest→Google upgrade keeps the same id, so progress is preserved. First run
+   * with no recorded owner ADOPTS the existing wallet (one-time migration). No-op
+   * while degraded/mock (no account).
+   */
+  syncWalletOwner: (userId: string) => void;
   selectRoom: (roomId: string) => void;
   clearSelection: () => void;
   enterScenario: (scenarioId: string) => void;
@@ -192,6 +210,20 @@ export const gameStore = createStore<GameState>()(
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
       set({ currentView: view, activeOverlay: "NONE", selectedRoomId: null }),
+
+    syncWalletOwner: (userId) => {
+      const owner = loadString(WALLET_OWNER_KEY);
+      if (owner === userId) return; // same account — keep the wallet
+      saveString(WALLET_OWNER_KEY, userId);
+      // First run (no recorded owner): adopt the existing wallet for this account.
+      if (owner === null) return;
+      // Different account on this device: wipe the wallet so it can't bleed across.
+      saveNumber(XP_STORAGE_KEY, 0);
+      saveNumber(POINT_STORAGE_KEY, 0);
+      saveJson(VOUCHERS_STORAGE_KEY, []);
+      saveJson(MISSION_STORAGE_KEY, []);
+      set({ xp: 0, point: 0, redeemedVouchers: [], completedMissionIds: [] });
+    },
 
     // No-op while an overlay is open (movement-later key-spam safety).
     selectRoom: (roomId) => {

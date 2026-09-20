@@ -134,6 +134,7 @@ let initialized = false;
 let reconciled = false;
 let subscription: { unsubscribe: () => void } | null = null;
 let mirrorUnsub: (() => void) | null = null;
+let walletOwnerUnsub: (() => void) | null = null;
 let readyTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
@@ -159,6 +160,17 @@ export function initAuth(): void {
   mirrorUnsub = authStore.subscribe(
     (s) => s.auth.profile?.display_name ?? null,
     (displayName) => gameStore.setState({ playerName: displayName }),
+    { fireImmediately: true },
+  );
+
+  // Bind the device-local wallet to the current account: on a real account switch
+  // (different uid) the wallet resets, bounding cross-account bleed on shared
+  // devices. A guest→Google upgrade keeps the same uid, so progress is preserved.
+  walletOwnerUnsub = authStore.subscribe(
+    (s) => s.auth.user?.id ?? null,
+    (uid) => {
+      if (uid) gameStore.getState().syncWalletOwner(uid);
+    },
     { fireImmediately: true },
   );
 
@@ -201,6 +213,7 @@ export function initAuth(): void {
     import.meta.hot.dispose(() => {
       subscription?.unsubscribe();
       mirrorUnsub?.();
+      walletOwnerUnsub?.();
       if (readyTimer) clearTimeout(readyTimer);
     });
   }
