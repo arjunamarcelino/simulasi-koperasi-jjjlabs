@@ -3,7 +3,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import { useStore } from "zustand";
 import type { AuthError, Session, User } from "@supabase/supabase-js";
 import { supabase, type Profile } from "../lib/supabase";
-import { gameStore, type View } from "./game.store";
+import { gameStore } from "./game.store";
 
 /**
  * Auth + identity store (SIM-3). Wraps Supabase Auth: a silent anonymous guest at
@@ -70,7 +70,7 @@ export const authStore = createStore<AuthState>()(
 
     signInWithGoogle: async () => {
       if (!supabase) return;
-      stashViewState();
+      gameStore.getState().stashNavForRedirect();
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo: window.location.origin },
@@ -79,7 +79,7 @@ export const authStore = createStore<AuthState>()(
 
     linkGoogle: async (): Promise<LinkResult> => {
       if (!supabase) return { ok: false, reason: "error" };
-      stashViewState();
+      gameStore.getState().stashNavForRedirect();
       const { error } = await supabase.auth.linkIdentity({
         provider: "google",
         options: { redirectTo: window.location.origin },
@@ -156,7 +156,7 @@ export function initAuth(): void {
   if (initialized) return;
   initialized = true;
 
-  restoreViewState();
+  gameStore.getState().restoreNavAfterRedirect();
 
   if (!supabase) {
     // Mock dev / no env: boot degraded so Main Menu + wallet still work.
@@ -277,47 +277,6 @@ function anonSignIn(): Promise<unknown> {
     );
   }
   return run();
-}
-
-// --- OAuth redirect view state ------------------------------------------------
-
-const VIEW_STASH_KEY = "koperasi.auth.viewStash";
-const VALID_VIEWS: readonly View[] = [
-  "MAIN_MENU",
-  "LOADING",
-  "SCENARIO_SELECTION",
-  "GAME",
-  "EVALUATION",
-];
-
-/** Stash the current view before a full-page OAuth redirect (avoid teleport-to-menu). */
-function stashViewState(): void {
-  try {
-    const { currentView, selectedScenarioId } = gameStore.getState();
-    sessionStorage.setItem(VIEW_STASH_KEY, JSON.stringify({ currentView, selectedScenarioId }));
-  } catch {
-    // sessionStorage unavailable — skip (the redirect still works, just returns to menu)
-  }
-}
-
-/** Restore (once) the view stashed before an OAuth redirect. */
-function restoreViewState(): void {
-  try {
-    const raw = sessionStorage.getItem(VIEW_STASH_KEY);
-    if (!raw) return;
-    sessionStorage.removeItem(VIEW_STASH_KEY);
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return;
-    const rec = parsed as Record<string, unknown>;
-    const view = rec["currentView"];
-    if (typeof view === "string" && (VALID_VIEWS as readonly string[]).includes(view)) {
-      const scenarioId =
-        typeof rec["selectedScenarioId"] === "string" ? rec["selectedScenarioId"] : null;
-      gameStore.setState({ currentView: view as View, selectedScenarioId: scenarioId });
-    }
-  } catch {
-    // malformed stash — ignore, land on the default view
-  }
 }
 
 /** Strip the OAuth `?code`/`?error` params so a reload can't reprocess them. */

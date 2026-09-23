@@ -62,6 +62,16 @@ const VOUCHERS_STORAGE_KEY = "koperasi.vouchers";
 const MISSION_STORAGE_KEY = "koperasi.missions";
 /** Which account currently owns the (device-local) wallet — see syncWalletOwner. */
 const WALLET_OWNER_KEY = "koperasi.walletOwner";
+/** sessionStorage key for the nav state stashed across an OAuth redirect. */
+const NAV_STASH_KEY = "koperasi.auth.viewStash";
+/** Runtime allowlist for validating a restored `currentView` (View is defined above). */
+const VALID_VIEWS: readonly View[] = [
+  "MAIN_MENU",
+  "LOADING",
+  "SCENARIO_SELECTION",
+  "GAME",
+  "EVALUATION",
+];
 
 /** Trim + case-insensitive on both sides so "kdmp2026 " matches "KDMP2026". */
 function codeMatches(expected: string, input?: string): boolean {
@@ -120,6 +130,11 @@ export type GameState = {
    * while degraded/mock (no account).
    */
   syncWalletOwner: (userId: string) => void;
+  /** Persist currentView + selectedScenarioId before a full-page OAuth redirect
+   * (called by auth.store) so the player returns to where they were, not the menu. */
+  stashNavForRedirect: () => void;
+  /** Restore (once) the nav state stashed before an OAuth redirect. */
+  restoreNavAfterRedirect: () => void;
   selectRoom: (roomId: string) => void;
   clearSelection: () => void;
   enterScenario: (scenarioId: string) => void;
@@ -232,6 +247,34 @@ export const gameStore = createStore<GameState>()(
       saveJson(VOUCHERS_STORAGE_KEY, []);
       saveJson(MISSION_STORAGE_KEY, []);
       set({ xp: 0, point: 0, redeemedVouchers: [], completedMissionIds: [] });
+    },
+
+    stashNavForRedirect: () => {
+      try {
+        const { currentView, selectedScenarioId } = get();
+        sessionStorage.setItem(NAV_STASH_KEY, JSON.stringify({ currentView, selectedScenarioId }));
+      } catch {
+        // sessionStorage unavailable — the redirect still works, just returns to menu
+      }
+    },
+
+    restoreNavAfterRedirect: () => {
+      try {
+        const raw = sessionStorage.getItem(NAV_STASH_KEY);
+        if (!raw) return;
+        sessionStorage.removeItem(NAV_STASH_KEY);
+        const parsed: unknown = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return;
+        const rec = parsed as Record<string, unknown>;
+        const view = rec["currentView"];
+        if (typeof view === "string" && (VALID_VIEWS as readonly string[]).includes(view)) {
+          const scenarioId =
+            typeof rec["selectedScenarioId"] === "string" ? rec["selectedScenarioId"] : null;
+          set({ currentView: view as View, selectedScenarioId: scenarioId });
+        }
+      } catch {
+        // malformed stash — ignore, land on the default view
+      }
     },
 
     // No-op while an overlay is open (movement-later key-spam safety).
