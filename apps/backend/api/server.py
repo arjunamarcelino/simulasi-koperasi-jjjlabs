@@ -8,6 +8,7 @@ baru dengan membawa `scenario_id` di job metadata (PRD §5).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from datetime import timedelta
@@ -19,8 +20,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from livekit import api
 from pydantic import BaseModel
 
+from . import auth
 from .auth import AuthedUser, verify_supabase_jwt
 from .ratelimit import RateLimiter
+
+log = logging.getLogger("koperasi.token")
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
@@ -124,3 +128,18 @@ def create_token(
     )
 
     return TokenResponse(token=token, room=room, url=LIVEKIT_URL)
+
+
+def _log_config_readiness() -> None:
+    """Peringatkan saat start jika config tak lengkap — agar deploy salah-konfigurasi
+    terlihat di log SEBELUM user pertama kena 500 (bukan hanya per-request)."""
+    if not auth.is_configured():
+        log.warning(
+            "Verifikasi JWT Supabase BELUM dikonfigurasi "
+            "(SUPABASE_JWKS_URL / SUPABASE_JWT_ISSUER) — /token akan 500 sampai di-set."
+        )
+    if not (LIVEKIT_API_KEY and LIVEKIT_API_SECRET and LIVEKIT_URL):
+        log.warning("Kredensial LiveKit belum lengkap — /token akan 500.")
+
+
+_log_config_readiness()

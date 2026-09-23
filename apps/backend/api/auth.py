@@ -88,6 +88,11 @@ class AuthedUser:
         return {"user_id": self.user_id, "is_anonymous": self.is_anonymous}
 
 
+def is_configured() -> bool:
+    """True bila verifier JWT siap (JWKS URL + issuer terkonfigurasi)."""
+    return _jwks_client is not None and bool(_ISSUER)
+
+
 def _unauthorized(detail: str = "invalid_token") -> HTTPException:
     return HTTPException(
         status.HTTP_401_UNAUTHORIZED,
