@@ -245,6 +245,26 @@ describe("auth.store bootstrap", () => {
     await vi.advanceTimersByTimeAsync(3000);
     expect(authStore.getState().auth.status).toBe("degraded");
   });
+
+  it("C4: degrade deadline re-arms at sign-in start — a slow token doesn't flash DEGRADED", async () => {
+    vi.useFakeTimers();
+    const { authStore, initAuth, setCaptchaTokenProvider } = await fresh();
+    // Token lands at 1800ms (slow, but under WAIT_MS → a real token).
+    setCaptchaTokenProvider(() => new Promise((r) => setTimeout(() => r("tok"), 1800)));
+    initAuth();
+    h.authCallback!("INITIAL_SESSION", null);
+
+    await vi.advanceTimersByTimeAsync(1800); // token resolves → sign-in fires → degrade re-armed
+    expect(h.signInAnonymously).toHaveBeenCalledWith({ options: { captchaToken: "tok" } });
+
+    // Past the OLD boot deadline (3000) we must NOT be degraded — the re-arm pushed it to ~4800.
+    await vi.advanceTimersByTimeAsync(1300); // t≈3100
+    expect(authStore.getState().auth.status).toBe("loading");
+
+    // A late SIGNED_IN still lands as guest (no flicker through DEGRADED).
+    h.authCallback!("SIGNED_IN", makeSession("u1", true));
+    expect(authStore.getState().auth.status).toBe("guest");
+  });
 });
 
 describe("auth.store link / signOut / degraded", () => {
@@ -290,7 +310,7 @@ describe("auth.store link / signOut / degraded", () => {
     expect(authStore.getState().auth.status).toBe("guest");
   });
 
-  it("N4: authenticated signOut uses scope:global (revokes server-side)", async () => {
+  it("N5: authenticated signOut uses scope:global (revokes server-side)", async () => {
     const { authStore, initAuth } = await fresh();
     initAuth();
     h.authCallback!("INITIAL_SESSION", makeSession("u1", false)); // permanent → authenticated
