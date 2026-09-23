@@ -40,6 +40,12 @@ export type AuthState = {
   /** Upgrade the current guest to Google (same id). Collision → LinkResult. */
   linkGoogle: () => Promise<LinkResult>;
   signOut: () => Promise<void>;
+  /**
+   * Write `profiles.display_name` (DB-backed, RLS owner-only). Trims + clamps to
+   * MAX_NAME and no-ops on empty. Deliberately no-ops in degraded/no-session mode:
+   * unlike the device-local wallet, naming REQUIRES a live session — the name is
+   * server identity, so there is no local fallback (an accepted asymmetry).
+   */
   setDisplayName: (name: string) => Promise<void>;
   loadProfile: (id: string) => Promise<void>;
 };
@@ -47,7 +53,8 @@ export type AuthState = {
 const LOADING: AuthSnapshot = { status: "loading", session: null, user: null, profile: null };
 const DEGRADED: AuthSnapshot = { status: "degraded", session: null, user: null, profile: null };
 
-const MAX_NAME = 16;
+/** Max display-name length — the single source shared with the ProfileModal editor. */
+export const MAX_NAME = 16;
 
 // Monotonic write-generation for `profile`. setDisplayName (an explicit user write)
 // bumps it; loadProfile (an async read) captures it and drops its result if a newer

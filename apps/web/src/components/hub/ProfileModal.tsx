@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { LEVELS } from "@simkop/catalog";
 import { useGameStore, gameStore } from "../../stores/game.store";
-import { useAuth, authStore } from "../../stores/auth.store";
+import { useAuth, authStore, MAX_NAME } from "../../stores/auth.store";
 import { KOPERASI_IDENTITAS } from "../../content/mading-info";
 import { BADGES, isEarned, type BadgeContext } from "../../content/badges";
 import { ModalShell } from "../common/ModalShell";
@@ -30,8 +30,6 @@ function levelFromXp(xp: number): {
   return { index, title: level.title, floor: level.minXp, nextXp: next ? next.minXp : null };
 }
 
-const MAX_NAME = 16;
-
 /** Player profile: name, level/title, XP progress, Point, koperasi membership,
  * plus the Google upgrade / sign-out affordances. */
 export function ProfileModal() {
@@ -55,8 +53,8 @@ export function ProfileModal() {
     setEditingName(true);
   };
   const saveName = () => {
-    const clean = nameDraft.trim();
-    if (clean) void authStore.getState().setDisplayName(clean);
+    // setDisplayName is the authoritative validator (trim + clamp + empty no-op).
+    void authStore.getState().setDisplayName(nameDraft);
     setEditingName(false);
   };
   const signInGoogle = () => {
