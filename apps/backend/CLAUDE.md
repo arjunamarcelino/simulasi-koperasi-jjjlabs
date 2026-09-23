@@ -9,8 +9,9 @@ kode. Untuk kontrak wire FE↔BE, lihat `CONTRACT.md`. Untuk desain produk, liha
 Backend + AI pipeline game edukasi koperasi berbasis voice. Dua proses, satu
 project `uv`:
 
-- **`api/server.py`** — FastAPI. Hanya mint LiveKit token + dispatch agent
-  (`POST /token`). Tanpa database.
+- **`api/server.py`** — FastAPI. Verifikasi JWT Supabase lalu mint LiveKit token +
+  dispatch agent (`POST /token`, digerbangi `api/auth.py`, rate-limit
+  `api/ratelimit.py`). Tanpa database.
 - **`voice_worker/voice_agent.py`** — worker `livekit-agents` v1.6.5. Satu proses
   menangani SELURUH skenario & persona (PRD §2.1). STT (Azure) → LLM dialog
   (Azure OpenAI `gpt-5-mini`) → TTS (Azure).
@@ -28,6 +29,9 @@ cp .env.example .env          # isi kredензial (lihat daftar env di .env.exam
 # dua terminal:
 uv run python voice_worker/voice_agent.py dev         # worker (registrasi agent_name)
 uv run uvicorn api.server:app --port 8000 --reload    # token server
+
+# test (SIM-4: verifikasi JWT + gating /token). Tak butuh jaringan/Supabase nyata.
+uv run pytest
 ```
 
 Verifikasi live: jalankan `apps/web-sementara` dengan `VITE_TRANSPORT=livekit` +
@@ -38,7 +42,10 @@ Input mic sulit di-headless; jalur teks bisa di-drive dengan Playwright.
 ## Struktur
 
 ```
-api/server.py                 POST /token (+ /health)
+api/server.py                 POST /token (+ /health) — digerbangi JWT + rate-limit
+api/auth.py                   verifikasi JWT Supabase (JWKS/ES256) → dependency FastAPI
+api/ratelimit.py              token-bucket per-user untuk /token (429)
+tests/                        pytest: verifier + endpoint + rate-limit (uv run pytest)
 voice_worker/
   voice_agent.py              entrypoint agent + RatAgent + wiring semua lapisan
   scenarios.py                REGISTRY: semua skenario + spec drift/auditor/RAT/mentor
