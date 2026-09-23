@@ -139,21 +139,9 @@ def install_jwks(monkeypatch, keypair: KeyMaterial):
         monkeypatch.setattr(auth, "_jwks_client", client)
         monkeypatch.setattr(auth, "_ISSUER", ISSUER)
         monkeypatch.setattr(auth, "_AUD", AUD)
-        monkeypatch.setattr(auth, "_unknown_kids", {})
-        monkeypatch.setattr(auth, "_last_forced_refresh", 0.0)
         return client
 
     return _install
-
-
-@pytest.fixture(autouse=True)
-def _reset_throttle(monkeypatch):
-    """Selalu mulai dengan cache negatif kosong (state modul dibagi antar test)."""
-    from api import auth
-
-    monkeypatch.setattr(auth, "_unknown_kids", {})
-    monkeypatch.setattr(auth, "_last_forced_refresh", 0.0)
-    yield
 
 
 # Secret LiveKit dummy untuk test (≥32 char agar tak memicu peringatan kunci pendek).

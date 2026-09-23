@@ -15,16 +15,17 @@ Keputusan kunci (lihat docs/plans/2026-09-24-...-token-gating-supabase-jwt-plan.
 - Role aplikasi (admin) DITUNDA ke SIM-14 — klaim `role` (selalu `authenticated`)
   BUKAN role otorisasi aplikasi.
 - Kegagalan JWKS (jaringan) → 503 (bukan 401). `kid` tak dikenal → 401.
-- Mitigasi H2 (DoS refetch JWKS): refetch paksa di-throttle + `kid` tak dikenal
-  di-cache negatif, agar banjir token ber-`kid` acak tak memicu banjir fetch.
+- Resolusi kunci memakai cache JWKS bawaan PyJWKClient (`lifespan=300`); TIDAK ada
+  force-refetch pada `kid` tak dikenal (rotasi diambil saat cache kedaluwarsa,
+  <=300 dtk). Ini menghindari (a) DoS refetch JWKS oleh banjir `kid` acak dan
+  (b) serialisasi seluruh verifikasi di balik satu lock global.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import threading
-import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -45,29 +46,24 @@ log = logging.getLogger("koperasi.auth")
 
 ALGORITHMS = ("ES256",)  # batas keamanan — hardcoded tuple, jangan dari token/config
 LEEWAY = 10  # detik, margin clock-skew untuk exp/nbf
-_REQUIRED_CLAIMS = ["exp", "aud", "iss", "sub"]
+_REQUIRED_CLAIMS = ("exp", "aud", "iss", "sub")
 
-# Mitigasi H2 — throttle refetch JWKS.
-_REFRESH_MIN_INTERVAL = 60.0  # detik: jarak minimum antar refetch paksa
-_UNKNOWN_KID_TTL = 300.0  # detik: umur entri cache negatif kid tak dikenal
-_UNKNOWN_KID_CAP = 2048  # batas ukuran cache negatif (anti memory-growth)
 
-_JWKS_URL = os.environ.get("SUPABASE_JWKS_URL")
+def _build_client(env: Mapping[str, str]) -> PyJWKClient | None:
+    """Bangun PyJWKClient dari konfigurasi env (None bila belum dikonfigurasi).
+
+    Dipisah agar bisa diuji langsung dengan dict — tanpa reload modul.
+    """
+    url = env.get("SUPABASE_JWKS_URL")
+    # timeout pendek: fetch JWKS hanya saat cold-start / cache lifespan (300s) habis.
+    return PyJWKClient(url, timeout=5, lifespan=300) if url else None
+
+
+_jwks_client = _build_client(os.environ)
 _ISSUER = os.environ.get("SUPABASE_JWT_ISSUER")
 _AUD = os.environ.get("SUPABASE_JWT_AUD", "authenticated")
 
-# Singleton level-modul. Konstruksi TIDAK fetch (fetch lazy saat resolusi kunci
-# pertama). None bila belum dikonfigurasi → fail-closed di dependency.
-_jwks_client: PyJWKClient | None = (
-    PyJWKClient(_JWKS_URL, timeout=5, lifespan=300) if _JWKS_URL else None
-)
-
 _bearer = HTTPBearer(auto_error=False)  # hindari 403 bawaan; kita raise 401 sendiri
-
-# State throttle JWKS (dibagi antar thread threadpool Starlette).
-_jwks_lock = threading.Lock()
-_unknown_kids: dict[str, float] = {}  # kid -> waktu kedaluwarsa (monotonic)
-_last_forced_refresh = 0.0
 
 
 @dataclass(frozen=True)
@@ -87,56 +83,27 @@ def _unauthorized(detail: str = "invalid_token") -> HTTPException:
     )
 
 
-def _remember_unknown_kid(kid: str, now: float) -> None:
-    """Catat `kid` tak dikenal di cache negatif (dipanggil di bawah _jwks_lock)."""
-    if len(_unknown_kids) > _UNKNOWN_KID_CAP // 8:
-        expired = [k for k, exp in _unknown_kids.items() if exp <= now]
-        for k in expired:
-            del _unknown_kids[k]
-    if len(_unknown_kids) <= _UNKNOWN_KID_CAP:
-        _unknown_kids[kid] = now + _UNKNOWN_KID_TTL
+def _resolve_signing_key(client: PyJWKClient, token: str) -> jwt.PyJWK:
+    """Ambil signing key ES256 untuk `token` dari cache JWKS (tanpa force-refetch).
 
-
-def _resolve_signing_key(token: str) -> jwt.PyJWK:
-    """Ambil signing key ES256 untuk `token`, dengan throttle refetch (H2).
-
-    Baca `kid` dari header BELUM terverifikasi (hanya untuk memilih kunci). Coba
-    dari cache JWKS dulu; hanya paksa refetch bila `kid` tak dikenal DAN belum
-    ada refetch paksa dalam _REFRESH_MIN_INTERVAL terakhir. `kid` yang tetap tak
-    dikenal di-cache negatif → 401 tanpa jaringan pada request berikutnya.
+    Baca `kid` dari header BELUM terverifikasi (hanya untuk memilih kunci), lalu
+    cocokkan ke JWK set ter-cache PyJWKClient. `kid` tak dikenal → 401 (bukan
+    memaksa fetch jaringan). Rotasi kunci diambil saat cache `lifespan` habis.
 
     Raises:
         jwt.DecodeError: token malformed (→ 401 di pemanggil).
         HTTPException(401): `kid` hilang / tak dikenal.
-        jwt.PyJWKClientConnectionError: JWKS tak terjangkau (→ 503 di pemanggil).
+        jwt.PyJWKClientConnectionError: JWKS tak terjangkau saat cache dingin
+            (→ 503 di pemanggil).
     """
-    assert _jwks_client is not None  # dijamin oleh guard config di dependency
     header = jwt.get_unverified_header(token)  # DecodeError bila malformed
     kid = header.get("kid")
     if not kid:
         raise _unauthorized()
-
-    now = time.monotonic()
-    with _jwks_lock:
-        exp = _unknown_kids.get(kid)
-        if exp is not None and exp > now:
-            raise _unauthorized("unknown_key")  # ditolak dari cache negatif, tanpa fetch
-
-        key = PyJWKClient.match_kid(_jwks_client.get_signing_keys(refresh=False), kid)
-        if key is not None:
-            return key
-
-        global _last_forced_refresh
-        if now - _last_forced_refresh >= _REFRESH_MIN_INTERVAL:
-            _last_forced_refresh = now  # hitung walau nanti gagal (cegah hammering)
-            key = PyJWKClient.match_kid(
-                _jwks_client.get_signing_keys(refresh=True), kid
-            )
-            if key is not None:
-                return key
-
-        _remember_unknown_kid(kid, now)
+    key = PyJWKClient.match_kid(client.get_signing_keys(refresh=False), kid)
+    if key is None:
         raise _unauthorized("unknown_key")
+    return key
 
 
 def verify_supabase_jwt(
@@ -155,7 +122,7 @@ def verify_supabase_jwt(
     token = creds.credentials
 
     try:
-        signing_key = _resolve_signing_key(token)
+        signing_key = _resolve_signing_key(_jwks_client, token)
     except jwt.PyJWKClientConnectionError as exc:  # jaringan/timeout → server fault
         log.warning("JWKS tidak terjangkau: %s", exc)
         raise HTTPException(503, "JWKS tidak tersedia") from exc
@@ -170,7 +137,7 @@ def verify_supabase_jwt(
             audience=_AUD,
             issuer=_ISSUER,
             leeway=LEEWAY,
-            options={"require": _REQUIRED_CLAIMS},
+            options={"require": list(_REQUIRED_CLAIMS)},
         )
     except jwt.InvalidTokenError as exc:  # exp/aud/iss/alg/sig/claim → semua 401
         raise _unauthorized() from exc

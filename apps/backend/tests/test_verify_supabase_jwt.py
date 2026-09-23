@@ -1,7 +1,8 @@
 """Unit test `verify_supabase_jwt` — memanggil verifier ASLI (bukan override).
 
-Cakupan: positif (auth/guest/leeway/rotasi), negatif (semua → 401), edge/infra
-(503, 500, parse is_anonymous ketat, throttle H2), dan guard real-module-load.
+Cakupan: positif (auth/guest/leeway/resolve-dari-cache), negatif (semua → 401),
+edge/infra (503, 500, parse is_anonymous ketat, kid tak dikenal tanpa refetch),
+dan guard konfigurasi `_build_client`.
 """
 
 from __future__ import annotations
@@ -9,7 +10,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import importlib
 import json
 import time
 
@@ -54,24 +54,12 @@ def test_within_exp_leeway_accepted(install_jwks, token_factory):
     assert user.user_id == "user-123"
 
 
-def test_kid_rotation_forces_one_refresh(install_jwks, token_factory, keypair):
-    # Cache awal TIDAK punya kunci (kid tak ketemu) → refetch paksa sekali → ketemu.
-    client = install_jwks(keys=[])
-    client._keys = []  # cache kosong
-
-    # Saat refresh=True, sajikan kunci (simulasi rotasi JWKS memunculkan kid baru).
-    real_get = client.get_signing_keys
-
-    def get(refresh=False):
-        result = real_get(refresh=refresh)
-        if refresh:
-            return [keypair.jwk]
-        return result
-
-    client.get_signing_keys = get  # type: ignore[assignment]
+def test_key_resolved_from_cache_without_refetch(install_jwks, token_factory):
+    # Happy path: kid ada di JWK set ter-cache → resolve tanpa force-refetch.
+    client = install_jwks()
     user = _call(token_factory())
     assert user.user_id == "user-123"
-    assert client.refresh_calls == 1
+    assert client.refresh_calls == 0  # tak pernah force-refetch
 
 
 # ----------------------------- NEGATIF (→ 401) ---------------------------
@@ -209,9 +197,9 @@ def test_is_anonymous_strict_parse(install_jwks, token_factory, raw, expected):
     assert user.is_anonymous is expected
 
 
-def test_h2_unknown_kid_burst_collapses_to_one_refetch(install_jwks, keypair):
-    # Banjir token ber-kid acak yang tak dikenal → hanya SATU refetch paksa
-    # (min-interval throttle); sisanya di-cache negatif; semua tetap 401.
+def test_unknown_kid_is_401_without_refetch(install_jwks, keypair):
+    # Banjir token ber-kid acak yang tak dikenal → semua 401, TANPA force-refetch
+    # (H2: rotasi diambil via cache lifespan, bukan refetch on-miss). refresh=0.
     client = install_jwks()  # hanya punya TEST_KID
     now = int(time.time())
 
@@ -227,7 +215,12 @@ def test_h2_unknown_kid_burst_collapses_to_one_refetch(install_jwks, keypair):
         with pytest.raises(HTTPException) as exc:
             _call(mint_unknown(f"random-kid-{i}"))
         assert exc.value.status_code == 401
-    assert client.refresh_calls == 1  # bukan 20
+    assert client.refresh_calls == 0  # tak pernah force-refetch pada kid tak dikenal
+
+
+def test_empty_kid_header_is_401(install_jwks, token_factory):
+    install_jwks()
+    _assert_401(token_factory(kid=""))
 
 
 def test_config_missing_is_500(monkeypatch, token_factory):
@@ -239,16 +232,11 @@ def test_config_missing_is_500(monkeypatch, token_factory):
     assert exc.value.status_code == 500
 
 
-def test_real_module_load_builds_client(monkeypatch):
-    # Guard BLOCKER load_dotenv: dengan SUPABASE_* di-env, import ulang api.auth
-    # HARUS membangun _jwks_client (bukan None). Tanpa monkeypatch _jwks_client.
-    monkeypatch.setenv("SUPABASE_JWKS_URL", "https://x.supabase.co/auth/v1/.well-known/jwks.json")
-    monkeypatch.setenv("SUPABASE_JWT_ISSUER", "https://x.supabase.co/auth/v1")
-    try:
-        reloaded = importlib.reload(auth)
-        assert reloaded._jwks_client is not None
-        assert reloaded._ISSUER == "https://x.supabase.co/auth/v1"
-    finally:
-        # Kembalikan modul ke state env sebenarnya agar test lain tak terpengaruh.
-        monkeypatch.undo()
-        importlib.reload(auth)
+def test_build_client_from_env():
+    # Guard config: _build_client membangun client saat SUPABASE_JWKS_URL ada,
+    # dan None saat tak ada. Diuji langsung dengan dict — tanpa reload modul.
+    client = auth._build_client(
+        {"SUPABASE_JWKS_URL": "https://x.supabase.co/auth/v1/.well-known/jwks.json"}
+    )
+    assert client is not None
+    assert auth._build_client({}) is None
