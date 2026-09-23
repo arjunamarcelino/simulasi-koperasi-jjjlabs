@@ -213,6 +213,38 @@ describe("auth.store bootstrap", () => {
     expect(authStore.getState().ready).toBe(true);
     expect(authStore.getState().auth.status).toBe("degraded");
   });
+
+  it("C1: captcha provider token is carried into signInAnonymously (SIM-41)", async () => {
+    const { initAuth, setCaptchaTokenProvider } = await fresh();
+    setCaptchaTokenProvider(() => Promise.resolve("tok-123"));
+    initAuth();
+    h.authCallback!("INITIAL_SESSION", null);
+    await flush();
+    expect(h.signInAnonymously).toHaveBeenCalledWith({ options: { captchaToken: "tok-123" } });
+  });
+
+  it("C2: no provider → tokenless signInAnonymously (byte-for-byte today)", async () => {
+    const { initAuth } = await fresh();
+    initAuth();
+    h.authCallback!("INITIAL_SESSION", null);
+    await flush();
+    expect(h.signInAnonymously).toHaveBeenCalledWith({});
+  });
+
+  it("C3: failed re-anon after sign-out degrades (not stuck in LOADING)", async () => {
+    vi.useFakeTimers();
+    const { authStore, initAuth } = await fresh();
+    initAuth();
+    h.authCallback!("SIGNED_IN", makeSession("u1", true)); // live session; boot timer cleared
+    expect(authStore.getState().auth.status).toBe("guest");
+
+    h.authCallback!("SIGNED_OUT", null); // re-anon armed; status → loading
+    expect(authStore.getState().auth.status).toBe("loading");
+
+    // Re-anon never yields a new session (e.g. captcha rejected) → re-armed fallback degrades.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(authStore.getState().auth.status).toBe("degraded");
+  });
 });
 
 describe("auth.store link / signOut / degraded", () => {
