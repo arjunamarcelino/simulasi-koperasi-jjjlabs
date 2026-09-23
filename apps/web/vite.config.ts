@@ -82,6 +82,19 @@ function cspMeta(csp: string): Plugin {
 export default defineConfig(({ mode }) => {
   // Read VITE_* (Supabase URL, token endpoint) to pin connect-src for this build.
   const env = loadEnv(mode, process.cwd());
+
+  // Guard the silent-disable footgun (SIM-41): a prod build with no site key ships
+  // anon sign-in TOKENLESS with no signal. NOT fatal — the FE deploys tokenless BEFORE
+  // Supabase CAPTCHA is enabled (Phase 2 precedes Phase 3) — but warn loudly so a
+  // misconfigured prod build can't disable CAPTCHA in silence once Phase 3 is on.
+  if (mode === "production" && !env["VITE_TURNSTILE_SITE_KEY"]?.trim()) {
+    console.warn(
+      "\n⚠️  VITE_TURNSTILE_SITE_KEY is not set for this production build — anonymous " +
+        "sign-in will run TOKENLESS. Once Supabase CAPTCHA is enabled (SIM-41 Phase 3), " +
+        "guest login will break. Set the site key in the deploy env.\n",
+    );
+  }
+
   return {
     plugins: [react(), tailwindcss(), cspMeta(buildCsp(env))],
     // Drop Vite's inline module-preload polyfill so `script-src 'self'` needs no
