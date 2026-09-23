@@ -265,9 +265,20 @@ export function setCaptchaTokenProvider(provider: () => string | undefined): voi
 
 function anonSignIn(): Promise<unknown> {
   const token = captchaTokenProvider?.();
-  return supabase!.auth.signInAnonymously(
-    token ? { options: { captchaToken: token } } : {},
-  );
+  const run = () =>
+    supabase!.auth.signInAnonymously(token ? { options: { captchaToken: token } } : {});
+  // Elect a single tab to perform the re-anon: N open tabs all receive SIGNED_OUT
+  // (via the storage event) and would each mint an anonymous user AND trigger a
+  // wallet reset. Hold a cross-tab Web Lock so only the winner signs in; the others
+  // (ifAvailable → null lock) skip and adopt the winning session via the storage
+  // event, so their syncWalletOwner no-ops (same uid). No lock API (node/tests) →
+  // sign in directly.
+  if (typeof navigator !== "undefined" && navigator.locks) {
+    return navigator.locks.request("koperasi.reanon", { ifAvailable: true }, (lock) =>
+      lock ? run() : Promise.resolve(),
+    );
+  }
+  return run();
 }
 
 // --- OAuth redirect view state ------------------------------------------------
