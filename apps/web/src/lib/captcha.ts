@@ -40,6 +40,7 @@ declare global {
 }
 
 let started = false;
+let loadFailed = false; // api.js failed to load — can't re-arm without a reload; fail fast
 let widgetId: string | undefined;
 let container: HTMLDivElement | undefined;
 let currentToken: string | undefined; // a FRESH, unconsumed token (or undefined)
@@ -61,6 +62,13 @@ function scheduleRearm(): void {
   rearmTimer = setTimeout(requestFresh, REARM_MS);
 }
 
+/** error/timeout: clear the token, fail any awaiter promptly, and re-arm after a backoff. */
+function handleFailure(): void {
+  currentToken = undefined;
+  failAllWaiters();
+  scheduleRearm();
+}
+
 /** Idempotent. Injects `api.js` once and renders one invisible widget into a hidden div. */
 export function startTurnstile(siteKey: string): void {
   if (started || typeof document === "undefined") return;
@@ -71,13 +79,14 @@ export function startTurnstile(siteKey: string): void {
   document.body.appendChild(container);
 
   const render = () => {
-    widgetId = window.turnstile?.render(container as HTMLElement, {
+    widgetId = window.turnstile?.render(container!, {
       sitekey: siteKey,
       execution: "render", // fetch a token as soon as it renders
       appearance: "interaction-only", // no visible UI (invisible widget)
       // Single-use handoff: give the token to exactly ONE awaiter (consumed live, NOT
       // cached), else cache it for the next call. Never both → no burned-token re-serve.
       callback: (token) => {
+        clearTimeout(rearmTimer); // a token arrived — cancel any pending error re-arm
         const w = waiters.shift();
         if (w) w(token);
         else currentToken = token;
@@ -86,16 +95,8 @@ export function startTurnstile(siteKey: string): void {
         currentToken = undefined;
         requestFresh();
       }, // TTL (~300s) lapsed with no consumption
-      "error-callback": () => {
-        currentToken = undefined;
-        failAllWaiters();
-        scheduleRearm();
-      },
-      "timeout-callback": () => {
-        currentToken = undefined;
-        failAllWaiters();
-        scheduleRearm();
-      },
+      "error-callback": handleFailure,
+      "timeout-callback": handleFailure,
     });
   };
 
@@ -105,7 +106,12 @@ export function startTurnstile(siteKey: string): void {
     script.src = SCRIPT;
     script.async = true;
     script.onload = render;
-    script.onerror = failAllWaiters; // blocked/offline → provider yields undefined
+    // Load failure can't be re-armed without a reload → mark it so the provider fails
+    // fast (returns undefined immediately) instead of waiting WAIT_MS on every call.
+    script.onerror = () => {
+      loadFailed = true;
+      failAllWaiters();
+    };
     document.head.appendChild(script);
   }
 }
@@ -116,7 +122,7 @@ export function startTurnstile(siteKey: string): void {
  * actually consumes a token triggers a reset.
  */
 export async function getCaptchaToken(): Promise<string | undefined> {
-  if (!started) return undefined;
+  if (!started || loadFailed) return undefined; // no widget will ever render → don't wait WAIT_MS
   const cached = currentToken;
   currentToken = undefined; // hand out at most once
   const token = cached ?? (await waitForNext(WAIT_MS));
@@ -147,6 +153,7 @@ if (import.meta.hot) {
     failAllWaiters();
     clearTimeout(rearmTimer);
     started = false;
+    loadFailed = false;
     widgetId = undefined;
     container = undefined;
     currentToken = undefined;

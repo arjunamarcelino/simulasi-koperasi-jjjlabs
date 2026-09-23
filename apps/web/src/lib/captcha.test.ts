@@ -135,12 +135,27 @@ describe("captcha provider", () => {
     expect(h.reset).toHaveBeenCalledTimes(1); // recovered, not wedged tokenless
   });
 
-  it("timeout-callback behaves like error (parametrized path)", async () => {
+  it("timeout-callback behaves like error: undefined + re-arm (parametrized path)", async () => {
     const c = await load();
     c.startTurnstile("site");
     const p = c.getCaptchaToken();
     opts()["timeout-callback"]!();
     expect(await p).toBeUndefined();
+    h.reset.mockClear();
+    await vi.advanceTimersByTimeAsync(3000); // REARM_MS
+    expect(h.reset).toHaveBeenCalledTimes(1); // shares handleFailure with error-callback
+  });
+
+  it("a token arriving cancels a pending error re-arm (no churn reset)", async () => {
+    const c = await load();
+    c.startTurnstile("site");
+    const p = c.getCaptchaToken();
+    opts()["error-callback"]!(); // fails p, schedules a rearm at +REARM_MS
+    expect(await p).toBeUndefined();
+    h.reset.mockClear();
+    opts().callback!("X"); // a token banks before the rearm fires → cancels it
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(h.reset).not.toHaveBeenCalled();
   });
 
   it("no token within WAIT_MS → undefined", async () => {
@@ -181,5 +196,7 @@ describe("captcha provider", () => {
     const p = c.getCaptchaToken();
     h.scripts[0]!.onerror!();
     expect(await p).toBeUndefined();
+    // Subsequent calls fail fast (loadFailed) — no WAIT_MS penalty, no timer advance needed.
+    expect(await c.getCaptchaToken()).toBeUndefined();
   });
 });
