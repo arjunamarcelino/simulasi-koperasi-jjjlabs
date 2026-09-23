@@ -172,6 +172,31 @@ describe("auth.store bootstrap", () => {
     expect(authStore.getState().auth.profile?.display_name).toBe("Siti");
   });
 
+  it("I1: a stale loadProfile cannot clobber a fresh setDisplayName (same uid)", async () => {
+    const { authStore, initAuth } = await fresh();
+    // The boot-time loadProfile(u1) parks on a pending single().
+    let resolveLoad!: (value: { data: unknown; error: null }) => void;
+    h.profileSingle.mockReturnValue(
+      new Promise((res) => {
+        resolveLoad = res;
+      }),
+    );
+    h.profileUpdateEq.mockResolvedValue({ error: null });
+
+    initAuth();
+    h.authCallback!("INITIAL_SESSION", makeSession("u1", true));
+    await flush(); // loadProfile(u1) started; its GET is parked
+
+    // User renames while that GET is still in flight → optimistic "Alice".
+    await authStore.getState().setDisplayName("Alice");
+    expect(authStore.getState().auth.profile?.display_name).toBe("Alice");
+
+    // The stale GET now resolves carrying the pre-rename value — must be dropped.
+    resolveLoad({ data: { id: "u1", display_name: null }, error: null });
+    await flush();
+    expect(authStore.getState().auth.profile?.display_name).toBe("Alice");
+  });
+
   it("E2: double initAuth → onAuthStateChange subscribed once", async () => {
     const { initAuth } = await fresh();
     initAuth();

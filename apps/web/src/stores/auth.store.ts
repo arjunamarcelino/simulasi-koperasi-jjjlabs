@@ -48,6 +48,12 @@ const DEGRADED: AuthSnapshot = { status: "degraded", session: null, user: null, 
 
 const MAX_NAME = 16;
 
+// Monotonic write-generation for `profile`. setDisplayName (an explicit user write)
+// bumps it; loadProfile (an async read) captures it and drops its result if a newer
+// write landed during the await — so a slow profile GET can't clobber a fresh rename
+// under the SAME uid (the id-guard alone doesn't cover same-id, content-changed).
+let profileEpoch = 0;
+
 /** Two literals (not one `status: 'guest'|'authenticated'` object) so each stays
  * assignable to its own union member under the discriminated union. */
 function snapshotFor(session: Session, profile: Profile | null): AuthSnapshot {
@@ -101,12 +107,15 @@ export const authStore = createStore<AuthState>()(
       if (!supabase || !user) return;
       const clean = name.trim().slice(0, MAX_NAME);
       if (!clean) return;
+      const epoch = ++profileEpoch; // this explicit write is now the newest truth
       const { error } = await supabase
         .from("profiles")
         .update({ display_name: clean })
         .eq("id", user.id);
       if (error) return;
       set((s) => {
+        if (s.auth.user?.id !== user.id) return {}; // account switched mid-await
+        if (profileEpoch !== epoch) return {}; // a newer profile write superseded this one
         if (s.auth.status !== "guest" && s.auth.status !== "authenticated") return {};
         return { auth: { ...s.auth, profile: { id: user.id, display_name: clean } } };
       });
@@ -114,12 +123,14 @@ export const authStore = createStore<AuthState>()(
 
     loadProfile: async (id: string) => {
       if (!supabase) return;
+      const epoch = profileEpoch; // capture; drop the result if a newer write lands
       const { data } = await supabase
         .from("profiles")
         .select("id, display_name")
         .eq("id", id)
         .single();
-      if (get().auth.user?.id !== id) return; // STALE — a newer auth won the race
+      // STALE if a newer id (account switch) OR a newer profile write (setDisplayName) won.
+      if (get().auth.user?.id !== id || profileEpoch !== epoch) return;
       set((s) => {
         if (s.auth.status !== "guest" && s.auth.status !== "authenticated") return {};
         return { auth: { ...s.auth, profile: data ?? null } };
@@ -230,7 +241,12 @@ function writeSession(session: Session | null): void {
   }
   authStore.setState((s) => ({
     ready: session ? true : s.ready,
-    auth: session ? snapshotFor(session, s.auth.profile) : LOADING, // transient; re-anon incoming
+    // Carry the profile only when the uid is unchanged; on an id change (account
+    // switch) start null so the new user never briefly shows the prior name — the
+    // deferred loadProfile then populates it. LOADING is the transient re-anon gap.
+    auth: session
+      ? snapshotFor(session, session.user.id === s.auth.user?.id ? s.auth.profile : null)
+      : LOADING,
   }));
 }
 
