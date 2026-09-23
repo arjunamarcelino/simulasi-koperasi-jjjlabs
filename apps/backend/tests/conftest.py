@@ -154,3 +154,22 @@ def _reset_throttle(monkeypatch):
     monkeypatch.setattr(auth, "_unknown_kids", {})
     monkeypatch.setattr(auth, "_last_forced_refresh", 0.0)
     yield
+
+
+# Secret LiveKit dummy untuk test (≥32 char agar tak memicu peringatan kunci pendek).
+LIVEKIT_TEST_SECRET = "test-livekit-secret-0123456789abcdef"
+
+
+@pytest.fixture
+def client(monkeypatch):
+    """TestClient dengan kredensial LiveKit dummy; bersihkan override setelahnya."""
+    from fastapi.testclient import TestClient
+
+    from api import server
+
+    monkeypatch.setattr(server, "LIVEKIT_API_KEY", "devkey")
+    monkeypatch.setattr(server, "LIVEKIT_API_SECRET", LIVEKIT_TEST_SECRET)
+    monkeypatch.setattr(server, "LIVEKIT_URL", "wss://test.livekit.cloud")
+    with TestClient(server.app) as test_client:
+        yield test_client
+    server.app.dependency_overrides.clear()
