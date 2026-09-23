@@ -232,6 +232,12 @@ def test_config_missing_is_500(monkeypatch, token_factory):
     assert exc.value.status_code == 500
 
 
+def test_participant_metadata_shape():
+    # Definisi tunggal wire server→worker: hanya user_id + is_anonymous.
+    user = auth.AuthedUser(user_id="u1", is_anonymous=True)
+    assert user.participant_metadata() == {"user_id": "u1", "is_anonymous": True}
+
+
 def test_build_client_from_env():
     # Guard config: _build_client membangun client saat SUPABASE_JWKS_URL ada,
     # dan None saat tak ada. Diuji langsung dengan dict — tanpa reload modul.

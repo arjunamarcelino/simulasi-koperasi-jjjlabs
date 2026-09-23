@@ -78,6 +78,15 @@ class AuthedUser:
     user_id: str  # klaim `sub` (dijamin non-kosong)
     is_anonymous: bool  # parse ketat; ambiguous/absen → True (guest, fail-safe)
 
+    def participant_metadata(self) -> dict[str, object]:
+        """Bentuk metadata peserta LiveKit (wire server→worker).
+
+        Definisi TUNGGAL producer-side agar sisi mint (server.py) dan sisi baca
+        (voice_worker, nanti) tak menyimpang. Hanya field non-PII yang di-stamp.
+        Lihat CONTRACT.md §2.
+        """
+        return {"user_id": self.user_id, "is_anonymous": self.is_anonymous}
+
 
 def _unauthorized(detail: str = "invalid_token") -> HTTPException:
     return HTTPException(

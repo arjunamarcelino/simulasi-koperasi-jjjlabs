@@ -103,14 +103,12 @@ def create_token(
         api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
         # Identitas peserta = Supabase sub (dulu player-<uuid8> acak) → sesi bisa
         # diatribusikan ke user server-side. Metadata peserta (tepercaya, dari JWT
-        # terverifikasi) membawa user_id + is_anonymous untuk jalur worker nanti.
-        # Stamp HANYA kunci ini — JANGAN user.claims (bisa memuat email/phone).
+        # terverifikasi) memakai AuthedUser.participant_metadata() — definisi tunggal
+        # bentuk wire server→worker (hanya user_id + is_anonymous, non-PII).
         .with_identity(user.user_id)
         .with_name("Petugas")
         .with_ttl(LIVEKIT_TOKEN_TTL)
-        .with_metadata(
-            json.dumps({"user_id": user.user_id, "is_anonymous": user.is_anonymous})
-        )
+        .with_metadata(json.dumps(user.participant_metadata()))
         .with_grants(api.VideoGrants(room_join=True, room=room))
         .with_room_config(
             api.RoomConfiguration(
