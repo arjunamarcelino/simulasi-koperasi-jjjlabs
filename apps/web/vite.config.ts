@@ -39,13 +39,25 @@ function buildCsp(env: Record<string, string>): string {
   if (token) connect.push(token);
   connect.push("wss:"); // LiveKit host is runtime-dynamic (from /token) — keep wss broad
 
+  // Turnstile (SIM-41): only when a site key is set, and only script-src + frame-src.
+  // NOT connect-src — the challenge runs in the challenges.cloudflare.com iframe, whose
+  // requests are governed by ITS csp, so widening our connect-src would only enlarge the
+  // refresh-token exfil surface this policy exists to bound.
+  const cf = "https://challenges.cloudflare.com";
+  const hasTurnstile = !!env["VITE_TURNSTILE_SITE_KEY"]?.trim();
+  const script = hasTurnstile ? `'self' ${cf}` : "'self'";
+  // frame-src is new here; baseline 'self' preserves today's same-origin-frame fallback.
+  const frame = hasTurnstile ? `'self' ${cf}` : "'self'";
+
   return [
     "default-src 'self'",
-    "script-src 'self'",
+    `script-src ${script}`,
+    // 'unsafe-inline' also covers Turnstile's injected widget styles (keep if tightening later).
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob:",
     `connect-src ${connect.join(" ")}`,
+    `frame-src ${frame}`,
     "worker-src 'self' blob:",
     "base-uri 'self'",
     "object-src 'none'",

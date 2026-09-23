@@ -16,4 +16,7 @@ export const ENV = {
   // still boot with zero env (lib/supabase.ts degrades to a null client).
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
   supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+  // Cloudflare Turnstile site key (public; ships in the bundle). Unset → no widget,
+  // anon sign-in stays tokenless (SIM-41). Optional, same no-eager-validation rule.
+  turnstileSiteKey: import.meta.env.VITE_TURNSTILE_SITE_KEY,
 } as const;
