@@ -178,6 +178,14 @@ export type GameState = {
 const INTERACT_SUPPRESS_MS = 250;
 
 /**
+ * In-memory copy of the wallet owner, seeded from storage at load. Kept in memory
+ * (not re-read from storage each call) so a device with broken/unavailable
+ * localStorage — where loadString always returns null — still detects a genuine
+ * account switch within a session instead of perpetually "adopting" the wallet.
+ */
+let walletOwnerCache: string | null = loadString(WALLET_OWNER_KEY);
+
+/**
  * Vanilla Zustand store — the single bridge between React and Phaser.
  *
  * - React reads via the `useGameStore` selector hook (below).
@@ -212,11 +220,12 @@ export const gameStore = createStore<GameState>()(
       set({ currentView: view, activeOverlay: "NONE", selectedRoomId: null }),
 
     syncWalletOwner: (userId) => {
-      const owner = loadString(WALLET_OWNER_KEY);
-      if (owner === userId) return; // same account — keep the wallet
-      saveString(WALLET_OWNER_KEY, userId);
+      if (walletOwnerCache === userId) return; // same account — keep the wallet
+      const hadOwner = walletOwnerCache !== null;
+      walletOwnerCache = userId;
+      saveString(WALLET_OWNER_KEY, userId); // best-effort persist
       // First run (no recorded owner): adopt the existing wallet for this account.
-      if (owner === null) return;
+      if (!hadOwner) return;
       // Different account on this device: wipe the wallet so it can't bleed across.
       saveNumber(XP_STORAGE_KEY, 0);
       saveNumber(POINT_STORAGE_KEY, 0);
