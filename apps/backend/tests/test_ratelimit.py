@@ -57,6 +57,23 @@ def test_invalid_config_rejected():
         RateLimiter(capacity=0, refill_seconds=60)
     with pytest.raises(ValueError):
         RateLimiter(capacity=1, refill_seconds=0)
+    with pytest.raises(ValueError):
+        RateLimiter(capacity=1, refill_seconds=60, max_keys=0)
+
+
+def test_max_keys_is_a_hard_cap_with_lru_eviction():
+    # Batas keras walau semua bucket aktif (tak ada yang penuh): dict tak melampaui
+    # max_keys; kunci paling lama tak dipakai (LRU) dievaksi.
+    clock = _Clock()
+    rl = RateLimiter(capacity=1, refill_seconds=60, clock=clock, max_keys=2)
+    rl.check("a")  # a habis (aktif, tak penuh)
+    rl.check("b")  # b habis
+    rl.check("c")  # penuh → evaksi "a" (LRU), sisakan {b, c}
+    assert len(rl._buckets) == 2
+    assert "a" not in rl._buckets
+    # "a" dievaksi → bucket baru penuh lagi → diizinkan
+    assert rl.check("a") == 0.0
+    assert len(rl._buckets) == 2  # tetap ≤ max_keys (kini {c, a}; b terevaksi)
 
 
 # ---------------------------- wiring 429 ---------------------------------
