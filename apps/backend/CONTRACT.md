@@ -65,6 +65,12 @@ Status:
 
 `403` **dicadangkan** (belum dipakai di v1; role admin ditunda ke SIM-14).
 
+**Rate limit (`429`):** batas per-user (`sub`) in-memory pada `/token` (tiap mint
+men-dispatch agent LLM berbayar). Batas ini **tidak** membatasi abuse anonim secara
+agregat — tiap sign-in anonim menghasilkan `sub` baru (= kuota baru). Pembatasan
+abuse anonim diserahkan ke **CAPTCHA + rate-limit sign-in anonim sisi Supabase
+(SIM-1)**; ceiling mint global/per-IP di backend adalah kandidat pengerasan lanjutan.
+
 **Identitas peserta** kini = Supabase `sub` (UUID) — bukan lagi berawalan
 `player-`. Penemuan agent tetap lewat prefix `agent-`/`kind=agent` (§3), jadi tak
 terpengaruh; jangan mengasumsikan prefix `player-` di sisi mana pun.
