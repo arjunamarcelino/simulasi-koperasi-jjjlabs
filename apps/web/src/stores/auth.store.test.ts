@@ -125,10 +125,13 @@ afterEach(() => {
 });
 
 describe("auth.store bootstrap", () => {
-  it("A1: INITIAL_SESSION null → anon sign-in once; SIGNED_IN → guest, ready", async () => {
+  it("A1: INITIAL_SESSION null → anon sign-in once; ready held until SIGNED_IN → guest", async () => {
     const { authStore, initAuth } = await fresh();
     initAuth();
     h.authCallback!("INITIAL_SESSION", null);
+    // Re-anon is deferred (queueMicrotask); ready stays FALSE until a real session.
+    expect(authStore.getState().ready).toBe(false);
+    await flush();
     expect(h.signInAnonymously).toHaveBeenCalledTimes(1);
 
     h.authCallback!("SIGNED_IN", makeSession("u1", true));
@@ -224,6 +227,7 @@ describe("auth.store link / signOut / degraded", () => {
 
     // The listener re-anons on SIGNED_OUT, then a fresh guest signs in.
     h.authCallback!("SIGNED_OUT", null);
+    await flush(); // re-anon is deferred (queueMicrotask)
     expect(h.signInAnonymously).toHaveBeenCalled();
     h.authCallback!("SIGNED_IN", makeSession("u2", true));
     expect(authStore.getState().auth.status).toBe("guest");

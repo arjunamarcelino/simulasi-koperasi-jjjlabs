@@ -188,17 +188,16 @@ export function initAuth(): void {
       queueMicrotask(() => void authStore.getState().loadProfile(user.id));
     }
 
+    // Re-anon is deferred off the callback (like loadProfile): signInAnonymously
+    // re-enters the GoTrue lock held during this callback, so queue it for the next
+    // microtask instead of calling it inline.
     if (!reconciled && event === "INITIAL_SESSION") {
       reconciled = true;
-      if (readyTimer) {
-        clearTimeout(readyTimer);
-        readyTimer = null;
-      }
-      if (!session) void anonSignIn();
+      if (!session) queueMicrotask(() => void anonSignIn());
     }
     if (event === "SIGNED_OUT") {
       reconciled = true;
-      void anonSignIn();
+      queueMicrotask(() => void anonSignIn());
     }
   });
   subscription = data.subscription;
@@ -220,8 +219,17 @@ export function initAuth(): void {
 }
 
 function writeSession(session: Session | null): void {
+  // A real session releases the boot gate and cancels the degraded fallback timer.
+  // A null session (first-visit-pre-anon, or sign-out) must NOT flip `ready`: on a
+  // first visit the re-anon's SIGNED_IN is what releases the gate, so the app never
+  // renders under a released gate with a null user. The 3s readyTimer stays armed as
+  // the sole fallback (degrades if no session ever arrives — e.g. re-anon fails).
+  if (session && readyTimer) {
+    clearTimeout(readyTimer);
+    readyTimer = null;
+  }
   authStore.setState((s) => ({
-    ready: true, // released WITH the event, never ahead of the session
+    ready: session ? true : s.ready,
     auth: session ? snapshotFor(session, s.auth.profile) : LOADING, // transient; re-anon incoming
   }));
 }
