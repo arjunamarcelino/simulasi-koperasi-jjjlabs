@@ -241,13 +241,13 @@ describe("auth.store link / signOut / degraded", () => {
     expect(h.signInAnonymously).not.toHaveBeenCalled();
   });
 
-  it("E1: signOut → controller.stop then re-anon; ends at guest", async () => {
+  it("E1: guest signOut uses scope:local then re-anons; ends at guest", async () => {
     const { authStore, initAuth } = await fresh();
     initAuth();
     h.authCallback!("INITIAL_SESSION", makeSession("u1", true));
 
     await authStore.getState().signOut();
-    expect(h.controllerStop).toHaveBeenCalledTimes(1);
+    // Teardown of a live room is the controller's job (it observes auth) — not here.
     expect(h.signOut).toHaveBeenCalledWith({ scope: "local" });
 
     // The listener re-anons on SIGNED_OUT, then a fresh guest signs in.
@@ -256,6 +256,14 @@ describe("auth.store link / signOut / degraded", () => {
     expect(h.signInAnonymously).toHaveBeenCalled();
     h.authCallback!("SIGNED_IN", makeSession("u2", true));
     expect(authStore.getState().auth.status).toBe("guest");
+  });
+
+  it("N4: authenticated signOut uses scope:global (revokes server-side)", async () => {
+    const { authStore, initAuth } = await fresh();
+    initAuth();
+    h.authCallback!("INITIAL_SESSION", makeSession("u1", false)); // permanent → authenticated
+    await authStore.getState().signOut();
+    expect(h.signOut).toHaveBeenCalledWith({ scope: "global" });
   });
 
   it("E3: stale loadProfile (id changed during await) is dropped", async () => {

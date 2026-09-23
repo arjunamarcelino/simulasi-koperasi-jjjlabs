@@ -9,11 +9,12 @@ import { gameStore, type View } from "./game.store";
  * Auth + identity store (SIM-3). Wraps Supabase Auth: a silent anonymous guest at
  * launch, optional Google upgrade via linkIdentity, and profile display_name.
  *
- * Writer partition (mirrors session.store's single-writer discipline):
- *   - `ready` + `auth` are written ONLY by the onAuthStateChange listener
- *     (writeSession) — never from an imperative action tail, so `ready` can never
- *     flip true ahead of the session it describes.
- *   - `profile` is written only by loadProfile / setDisplayName.
+ * Writer partition (mirrors session.store's single-writer discipline), per field group:
+ *   - `ready` + the session/status of `auth` are written ONLY by the onAuthStateChange
+ *     listener (writeSession) — never from an imperative action tail, so `ready` can
+ *     never flip true ahead of the session it describes. Do NOT add a third writer here.
+ *   - `auth.profile` is co-written only by loadProfile / setDisplayName (which never
+ *     touch ready/session/status), serialized by a monotonic profileEpoch.
  *
  * The store also projects profile.display_name → game.store.playerName so Phaser
  * (VillageScene/Player) keeps reading its single React↔Phaser bridge unchanged.
@@ -89,16 +90,13 @@ export const authStore = createStore<AuthState>()(
 
     signOut: async () => {
       if (!supabase) return;
-      // Tear down any live voice session on the OLD identity FIRST, so the LiveKit
-      // room isn't stranded. Dynamically imported to keep livekit-client out of the
-      // auth-store module graph (and its unit tests).
-      try {
-        const { sessionController } = await import("../session/controller");
-        sessionController.stop();
-      } catch {
-        // controller unavailable — proceed with sign-out anyway
-      }
-      await supabase.auth.signOut({ scope: "local" });
+      // The live voice room is torn down by the session controller, which OBSERVES
+      // auth and stops on the resulting uid change (see session/controller.ts) — the
+      // dependency arrow stays session→auth, not the reverse.
+      // Global scope revokes the refresh token server-side for a signed-in member
+      // (defence for a shared machine); a guest just churns to a fresh anon locally.
+      const scope = get().auth.status === "authenticated" ? "global" : "local";
+      await supabase.auth.signOut({ scope });
       // onAuthStateChange('SIGNED_OUT') re-anons in the listener — every tab self-heals.
     },
 
