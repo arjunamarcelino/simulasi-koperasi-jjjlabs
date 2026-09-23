@@ -30,9 +30,12 @@ jobs:
           PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
           ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          curl -fsS "https://${PROJECT_ID}.supabase.co/rest/v1/" \
-            -H "apikey: ${ANON_KEY}" \
-            -H "Authorization: Bearer ${ANON_KEY}" >/dev/null
+          # Query a real public-read catalog table so the ping actually touches
+          # Postgres (what the pause timer tracks). The `/rest/v1/` ROOT 401s with
+          # the new publishable key (sb_publishable_…), which isn't a JWT — and
+          # only the `apikey` header is needed for the anon role (no Bearer).
+          curl -fsS "https://${PROJECT_ID}.supabase.co/rest/v1/scenario_definition?select=code&limit=1" \
+            -H "apikey: ${ANON_KEY}" >/dev/null
       - name: Alert on failure
         if: failure()
         run: echo "::error::supabase-keepalive failed — the project may be paused or the key rotated"
