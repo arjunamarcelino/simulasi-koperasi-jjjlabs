@@ -20,6 +20,7 @@ from livekit import api
 from pydantic import BaseModel
 
 from .auth import AuthedUser, verify_supabase_jwt
+from .ratelimit import RateLimiter
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
@@ -28,6 +29,12 @@ LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
 LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
 AGENT_NAME = os.environ.get("LIVEKIT_AGENT_NAME", "koperasi-agent")
 CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "http://localhost:5173")
+
+# Rate limit per-user pada /token (mitigasi H1: tiap mint men-dispatch agent
+# berbayar). Default: TOKEN_RATE_CAPACITY permintaan per TOKEN_RATE_WINDOW_SEC.
+TOKEN_RATE_CAPACITY = int(os.environ.get("TOKEN_RATE_CAPACITY", "10"))
+TOKEN_RATE_WINDOW_SEC = float(os.environ.get("TOKEN_RATE_WINDOW_SEC", "60"))
+_TOKEN_LIMITER = RateLimiter(TOKEN_RATE_CAPACITY, TOKEN_RATE_WINDOW_SEC)
 
 # scenario_id valid (mirror CONTRACT.md §1). Divalidasi SETELAH auth → 422.
 VALID_SCENARIOS = frozenset(
@@ -74,6 +81,14 @@ def create_token(
     req: TokenRequest,
     user: AuthedUser = Depends(verify_supabase_jwt),
 ) -> TokenResponse:
+    # Rate limit per-user (setelah auth). Flood tanpa auth sudah 401 lebih dulu.
+    retry_after = _TOKEN_LIMITER.check(user.user_id)
+    if retry_after > 0:
+        raise HTTPException(
+            429,
+            "Terlalu banyak permintaan token",
+            headers={"Retry-After": str(int(retry_after) + 1)},
+        )
     # Validasi scenario_id SETELAH auth agar caller tak-terautentikasi tak bisa
     # menyelidiki daftar skenario (dapat 401 lebih dulu, bukan 422).
     if req.scenario_id not in VALID_SCENARIOS:

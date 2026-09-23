@@ -166,10 +166,13 @@ def client(monkeypatch):
     from fastapi.testclient import TestClient
 
     from api import server
+    from api.ratelimit import RateLimiter
 
     monkeypatch.setattr(server, "LIVEKIT_API_KEY", "devkey")
     monkeypatch.setattr(server, "LIVEKIT_API_SECRET", LIVEKIT_TEST_SECRET)
     monkeypatch.setattr(server, "LIVEKIT_URL", "wss://test.livekit.cloud")
+    # Limiter segar per test (hindari akumulasi lintas test); default longgar.
+    monkeypatch.setattr(server, "_TOKEN_LIMITER", RateLimiter(100, 60))
     with TestClient(server.app) as test_client:
         yield test_client
     server.app.dependency_overrides.clear()
