@@ -7,7 +7,10 @@ import { HubPage } from "../pages/HubPage";
 import { GamePage } from "../pages/GamePage";
 import { EvaluationPage } from "../pages/EvaluationPage";
 import { useGameStore, type View } from "../stores/game.store";
-import { initAuth, useAuth } from "../stores/auth.store";
+import { initAuth, setCaptchaTokenProvider, useAuth } from "../stores/auth.store";
+import { ENV } from "../config/env";
+import { supabase } from "../lib/supabase";
+import { getCaptchaToken, startTurnstile } from "../lib/captcha";
 
 function renderView(view: View) {
   switch (view) {
@@ -47,6 +50,14 @@ export function App() {
 
   // Start the auth bootstrap once. initAuth is idempotent (StrictMode-safe).
   useEffect(() => {
+    // Wire the Turnstile provider BEFORE initAuth so it's set before the first anon
+    // sign-in microtask. Gate on the live `supabase` client (url AND anon key), not
+    // just the URL — and on the site key. No key / no client → tokenless, as today.
+    // startTurnstile + setCaptchaTokenProvider are idempotent singletons (StrictMode-safe).
+    if (ENV.turnstileSiteKey && supabase) {
+      startTurnstile(ENV.turnstileSiteKey);
+      setCaptchaTokenProvider(getCaptchaToken);
+    }
     initAuth();
   }, []);
 
