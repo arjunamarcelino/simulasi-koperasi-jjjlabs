@@ -300,7 +300,7 @@ describe("authedFetch", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { authedFetch } = await import("../lib/authedFetch");
-    const res = await authedFetch("http://x/token", { method: "POST" });
+    const res = await authedFetch("http://localhost:5173/token", { method: "POST" });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(seen).toEqual(["Bearer old", "Bearer new"]);
@@ -315,7 +315,7 @@ describe("authedFetch", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { authedFetch } = await import("../lib/authedFetch");
-    const res = await authedFetch("http://x/token");
+    const res = await authedFetch("http://localhost:5173/token");
 
     expect(res.status).toBe(403);
     expect(fetchMock).toHaveBeenCalledTimes(1);
