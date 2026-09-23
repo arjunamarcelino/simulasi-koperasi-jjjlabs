@@ -1,10 +1,13 @@
+import { useEffect } from "react";
 import { ErrorBoundary } from "../components/common/ErrorBoundary";
+import { PixelPanel } from "../components/common/PixelPanel";
 import { MainMenuPage } from "../pages/MainMenuPage";
 import { LoadingPage } from "../pages/LoadingPage";
 import { HubPage } from "../pages/HubPage";
 import { GamePage } from "../pages/GamePage";
 import { EvaluationPage } from "../pages/EvaluationPage";
 import { useGameStore, type View } from "../stores/game.store";
+import { initAuth, useAuth } from "../stores/auth.store";
 
 function renderView(view: View) {
   switch (view) {
@@ -26,7 +29,26 @@ function renderView(view: View) {
   }
 }
 
+/** Inline boot splash while auth reconciles. Degraded mode releases it too, so
+ * this never blocks a no-env / offline boot (it flips within a tick / ≤3s). */
+function BootGate() {
+  return (
+    <main className="flex h-screen w-screen items-center justify-center bg-forest-2">
+      <PixelPanel className="text-center">
+        <p className="font-body text-2xl text-ink-soft">Memuat…</p>
+      </PixelPanel>
+    </main>
+  );
+}
+
 export function App() {
   const view = useGameStore((state) => state.currentView);
-  return <ErrorBoundary>{renderView(view)}</ErrorBoundary>;
+  const ready = useAuth((state) => state.ready);
+
+  // Start the auth bootstrap once. initAuth is idempotent (StrictMode-safe).
+  useEffect(() => {
+    initAuth();
+  }, []);
+
+  return <ErrorBoundary>{ready ? renderView(view) : <BootGate />}</ErrorBoundary>;
 }

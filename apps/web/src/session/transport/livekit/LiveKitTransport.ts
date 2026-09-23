@@ -9,6 +9,7 @@ import {
   type TranscriptionSegment,
 } from "livekit-client";
 import { ENV } from "../../../config/env";
+import { authedFetch } from "../../../lib/authedFetch";
 import type {
   ConnectionState as WireConnectionState,
   DriftLevel,
@@ -78,7 +79,9 @@ export class LiveKitTransport implements SessionTransport {
   async connect(scenarioId: ScenarioId): Promise<void> {
     this.connection.emit("connecting");
 
-    const res = await fetch(`${ENV.tokenEndpoint}/token`, {
+    // authedFetch attaches the Supabase JWT (once SIM-4 verifies it) and does a
+    // 401-only refresh-retry. In mock/no-auth mode it's a plain fetch.
+    const res = await authedFetch(`${ENV.tokenEndpoint}/token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ scenario_id: scenarioId }),

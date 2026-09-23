@@ -26,6 +26,22 @@ export function saveNumber(key: string, value: number): void {
   }
 }
 
+export function loadString(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function saveString(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // storage unavailable / full — session continues in-memory
+  }
+}
+
 export function loadJson<T>(
   key: string,
   fallback: T,

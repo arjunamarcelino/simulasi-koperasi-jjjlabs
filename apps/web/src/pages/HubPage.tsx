@@ -12,7 +12,6 @@ import { ProfileModal } from "../components/hub/ProfileModal";
 import { ProfileButton } from "../components/hub/ProfileButton";
 import { MissionIcon } from "../components/hub/MissionIcon";
 import { MissionBoard } from "../components/hub/MissionBoard";
-import { NamePrompt } from "../components/hub/NamePrompt";
 import { SessionOverlay } from "../components/session/SessionOverlay";
 import { useGameStore } from "../stores/game.store";
 
@@ -22,7 +21,6 @@ import { useGameStore } from "../stores/game.store";
  * SCENARIO_SELECTION view.
  */
 export function HubPage() {
-  const needsName = useGameStore((s) => s.playerName === null);
   const activeOverlay = useGameStore((s) => s.activeOverlay);
 
   return (
@@ -50,7 +48,6 @@ export function HubPage() {
       {activeOverlay === "MISSION" && <MissionBoard />}
       {activeOverlay === "SESSION" && <SessionOverlay />}
       <SceneLoadingOverlay />
-      {needsName && <NamePrompt />}
     </main>
   );
 }
