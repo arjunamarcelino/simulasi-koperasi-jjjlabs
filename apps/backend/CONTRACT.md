@@ -3,6 +3,9 @@
 Sumber kebenaran wire antara Frontend (game `apps/web` maupun harness
 `apps/web-sementara`) dan backend. Ini mengonkretkan PRD §9. Implementasi
 referensi yang bekerja: `apps/web-sementara/src/transport/livekit/LiveKitTransport.ts`.
+Di game `apps/web`, header `Authorization: Bearer` dilampirkan oleh
+`src/lib/authedFetch.ts` (yang juga meng-handle refresh+retry pada `401`) dan
+dipakai `src/session/transport/livekit/LiveKitTransport.ts`.
 
 > Prinsip: **voice sebagai jalur utama, teks sebagai fallback** (PRD Prinsip 4).
 > Keduanya masuk lewat jalur yang sama begitu sampai di agent.
@@ -13,6 +16,7 @@ referensi yang bekerja: `apps/web-sementara/src/transport/livekit/LiveKitTranspo
 
 ```
 FE  POST /token {scenario_id}         → {token, room, url}
+    (header Authorization: Bearer <supabase-jwt>; diverifikasi backend, §2)
 FE  room.connect(url, token)          (LiveKit client)
     → agent otomatis ter-dispatch ke room (bawa scenario_id)
     → agent join (~12–19 dtk), NPC menyapa (transkripsi + audio)
@@ -34,16 +38,52 @@ skenario = token baru = room baru.
 ## 2. REST — token server
 
 ### `POST /token`
+**Wajib** header `Authorization: Bearer <supabase-jwt>` (access token Supabase dari
+FE). Backend memverifikasi JWT (JWKS/ES256; cek `exp`/`aud`=authenticated/`iss`)
+SEBELUM mint token LiveKit (SIM-4). Karena header ini, request menjadi
+CORS-preflighted; backend mengizinkan header `Authorization` + menangani `OPTIONS`.
+
 Request:
 ```json
 { "scenario_id": "kredit-macet" }
 ```
-Response:
+Response `200`:
 ```json
 { "token": "<jwt>", "room": "kredit-macet-3a3c81a8", "url": "wss://...livekit.cloud" }
 ```
-`GET /health` → `{ "status": "ok" }`. CORS diizinkan untuk origin di env
-`CORS_ALLOW_ORIGIN` (default `http://localhost:5173`).
+
+Status:
+
+| kode | arti | perilaku FE (`authedFetch`) |
+|---|---|---|
+| `200` | token diterbitkan | connect ke room |
+| `401` | token hilang/invalid/kedaluwarsa (`WWW-Authenticate: Bearer`) | refresh sesi + retry SEKALI |
+| `422` | `scenario_id` tak dikenal (dicek SETELAH auth) | surface error |
+| `429` | rate limit per-user terlampaui (`Retry-After`) | surface error |
+| `500` | verifier/LiveKit belum dikonfigurasi (fail-closed) | surface error |
+| `503` | endpoint JWKS tak terjangkau | surface error |
+
+`403` **dicadangkan** (belum dipakai di v1; role admin ditunda ke SIM-14).
+
+**Rate limit (`429`):** batas per-user (`sub`) in-memory pada `/token` (tiap mint
+men-dispatch agent LLM berbayar). Batas ini **tidak** membatasi abuse anonim secara
+agregat — tiap sign-in anonim menghasilkan `sub` baru (= kuota baru). Pembatasan
+abuse anonim diserahkan ke **CAPTCHA + rate-limit sign-in anonim sisi Supabase
+(SIM-1)**; ceiling mint global/per-IP di backend adalah kandidat pengerasan lanjutan.
+
+**Identitas peserta** kini = Supabase `sub` (UUID) — bukan lagi berawalan
+`player-`. Penemuan agent tetap lewat prefix `agent-`/`kind=agent` (§3), jadi tak
+terpengaruh; jangan mengasumsikan prefix `player-` di sisi mana pun.
+
+**Metadata peserta (wire server→worker, tepercaya, dari JWT terverifikasi):**
+`participant.metadata` = JSON `{"user_id": "<sub>", "is_anonymous": <bool>}` —
+agar jalur worker mengatribusikan sesi ke user server-side. `is_anonymous:true`
+menandai guest (RLS Postgres, bukan endpoint ini, yang menolak reward guest).
+Terpisah dari **job metadata** dispatch `{scenario_id}` (§1).
+
+`GET /health` → `{ "status": "ok" }` (tanpa auth). CORS diizinkan untuk origin di
+env `CORS_ALLOW_ORIGIN` (default `http://localhost:5173`); ini **bukan** kontrol
+auth — JWT-lah gerbangnya.
 
 ---
 

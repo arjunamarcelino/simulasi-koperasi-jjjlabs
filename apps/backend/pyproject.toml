@@ -12,10 +12,30 @@ dependencies = [
     "fastapi~=0.115",
     "uvicorn[standard]~=0.34",
     "python-dotenv~=1.0",
+    # SIM-4: verifikasi JWT Supabase (ES256 via JWKS) sebelum mint token LiveKit.
+    # `crypto` extra menarik `cryptography` (WAJIB untuk ES256; sebelumnya pyjwt
+    # hanya dep transitif tanpa extra ini).
+    "pyjwt[crypto]~=2.10",
 ]
 
 [dependency-groups]
-dev = []
+dev = [
+    "pytest~=8.3",
+    "httpx~=0.28",
+]
 
 [tool.uv]
 package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+# Lint hanya kode SIM-4 (verifier + endpoint + tests); worker lama tak disentuh.
+target-version = "py312"
+
+[tool.ruff.lint.flake8-bugbear]
+# `Depends()` / `Security()` di argument default adalah idiom resmi FastAPI (B008).
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Security"]
