@@ -32,7 +32,7 @@ def _decode_livekit(token: str) -> dict:
 
 
 def test_authenticated_mints_token_with_identity_and_metadata(client):
-    _override_user(AuthedUser(user_id="user-abc", is_anonymous=False, claims={}))
+    _override_user(AuthedUser(user_id="user-abc", is_anonymous=False))
     resp = client.post("/token", json={"scenario_id": "kredit-macet"})
     assert resp.status_code == 200
     body = resp.json()
@@ -46,35 +46,21 @@ def test_authenticated_mints_token_with_identity_and_metadata(client):
 
 
 def test_guest_is_marked_and_not_blocked(client):
-    _override_user(AuthedUser(user_id="guest-9", is_anonymous=True, claims={}))
+    _override_user(AuthedUser(user_id="guest-9", is_anonymous=True))
     resp = client.post("/token", json={"scenario_id": "tutorial-koperasi-konsumen"})
     assert resp.status_code == 200
     meta = json.loads(_decode_livekit(resp.json()["token"])["metadata"])
     assert meta["is_anonymous"] is True
 
 
-def test_livekit_token_has_no_pii_claims(client):
-    # Metadata peserta hanya user_id + is_anonymous; klaim JWT penuh tak bocor.
-    _override_user(
-        AuthedUser(
-            user_id="user-x",
-            is_anonymous=False,
-            claims={"email": "secret@example.com", "phone": "+62..."},
-        )
-    )
-    resp = client.post("/token", json={"scenario_id": "kredit-macet"})
-    meta = json.loads(_decode_livekit(resp.json()["token"])["metadata"])
-    assert "email" not in meta and "phone" not in meta
-
-
 def test_unknown_scenario_is_422(client):
-    _override_user(AuthedUser(user_id="u", is_anonymous=False, claims={}))
+    _override_user(AuthedUser(user_id="u", is_anonymous=False))
     resp = client.post("/token", json={"scenario_id": "tidak-ada"})
     assert resp.status_code == 422
 
 
 def test_missing_scenario_field_is_422(client):
-    _override_user(AuthedUser(user_id="u", is_anonymous=False, claims={}))
+    _override_user(AuthedUser(user_id="u", is_anonymous=False))
     resp = client.post("/token", json={})
     assert resp.status_code == 422
 
@@ -84,7 +70,7 @@ def test_invalid_scenario_does_not_consume_quota(client, monkeypatch):
     from api.ratelimit import RateLimiter
 
     monkeypatch.setattr(server, "_TOKEN_LIMITER", RateLimiter(1, 60))
-    _override_user(AuthedUser(user_id="u", is_anonymous=False, claims={}))
+    _override_user(AuthedUser(user_id="u", is_anonymous=False))
     assert client.post("/token", json={"scenario_id": "nope"}).status_code == 422
     # kuota (kapasitas 1) belum terpakai → request valid berikutnya berhasil
     assert client.post("/token", json={"scenario_id": "kredit-macet"}).status_code == 200
@@ -92,7 +78,7 @@ def test_invalid_scenario_does_not_consume_quota(client, monkeypatch):
 
 def test_livekit_unconfigured_is_500(client, monkeypatch):
     monkeypatch.setattr(server, "LIVEKIT_API_KEY", "")
-    _override_user(AuthedUser(user_id="u", is_anonymous=False, claims={}))
+    _override_user(AuthedUser(user_id="u", is_anonymous=False))
     resp = client.post("/token", json={"scenario_id": "kredit-macet"})
     assert resp.status_code == 500
 

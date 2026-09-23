@@ -82,7 +82,7 @@ def test_max_keys_is_a_hard_cap_with_lru_eviction():
 def test_over_limit_returns_429_with_retry_after(client, monkeypatch):
     monkeypatch.setattr(server, "_TOKEN_LIMITER", RateLimiter(2, 60))
     server.app.dependency_overrides[verify_supabase_jwt] = lambda: AuthedUser(
-        user_id="heavy-user", is_anonymous=False, claims={}
+        user_id="heavy-user", is_anonymous=False
     )
     ok1 = client.post("/token", json={"scenario_id": "kredit-macet"})
     ok2 = client.post("/token", json={"scenario_id": "kredit-macet"})
@@ -97,7 +97,7 @@ def test_limit_is_per_user(client, monkeypatch):
     monkeypatch.setattr(server, "_TOKEN_LIMITER", RateLimiter(1, 60))
     current = {"uid": "user-1"}
     server.app.dependency_overrides[verify_supabase_jwt] = lambda: AuthedUser(
-        user_id=current["uid"], is_anonymous=False, claims={}
+        user_id=current["uid"], is_anonymous=False
     )
     assert client.post("/token", json={"scenario_id": "kredit-macet"}).status_code == 200
     assert client.post("/token", json={"scenario_id": "kredit-macet"}).status_code == 429
