@@ -81,6 +81,11 @@ def create_token(
     req: TokenRequest,
     user: AuthedUser = Depends(verify_supabase_jwt),
 ) -> TokenResponse:
+    # Validasi scenario_id dulu (murah, in-memory) SEBELUM konsumsi token rate-limit,
+    # agar input malformed tak menghabiskan kuota user. Tetap SETELAH auth (dependency
+    # sudah jalan) → caller tak-terautentikasi dapat 401 lebih dulu, bukan 422.
+    if req.scenario_id not in VALID_SCENARIOS:
+        raise HTTPException(422, "scenario_id tidak dikenal")
     # Rate limit per-user (setelah auth). Flood tanpa auth sudah 401 lebih dulu.
     retry_after = _TOKEN_LIMITER.check(user.user_id)
     if retry_after > 0:
@@ -89,10 +94,6 @@ def create_token(
             "Terlalu banyak permintaan token",
             headers={"Retry-After": str(int(retry_after) + 1)},
         )
-    # Validasi scenario_id SETELAH auth agar caller tak-terautentikasi tak bisa
-    # menyelidiki daftar skenario (dapat 401 lebih dulu, bukan 422).
-    if req.scenario_id not in VALID_SCENARIOS:
-        raise HTTPException(422, "scenario_id tidak dikenal")
     if not (LIVEKIT_API_KEY and LIVEKIT_API_SECRET and LIVEKIT_URL):
         raise HTTPException(500, "Kredensial LiveKit belum dikonfigurasi di .env")
 

@@ -79,6 +79,17 @@ def test_missing_scenario_field_is_422(client):
     assert resp.status_code == 422
 
 
+def test_invalid_scenario_does_not_consume_quota(client, monkeypatch):
+    # P3-3: scenario_id divalidasi (422) SEBELUM token rate-limit dikonsumsi.
+    from api.ratelimit import RateLimiter
+
+    monkeypatch.setattr(server, "_TOKEN_LIMITER", RateLimiter(1, 60))
+    _override_user(AuthedUser(user_id="u", is_anonymous=False, claims={}))
+    assert client.post("/token", json={"scenario_id": "nope"}).status_code == 422
+    # kuota (kapasitas 1) belum terpakai → request valid berikutnya berhasil
+    assert client.post("/token", json={"scenario_id": "kredit-macet"}).status_code == 200
+
+
 def test_livekit_unconfigured_is_500(client, monkeypatch):
     monkeypatch.setattr(server, "LIVEKIT_API_KEY", "")
     _override_user(AuthedUser(user_id="u", is_anonymous=False, claims={}))
