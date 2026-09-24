@@ -45,7 +45,6 @@ export type Database = {
         Returns: Json;
       };
       sync_badges: { Args: { p_codes: string[] }; Returns: undefined };
-      leaderboard: { Args: { p_limit?: number }; Returns: Json };
     };
     Enums: { [key: string]: never };
     CompositeTypes: { [key: string]: never };

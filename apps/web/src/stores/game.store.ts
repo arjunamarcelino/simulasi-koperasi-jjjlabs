@@ -162,8 +162,9 @@ export type GameState = {
   completedMissionIds: string[];
   /** The account that currently owns the in-memory wallet (null = degraded/no account). */
   walletUid: string | null;
-  /** True once the owner's wallet has been hydrated (async); gates the one-time
-   * reconcile trigger + badge re-eval so neither fires on a not-yet-loaded wallet. */
+  /** True once the owner's async hydrate+migrate has settled. Observability only —
+   * hydrateAndMigrate sequences the load/reconcile/badge steps internally; nothing
+   * gates on this today (tests assert it; a future UI could show a loading state). */
   hydrated: boolean;
 
   setView: (view: View) => void;
@@ -175,7 +176,7 @@ export type GameState = {
    * so a stale async result can't stomp a newer owner/edit. Degraded/no account
    * falls back to the device-local (legacy) wallet.
    */
-  onOwnerChanged: (prevUid: string | null, uid: string | null) => void;
+  onOwnerChanged: (uid: string | null) => void;
   /** Persist currentView + selectedScenarioId before a full-page OAuth redirect
    * (called by auth.store) so the player returns to where they were, not the menu. */
   stashNavForRedirect: () => void;
@@ -288,7 +289,7 @@ export const gameStore = createStore<GameState>()(
     setView: (view) =>
       set({ currentView: view, activeOverlay: "NONE", selectedRoomId: null }),
 
-    onOwnerChanged: (_prevUid, uid) => {
+    onOwnerChanged: (uid) => {
       walletEpoch += 1; // invalidate any in-flight reconcile for the previous owner
       const guard: WriteGuard = { epoch: walletEpoch, uid };
       // Clear the previous owner's in-memory wallet immediately (no cross-account flash).

@@ -72,7 +72,7 @@ describe("game.store — degraded (no server)", () => {
       online: false,
       seed: { "koperasi.xp": "120", "koperasi.point": "40" },
     });
-    gameStore.getState().onOwnerChanged(null, null);
+    gameStore.getState().onOwnerChanged(null);
     expect(gameStore.getState().xp).toBe(120);
     expect(gameStore.getState().point).toBe(40);
     expect(gameStore.getState().hydrated).toBe(true);
@@ -80,7 +80,7 @@ describe("game.store — degraded (no server)", () => {
 
   it("completeMission credits a game mission locally", async () => {
     const { gameStore } = await loadStore({ online: false });
-    gameStore.getState().onOwnerChanged(null, null);
+    gameStore.getState().onOwnerChanged(null);
     const res = await gameStore.getState().completeMission("baca-mading");
     expect(res.ok).toBe(true);
     expect(gameStore.getState().completedMissionIds).toContain("baca-mading");
@@ -89,7 +89,7 @@ describe("game.store — degraded (no server)", () => {
 
   it("submitQuiz is unavailable offline", async () => {
     const { gameStore } = await loadStore({ online: false });
-    gameStore.getState().onOwnerChanged(null, null);
+    gameStore.getState().onOwnerChanged(null);
     const res = await gameStore.getState().submitQuiz([{ code: "q01", choice: 0 }]);
     expect(res).toEqual({ ok: false, reason: "degraded" });
   });
@@ -105,7 +105,7 @@ describe("game.store — online (server-authoritative)", () => {
           .mockResolvedValue(ok({ xp: 50, point: 30, missions: ["keliling"], vouchers: [], badges: [] })),
       },
     });
-    gameStore.getState().onOwnerChanged(null, "user-A");
+    gameStore.getState().onOwnerChanged("user-A");
     await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
     expect(gameStore.getState().xp).toBe(50);
     expect(gameStore.getState().completedMissionIds).toEqual(["keliling"]);
@@ -120,7 +120,7 @@ describe("game.store — online (server-authoritative)", () => {
           .mockResolvedValue(ok({ ok: true, reward: { xp: 15, point: 10 }, totals: { xp: 999, point: 888 } })),
       },
     });
-    gameStore.getState().onOwnerChanged(null, "user-A");
+    gameStore.getState().onOwnerChanged("user-A");
     await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
     await gameStore.getState().completeMission("baca-mading");
     expect(gameStore.getState().xp).toBe(999); // server totals win over the optimistic delta
@@ -133,7 +133,7 @@ describe("game.store — online (server-authoritative)", () => {
       online: true,
       repo: { claimMission: vi.fn().mockResolvedValue({ status: "rpcError", error: new Error("boom") }) },
     });
-    gameStore.getState().onOwnerChanged(null, "user-A");
+    gameStore.getState().onOwnerChanged("user-A");
     await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
     const res = await gameStore.getState().completeMission("baca-mading");
     expect(res.ok).toBe(false);
@@ -151,7 +151,7 @@ describe("game.store — online (server-authoritative)", () => {
         redeemVoucher: vi.fn().mockResolvedValue(ok({ ok: true, code: "KDMP-SERVER01", balance: 50 })),
       },
     });
-    gameStore.getState().onOwnerChanged(null, "user-A");
+    gameStore.getState().onOwnerChanged("user-A");
     await vi.waitFor(() => expect(gameStore.getState().point).toBe(100));
     const voucher = await gameStore.getState().redeemVoucher("belanja-5k");
     expect(voucher?.code).toBe("KDMP-SERVER01");
@@ -171,7 +171,7 @@ describe("game.store — online (server-authoritative)", () => {
         reconcile: vi.fn().mockResolvedValue(ok({ ok: true, applied: true, totals: { xp: 100, point: 20 } })),
       },
     });
-    gameStore.getState().onOwnerChanged(null, "user-A");
+    gameStore.getState().onOwnerChanged("user-A");
     await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
     expect(gameStore.getState().xp).toBe(100);
     expect(storage.getItem("koperasi.xp")).toBeNull(); // legacy keys cleared
@@ -192,8 +192,8 @@ describe("game.store — online (server-authoritative)", () => {
           .mockResolvedValue(ok({ xp: 7, point: 0, missions: [], vouchers: [], badges: [] })),
       },
     });
-    gameStore.getState().onOwnerChanged(null, "user-A"); // hydrate A hangs
-    gameStore.getState().onOwnerChanged("user-A", "user-B"); // switch before A resolves
+    gameStore.getState().onOwnerChanged("user-A"); // hydrate A hangs
+    gameStore.getState().onOwnerChanged("user-B"); // switch before A resolves
     await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true)); // B hydrated
     resolveFirst(ok({ xp: 500, point: 500, missions: [], vouchers: [], badges: [] }));
     await Promise.resolve();

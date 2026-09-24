@@ -191,7 +191,7 @@ export function initAuth(): void {
     // Mock dev / no env: boot degraded so Main Menu + wallet still work. Load the
     // device-local (legacy) wallet since no owner subscription is wired below.
     authStore.setState({ ready: true, auth: DEGRADED });
-    gameStore.getState().onOwnerChanged(null, null);
+    gameStore.getState().onOwnerChanged(null);
     return;
   }
 
@@ -209,7 +209,7 @@ export function initAuth(): void {
   // into another, and a guest→Google upgrade (same uid) preserves progress.
   walletOwnerUnsub = authStore.subscribe(
     (s) => s.auth.user?.id ?? null,
-    (uid, prevUid) => gameStore.getState().onOwnerChanged(prevUid, uid),
+    (uid) => gameStore.getState().onOwnerChanged(uid),
     { fireImmediately: true },
   );
 
@@ -307,7 +307,7 @@ function anonSignIn(): Promise<unknown> {
   // (via the storage event) and would each mint an anonymous user AND trigger a
   // wallet reset. Hold a cross-tab Web Lock so only the winner signs in; the others
   // (ifAvailable → null lock) skip and adopt the winning session via the storage
-  // event, so their syncWalletOwner no-ops (same uid). No lock API (node/tests) →
+  // event, so their onOwnerChanged no-ops (same uid). No lock API (node/tests) →
   // sign in directly.
   if (typeof navigator !== "undefined" && navigator.locks) {
     return navigator.locks.request("koperasi.reanon", { ifAvailable: true }, (lock) =>
