@@ -260,7 +260,7 @@ export function ProfileModal() {
       )}
       {openedRiwayat && (
         <div role="tabpanel" className={tab === "riwayat" ? "" : "hidden"}>
-          <SessionHistoryTab />
+          <SessionHistoryTab active={tab === "riwayat"} />
         </div>
       )}
     </ModalShell>

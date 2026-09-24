@@ -22,7 +22,7 @@ const dateFmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short
  * best-result summary per group. Tapping an attempt reopens the full ResultPanel. All logic
  * lives in lib/ (sessionsRepo + sessionHistory) — this stays presentational.
  */
-export function SessionHistoryTab() {
+export function SessionHistoryTab({ active }: { active: boolean }) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [groups, setGroups] = useState<ScenarioHistory[]>([]);
   const [selected, setSelected] = useState<SessionRecord | null>(null);
@@ -50,6 +50,12 @@ export function SessionHistoryTab() {
       active = false;
     };
   }, []);
+
+  // The detail overlay portals to document.body, so the tab's `hidden` class can't cover it.
+  // Close it when the tab is switched away so it can't float over another tab.
+  useEffect(() => {
+    if (!active) setSelected(null);
+  }, [active]);
 
   // Stable identity: an inline arrow would re-run DetailOverlay's effect (re-pushing the
   // escape handler and refocusing) on any unrelated ProfileModal re-render.
