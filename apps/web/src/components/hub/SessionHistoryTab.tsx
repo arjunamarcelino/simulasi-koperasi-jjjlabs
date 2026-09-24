@@ -26,16 +26,14 @@ export function SessionHistoryTab() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [groups, setGroups] = useState<ScenarioHistory[]>([]);
   const [selected, setSelected] = useState<SessionRecord | null>(null);
-  const epoch = useRef(0);
 
-  // Lazy fetch on first mount, epoch-guarded so a superseded/late response never paints
-  // (StrictMode double-mount, or the modal closing mid-flight).
+  // Lazy fetch on first mount. The `active` flag drops a late/superseded response (StrictMode
+  // double-mount, or the modal closing mid-flight) — each mount pairs with its own cleanup.
   useEffect(() => {
     let active = true;
-    const mine = ++epoch.current;
     setPhase("loading");
     void sessionsRepo.listMySessions().then((res) => {
-      if (!active || mine !== epoch.current) return;
+      if (!active) return;
       if (res.status === "degraded") setPhase("degraded");
       else if (res.status === "rpcError" || res.status === "invalid") setPhase("error");
       else if (res.data.length === 0) setPhase("empty");
