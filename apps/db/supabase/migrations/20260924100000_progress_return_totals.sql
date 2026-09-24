@@ -60,5 +60,13 @@ begin
     'totals', jsonb_build_object('xp', v_totals.xp, 'point', v_totals.point));
 end;
 $$;
-revoke execute on function public.claim_mission(text, text) from public;
+-- Revoke from anon explicitly (default-privilege EXECUTE), matching the SIM-5 write
+-- RPCs. Practically anon's null auth.uid() already fails the insert, but this keeps
+-- the hardening consistent across every reward-writing function.
+revoke execute on function public.claim_mission(text, text) from public, anon;
 grant execute on function public.claim_mission(text, text) to authenticated;
+
+-- Same anon-revoke parity for the other reward/economy write RPCs defined earlier
+-- (they exist by this migration; revoke is idempotent and does not alter behavior).
+revoke execute on function public.redeem_voucher(text) from anon;
+revoke execute on function public.record_session_result(uuid, text, text, jsonb, jsonb, text) from anon;
