@@ -10,8 +10,12 @@
  * default) because a finalized attempt with a junk blob is still a real attempt.
  */
 
-export type EndingType = "good" | "bad" | "neutral";
-export type SessionTrigger = "manual" | "sinyal_level_1" | "force_quit_level_2";
+// Derived from the transport contract so the persistence path can't silently drift from
+// the live session vocabulary. The runtime guard tables below (Record<…, true>) then fail
+// to compile if the contract adds a member — the drift guard is structural.
+import type { EndingType, FinalDecisionTrigger } from "../session/transport/contract";
+export type { EndingType };
+export type SessionTrigger = FinalDecisionTrigger;
 
 /** One finalized attempt, narrowed from a raw `sessions` row. */
 export type SessionRecord = {
