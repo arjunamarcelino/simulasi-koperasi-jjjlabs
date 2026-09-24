@@ -1,26 +1,30 @@
 /**
- * A tiny LIFO stack of Escape handlers so a nested overlay can intercept Esc BEFORE the
- * modal it lives in. `ModalShell` registers its Escape on `document` in the capture phase
- * with `stopPropagation`, so a child listener can never win the race — it consults this
- * stack instead: if a handler is registered, the topmost one runs and the modal is spared.
+ * A single Escape-handler slot so a nested overlay can intercept Esc BEFORE the modal it
+ * lives in. `ModalShell` registers its Escape on `document` in the capture phase with
+ * `stopPropagation`, so a child listener can never win the race — it consults this slot
+ * instead: if a handler is registered, it runs and the modal is spared.
+ *
+ * Only one overlay tree relies on this at a time (the history detail). If real nesting is
+ * ever needed, promote this back to a LIFO stack.
  */
-const stack: Array<() => void> = [];
+let current: (() => void) | undefined;
 
-/** Register an Escape handler; returns an unsubscribe to pop it (call in effect cleanup). */
+/** Register the Escape handler; returns an unsubscribe to clear it (call in effect cleanup). */
 export function pushEscape(fn: () => void): () => void {
-  stack.push(fn);
+  current = fn;
   return () => {
-    const i = stack.lastIndexOf(fn);
-    if (i >= 0) stack.splice(i, 1);
+    if (current === fn) current = undefined;
   };
 }
 
-/** Run the topmost handler if any. Returns true when Escape was consumed. */
+/**
+ * Run the registered handler if any, clearing it first so a second Escape in the same tick
+ * falls through to the modal (back out one layer, then close). Returns true when consumed.
+ */
 export function handleEscape(): boolean {
-  const top = stack[stack.length - 1];
-  if (top) {
-    top();
-    return true;
-  }
-  return false;
+  const fn = current;
+  if (!fn) return false;
+  current = undefined;
+  fn();
+  return true;
 }
