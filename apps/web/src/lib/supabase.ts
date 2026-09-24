@@ -29,7 +29,12 @@ export type Database = {
         Relationships: [];
       };
     };
-    Views: { [key: string]: never };
+    Views: {
+      quiz_catalog: {
+        Row: { code: string; prompt: string; options: Json; sort_order: number };
+        Relationships: [];
+      };
+    };
     Functions: {
       get_my_progress: { Args: Record<PropertyKey, never>; Returns: Json };
       claim_mission: { Args: { p_mission_id: string; p_code?: string | null }; Returns: Json };

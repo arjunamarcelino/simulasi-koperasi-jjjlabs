@@ -188,8 +188,10 @@ export function initAuth(): void {
   gameStore.getState().restoreNavAfterRedirect();
 
   if (!supabase) {
-    // Mock dev / no env: boot degraded so Main Menu + wallet still work.
+    // Mock dev / no env: boot degraded so Main Menu + wallet still work. Load the
+    // device-local (legacy) wallet since no owner subscription is wired below.
     authStore.setState({ ready: true, auth: DEGRADED });
+    gameStore.getState().onOwnerChanged(null, null);
     return;
   }
 
@@ -201,14 +203,13 @@ export function initAuth(): void {
     { fireImmediately: true },
   );
 
-  // Bind the device-local wallet to the current account: on a real account switch
-  // (different uid) the wallet resets, bounding cross-account bleed on shared
-  // devices. A guest→Google upgrade keeps the same uid, so progress is preserved.
+  // Bind the wallet to the current account. On a uid change the game store resets
+  // the in-memory wallet, hydrates the new owner's wallet from the DB, and runs the
+  // one-time legacy migration — so a shared device can't bleed one account's wallet
+  // into another, and a guest→Google upgrade (same uid) preserves progress.
   walletOwnerUnsub = authStore.subscribe(
     (s) => s.auth.user?.id ?? null,
-    (uid) => {
-      if (uid) gameStore.getState().syncWalletOwner(uid);
-    },
+    (uid, prevUid) => gameStore.getState().onOwnerChanged(prevUid, uid),
     { fireImmediately: true },
   );
 

@@ -64,3 +64,11 @@ export function saveJson(key: string, value: unknown): void {
     // storage unavailable / full — session continues in-memory
   }
 }
+
+export function removeKey(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // storage unavailable — nothing to clean up
+  }
+}

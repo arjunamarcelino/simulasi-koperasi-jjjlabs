@@ -35,6 +35,9 @@ export type ReconcileResult =
   | { ok: true; applied: false } // server already reconciled this account
   | { ok: false; reason: "uid_mismatch" };
 
+/** A quiz question as exposed by the quiz_catalog view — no answer key. */
+export type QuizCatalogQuestion = { code: string; prompt: string; options: string[] };
+
 /** The full wallet snapshot returned by get_my_progress. */
 export type MyProgress = {
   xp: number;
@@ -133,6 +136,20 @@ export function parseReconcile(u: unknown): ReconcileResult | null {
   if (u["skipped"] === "already") return { ok: true, applied: false };
   const totals = parseTotals(u["totals"]);
   return totals ? { ok: true, applied: true, totals } : null;
+}
+
+export function parseQuizCatalog(u: unknown): QuizCatalogQuestion[] | null {
+  if (!Array.isArray(u)) return null;
+  const out: QuizCatalogQuestion[] = [];
+  for (const row of u) {
+    if (!isRecord(row)) return null;
+    const code = str(row["code"]);
+    const prompt = str(row["prompt"]);
+    const options = strArray(row["options"]);
+    if (code === null || prompt === null || options === null) return null;
+    out.push({ code, prompt, options });
+  }
+  return out;
 }
 
 export function parseMyProgress(u: unknown): MyProgress | null {

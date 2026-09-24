@@ -12,12 +12,14 @@ import { supabase } from "./supabase";
 import {
   parseClaimMission,
   parseMyProgress,
+  parseQuizCatalog,
   parseReconcile,
   parseRedeemVoucher,
   parseSubmitQuiz,
   type ClaimMissionResult,
   type MyProgress,
   type QuizAnswer,
+  type QuizCatalogQuestion,
   type ReconcileResult,
   type RedeemVoucherResult,
   type SubmitQuizResult,
@@ -44,6 +46,15 @@ export const progressRepo = {
     if (!supabase) return { status: "degraded" };
     const { data, error } = await supabase.rpc("get_my_progress");
     return settle(data, error, parseMyProgress);
+  },
+
+  async fetchQuiz(): Promise<RepoResult<QuizCatalogQuestion[]>> {
+    if (!supabase) return { status: "degraded" };
+    const { data, error } = await supabase
+      .from("quiz_catalog")
+      .select("code, prompt, options")
+      .order("sort_order");
+    return settle(data, error, parseQuizCatalog);
   },
 
   async claimMission(missionId: string, code?: string): Promise<RepoResult<ClaimMissionResult>> {
