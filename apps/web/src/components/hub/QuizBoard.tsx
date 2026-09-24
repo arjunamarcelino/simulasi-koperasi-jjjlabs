@@ -11,6 +11,10 @@ const QUIZ_PICK = 10;
 
 type Phase = "loading" | "playing" | "grading" | "summary" | "error";
 
+// The catalog is static, owner-independent data; cache it across overlay opens so a
+// re-open draws a fresh run without another round-trip.
+let cachedQuizPool: QuizCatalogQuestion[] | null = null;
+
 /** Unbiased Fisher–Yates draw of up to n questions. */
 function draw(pool: QuizCatalogQuestion[], n: number): QuizCatalogQuestion[] {
   const copy = [...pool];
@@ -35,28 +39,53 @@ export function QuizBoard() {
   const [choices, setChoices] = useState<(number | null)[]>([]);
   const [results, setResults] = useState<QuizResultRow[] | null>(null);
   const [awarded, setAwarded] = useState<Totals | null>(null);
+  // "offline" = no server (answer key is server-only, can't grade); "retryable" = a
+  // transient load/grade error that a "Coba lagi" can retry.
+  const [errorKind, setErrorKind] = useState<"offline" | "retryable">("retryable");
+  const retryRef = useRef<() => void>(() => {});
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const close = () => gameStore.getState().clearSelection();
 
-  // Fetch the catalog once on open, then draw a run.
+  const startPlaying = (questions: QuizCatalogQuestion[]) => {
+    setPool(questions);
+    setPicked(draw(questions, QUIZ_PICK));
+    setChoices(Array<number | null>(Math.min(QUIZ_PICK, questions.length)).fill(null));
+    setIndex(0);
+    setResults(null);
+    setAwarded(null);
+    setPhase("playing");
+  };
+
+  // Load the catalog (module-cached so re-opens don't refetch), then draw a run.
+  const loadRun = async () => {
+    setPhase("loading");
+    if (cachedQuizPool) {
+      startPlaying(cachedQuizPool);
+      return;
+    }
+    const res = await progressRepo.fetchQuiz();
+    if (!mounted.current) return;
+    if (res.status === "ok" && res.data.length > 0) {
+      cachedQuizPool = res.data;
+      startPlaying(res.data);
+    } else {
+      setErrorKind(res.status === "degraded" ? "offline" : "retryable");
+      retryRef.current = () => void loadRun();
+      setPhase("error");
+    }
+  };
+
   useEffect(() => {
-    let alive = true;
-    void (async () => {
-      const res = await progressRepo.fetchQuiz();
-      if (!alive) return;
-      if (res.status === "ok" && res.data.length > 0) {
-        setPool(res.data);
-        setPicked(draw(res.data, QUIZ_PICK));
-        setChoices(Array<number | null>(Math.min(QUIZ_PICK, res.data.length)).fill(null));
-        setIndex(0);
-        setPhase("playing");
-      } else {
-        setPhase("error");
-      }
-    })();
-    return () => {
-      alive = false;
-    };
+    void loadRun();
+    // Run once on open; loadRun closes over stable setters only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const question = picked[index];
@@ -68,11 +97,14 @@ export function QuizBoard() {
     setPhase("grading");
     const answers = picked.map((q, i) => ({ code: q.code, choice: choices[i] ?? 0 }));
     const outcome = await gameStore.getState().submitQuiz(answers);
+    if (!mounted.current) return;
     if (outcome.ok) {
       setResults(outcome.results);
       setAwarded(outcome.awarded);
       setPhase("summary");
     } else {
+      setErrorKind(outcome.reason === "degraded" ? "offline" : "retryable");
+      retryRef.current = () => void submitRun();
       setPhase("error");
     }
   };
@@ -93,14 +125,7 @@ export function QuizBoard() {
       return next;
     });
 
-  const restart = () => {
-    setPicked(draw(pool, QUIZ_PICK));
-    setChoices(Array<number | null>(Math.min(QUIZ_PICK, pool.length)).fill(null));
-    setIndex(0);
-    setResults(null);
-    setAwarded(null);
-    setPhase("playing");
-  };
+  const restart = () => startPlaying(pool);
 
   // After answering, move focus to the advance button (a11y).
   useEffect(() => {
@@ -115,7 +140,8 @@ export function QuizBoard() {
       if (e.key >= "1" && e.key <= "4") {
         e.preventDefault();
         e.stopPropagation();
-        select(Number(e.key) - 1);
+        const n = Number(e.key) - 1;
+        if (n < (question?.options.length ?? 0)) select(n); // ignore a key past the option count
       } else if (e.key === "Enter") {
         e.preventDefault();
         e.stopPropagation();
@@ -148,12 +174,26 @@ export function QuizBoard() {
           Kuis Koperasi
         </h2>
         <div className="border-3 border-border bg-cream px-6 py-6 text-center">
-          <p className="font-body text-xl text-ink">Kuis butuh koneksi internet.</p>
-          <p className="mt-2 font-body text-lg text-ink-soft">
-            Sambungkan koneksi lalu buka kuis kembali.
-          </p>
+          {errorKind === "offline" ? (
+            <>
+              <p className="font-body text-xl text-ink">Kuis butuh koneksi internet.</p>
+              <p className="mt-2 font-body text-lg text-ink-soft">
+                Sambungkan koneksi lalu buka kuis kembali.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-body text-xl text-ink">Gagal memuat kuis.</p>
+              <p className="mt-2 font-body text-lg text-ink-soft">Coba lagi sebentar.</p>
+            </>
+          )}
         </div>
-        <div className="mt-6 flex justify-center">
+        <div className="mt-6 flex justify-center gap-4">
+          {errorKind === "retryable" && (
+            <GameButton variant="primary" onClick={() => retryRef.current()}>
+              Coba Lagi
+            </GameButton>
+          )}
           <GameButton variant="ghost" onClick={close}>
             Tutup
           </GameButton>
@@ -197,6 +237,9 @@ export function QuizBoard() {
                 </p>
                 <p className="mt-1 font-display text-[9px] text-forest">
                   {r?.correct ? "✓ Benar" : "✗ Kurang tepat"}
+                  {r?.alreadyCredited && (
+                    <span className="ml-2 text-ink-soft">· sudah dikreditkan</span>
+                  )}
                 </p>
                 {r?.explanation && (
                   <p className="mt-1 font-body text-base text-ink-soft">{r.explanation}</p>
