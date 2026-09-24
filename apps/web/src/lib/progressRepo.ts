@@ -9,6 +9,7 @@
  * direction.
  */
 import { supabase } from "./supabase";
+import { settle, type RepoResult } from "./repoResult";
 import {
   parseClaimMission,
   parseMyProgress,
@@ -25,21 +26,8 @@ import {
   type SubmitQuizResult,
 } from "./progressRepo.contracts";
 
-export type RepoResult<T> =
-  | { status: "ok"; data: T }
-  | { status: "degraded" } // supabase === null → keep local, do NOT roll back
-  | { status: "rpcError"; error: unknown } // RPC failed → roll back the optimistic delta
-  | { status: "invalid"; raw: unknown }; // RPC returned an unexpected shape
-
-function settle<T>(
-  data: unknown,
-  error: unknown,
-  parse: (u: unknown) => T | null,
-): RepoResult<T> {
-  if (error) return { status: "rpcError", error };
-  const parsed = parse(data);
-  return parsed ? { status: "ok", data: parsed } : { status: "invalid", raw: data };
-}
+// Re-exported so existing importers (e.g. game.store) keep their `progressRepo` import path.
+export type { RepoResult };
 
 export const progressRepo = {
   async getMyProgress(): Promise<RepoResult<MyProgress>> {

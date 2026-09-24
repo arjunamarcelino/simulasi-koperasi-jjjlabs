@@ -6,6 +6,7 @@
  * sound under `exactOptionalPropertyTypes`.
  */
 import { isRedeemedVoucher, type RedeemedVoucher } from "../content/vouchers";
+import { isRecord, num, str, strArray } from "./parseGuards";
 
 export type Totals = { xp: number; point: number };
 
@@ -46,15 +47,6 @@ export type MyProgress = {
   vouchers: RedeemedVoucher[];
   badges: string[];
 };
-
-// — narrowing helpers ————————————————————————————————————————————————
-const isRecord = (u: unknown): u is Record<string, unknown> =>
-  typeof u === "object" && u !== null && !Array.isArray(u);
-const num = (u: unknown): number | null =>
-  typeof u === "number" && Number.isFinite(u) ? u : null;
-const str = (u: unknown): string | null => (typeof u === "string" ? u : null);
-const strArray = (u: unknown): string[] | null =>
-  Array.isArray(u) && u.every((x) => typeof x === "string") ? (u as string[]) : null;
 
 function parseTotals(u: unknown): Totals | null {
   if (!isRecord(u)) return null;

@@ -1,7 +1,8 @@
 import { PixelPanel } from "../common/PixelPanel";
 import { GameButton } from "../common/GameButton";
-import type { SessionEnded } from "../../session/transport/contract";
+import type { EndingType, SessionEnded } from "../../session/transport/contract";
 import {
+  ENDING_STYLE,
   resolveScoreLabel,
   resolveStateChip,
   scoreTone,
@@ -9,24 +10,10 @@ import {
   type Tone,
 } from "./resultLabels";
 
-type Ending = SessionEnded["result"]["endingType"];
-
-const TITLE: Record<Ending, string> = {
+const TITLE: Record<EndingType, string> = {
   good: "Selesai — Berhasil!",
   bad: "Sesi Berakhir",
   neutral: "Sesi Selesai",
-};
-
-const TITLE_COLOR: Record<Ending, string> = {
-  good: "text-forest",
-  bad: "text-orange",
-  neutral: "text-brown",
-};
-
-const ACCENT: Record<Ending, string> = {
-  good: "border-t-4 border-forest",
-  bad: "border-t-4 border-orange",
-  neutral: "border-t-4 border-mustard",
 };
 
 const CHIP_CLASS: Record<Tone, string> = {
@@ -48,7 +35,21 @@ const BAR_FILL: Record<Tone, string> = {
  * state chips + pillar scores; the tutorial (empty maps) collapses to
  * narrative-only — no `isTutorial` flag.
  */
-export function ResultPanel({ ended, onBack }: { ended: SessionEnded; onBack: () => void }) {
+/** Positioning/stacking of the backdrop, split out so callers can restack it (e.g. the
+ *  history detail renders `fixed inset-0 z-50` above the profile modal). Layout stays fixed. */
+const OVERLAY_LAYOUT = "flex items-center justify-center bg-ink/60 p-4";
+
+export function ResultPanel({
+  ended,
+  onBack,
+  backLabel = "◀ Kembali ke Kantor Koperasi",
+  overlayClassName = "absolute inset-0 z-40",
+}: {
+  ended: SessionEnded;
+  onBack: () => void;
+  backLabel?: string;
+  overlayClassName?: string;
+}) {
   const { endingType, stateClassification, scores, narrativeFeedback } = ended.result;
 
   const chips: StateChip[] = Object.entries(stateClassification).map(([k, v]) =>
@@ -62,13 +63,13 @@ export function ResultPanel({ ended, onBack }: { ended: SessionEnded; onBack: ()
   const scored = chips.length > 0 || pillars.length > 0;
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-ink/60 p-4">
+    <div className={`${overlayClassName} ${OVERLAY_LAYOUT}`}>
       <PixelPanel
         className={`flex max-h-full w-full flex-col gap-4 overflow-y-auto text-center ${
           scored ? "max-w-2xl" : "max-w-xl"
-        } ${ACCENT[endingType]}`}
+        } border-t-4 ${ENDING_STYLE[endingType].accent}`}
       >
-        <h2 className={`font-display text-sm md:text-base ${TITLE_COLOR[endingType]}`}>
+        <h2 className={`font-display text-sm md:text-base ${ENDING_STYLE[endingType].titleColor}`}>
           {TITLE[endingType]}
         </h2>
 
@@ -121,7 +122,7 @@ export function ResultPanel({ ended, onBack }: { ended: SessionEnded; onBack: ()
 
         <div className="flex justify-center pt-2">
           <GameButton variant="primary" onClick={onBack}>
-            ◀ Kembali ke Kantor Koperasi
+            {backLabel}
           </GameButton>
         </div>
       </PixelPanel>
