@@ -41,6 +41,10 @@ export function SessionHistoryTab() {
         setGroups(groupByScenario(res.data));
         setPhase("ok");
       }
+    }).catch(() => {
+      // listMySessions folds mapped failures into RepoResult; a genuine throw still lands
+      // in "error" instead of an unhandled rejection + a skeleton that spins forever.
+      if (active) setPhase("error");
     });
     return () => {
       active = false;
