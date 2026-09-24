@@ -7,8 +7,12 @@
 create table public.quiz_definition (
   code text primary key,
   prompt text not null,
-  options jsonb not null,                         -- array of option strings
-  correct_index int not null check (correct_index >= 0),
+  options jsonb not null check (jsonb_typeof(options) = 'array'),
+  -- correct_index must point at a real option; the `jsonb_typeof <> array` disjunct
+  -- keeps this CHECK from raising when a bad options value is already rejected above.
+  correct_index int not null
+    check (correct_index >= 0
+           and (jsonb_typeof(options) <> 'array' or correct_index < jsonb_array_length(options))),
   explanation text,                               -- revealed post-answer via submit_quiz, never in the catalog view
   sort_order int not null default 0
 );
@@ -40,15 +44,14 @@ create policy "quiz_completion: owner select" on public.quiz_completion
 
 -- Grade a submission server-side and credit only NEWLY-correct questions. The client
 -- submits [{code, choice}]; the answer key never leaves the server. Reward constants
--- (10 xp + 10 point per newly-correct question; mirror apps/web quiz constants) are
--- owned here so points/XP cannot be forged. The `insert … on conflict do nothing
+-- (10 xp + 10 point per newly-correct question) are server-owned so points/XP cannot
+-- be forged (the FE no longer knows them). The `insert … on conflict do nothing
 -- returning` makes crediting exactly-once and race/double-submit safe. The return
 -- deliberately omits correct_index so a caller cannot enumerate the answer key.
 create or replace function public.submit_quiz(p_answers jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   v_uid uuid := (select auth.uid());
-  v_unknown int;
   v_new int;
   v_prior text[];
   v_totals record;
@@ -60,16 +63,22 @@ begin
   if jsonb_array_length(p_answers) > 10 then
     return jsonb_build_object('ok', false, 'reason', 'too_many');
   end if;
+  -- Every element must be an object {code, choice}; guard before jsonb_to_recordset,
+  -- which raises (500) on a non-object element like `["foo"]`.
+  if exists (select 1 from jsonb_array_elements(p_answers) e where jsonb_typeof(e) <> 'object') then
+    return jsonb_build_object('ok', false, 'reason', 'invalid');
+  end if;
 
   -- Reject any submitted code that is not a real question.
-  select count(*) into v_unknown
-  from (
-    select distinct a.code
-    from jsonb_to_recordset(p_answers) as a(code text, choice int)
-    where a.code is not null
-  ) s
-  where not exists (select 1 from public.quiz_definition q where q.code = s.code);
-  if v_unknown > 0 then
+  if exists (
+    select 1
+    from (
+      select distinct a.code
+      from jsonb_to_recordset(p_answers) as a(code text, choice int)
+      where a.code is not null
+    ) s
+    where not exists (select 1 from public.quiz_definition q where q.code = s.code)
+  ) then
     return jsonb_build_object('ok', false, 'reason', 'unknown_question');
   end if;
 
@@ -83,47 +92,49 @@ begin
       where a.code is not null
     );
 
-  -- Credit only newly-correct questions; rowcount is the exactly-once new-credit count.
-  with raw as (
-    select distinct on (a.code) a.code, a.choice
+  -- Credit only newly-correct questions. Dedupe a repeated code deterministically,
+  -- preferring the correct choice (`order by … desc`) so a duplicate can never credit
+  -- or not arbitrarily; rowcount is the exactly-once new-credit count.
+  with graded as (
+    select distinct on (a.code) a.code, (a.choice = q.correct_index) as correct
     from jsonb_to_recordset(p_answers) as a(code text, choice int)
+    join public.quiz_definition q on q.code = a.code
     where a.code is not null
-    order by a.code
-  ),
-  correct as (
-    select r.code
-    from raw r
-    join public.quiz_definition q on q.code = r.code
-    where r.choice = q.correct_index
+    order by a.code, (a.choice = q.correct_index) desc
   ),
   ins as (
     insert into public.quiz_completion (user_id, question_code)
-    select v_uid, code from correct
+    select v_uid, code from graded where correct
     on conflict (user_id, question_code) do nothing
     returning question_code
   )
   select count(*) into v_new from ins;
 
+  -- Reuse add_rewards' returned totals when crediting; else read the current row.
   if v_new > 0 then
-    perform public.add_rewards(v_new * 10, v_new * 10);
+    select xp, point into v_totals from public.add_rewards(v_new * 10, v_new * 10);
+  else
+    select up.xp, up.point into v_totals from public.user_progress up where up.user_id = v_uid;
   end if;
-  select up.xp, up.point into v_totals from public.user_progress up where up.user_id = v_uid;
 
+  -- Results use the SAME deterministic dedupe, so credit and display never disagree.
+  -- already_credited = the question was completed BEFORE this call, independent of the
+  -- current answer's correctness.
   select jsonb_agg(jsonb_build_object(
            'code', g.code,
            'correct', g.correct,
            'explanation', g.explanation,
-           'already_credited', (g.correct and g.code = any(v_prior))
+           'already_credited', (g.code = any(v_prior))
          ) order by g.code)
     into v_results
   from (
-    select distinct on (a.code) a.code as code,
+    select distinct on (a.code) a.code,
            (a.choice = q.correct_index) as correct,
-           q.explanation as explanation
+           q.explanation
     from jsonb_to_recordset(p_answers) as a(code text, choice int)
     join public.quiz_definition q on q.code = a.code
     where a.code is not null
-    order by a.code
+    order by a.code, (a.choice = q.correct_index) desc
   ) g;
 
   return jsonb_build_object(

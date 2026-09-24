@@ -1,6 +1,6 @@
 -- Quiz: answer-key secrecy, server-authoritative grading, per-question credit-once.
 begin;
-select plan(26);
+select plan(28);
 
 select tests.create_user('quiz_a');
 select tests.create_user('quiz_b');
@@ -35,6 +35,8 @@ select is((public.submit_quiz('[{"code":"q01","choice":0}]'::jsonb) -> 'awarded'
   '0', 'replaying an already-correct question awards 0');
 select is((public.submit_quiz('[{"code":"q01","choice":0}]'::jsonb) -> 'results' -> 0 ->> 'already_credited'),
   'true', 'replay marks already_credited');
+select is((public.submit_quiz('[{"code":"q01","choice":1}]'::jsonb) -> 'results' -> 0 ->> 'already_credited'),
+  'true', 'already_credited reflects prior completion even on a wrong re-answer');
 
 -- partial / wrong / answer-key never returned ---------------------------------
 select tests.login_as('quiz_b');
@@ -57,6 +59,8 @@ select is((public.submit_quiz('[{"code":"q01","choice":0},{"code":"q02","choice"
   'too_many', 'payload longer than 10 rejected');
 select is((public.submit_quiz('[]'::jsonb) -> 'awarded' ->> 'xp'), '0', 'empty submission awards 0');
 select is((public.submit_quiz('"nope"'::jsonb) ->> 'reason'), 'invalid', 'non-array payload rejected');
+select is((public.submit_quiz('["foo", 1]'::jsonb) ->> 'reason'), 'invalid',
+  'array of non-objects rejected (no 500)');
 
 -- get_my_progress + sync_badges ----------------------------------------------
 select tests.login_as('quiz_a');
