@@ -653,7 +653,8 @@ async function hydrateAndMigrate(uid: string, guard: WriteGuard): Promise<void> 
     legacy.completedMissionIds.length > 0 ||
     legacy.redeemedVouchers.length > 0;
   if (hasLegacy) {
-    const rec = await progressRepo.reconcile(uid, legacy.xp, legacy.point, legacy.completedMissionIds);
+    // Only xp + game-mission state migrate; point/vouchers are intentionally dropped.
+    const rec = await progressRepo.reconcile(uid, legacy.xp, legacy.completedMissionIds);
     if (!guardValid(guard)) return;
     if (rec.status === "ok") {
       const after = await progressRepo.getMyProgress();

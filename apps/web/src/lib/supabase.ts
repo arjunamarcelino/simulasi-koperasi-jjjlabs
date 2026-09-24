@@ -41,7 +41,7 @@ export type Database = {
       redeem_voucher: { Args: { p_voucher_id: string }; Returns: Json };
       submit_quiz: { Args: { p_answers: { code: string; choice: number }[] }; Returns: Json };
       reconcile_local_progress: {
-        Args: { p_uid: string; p_xp: number; p_point: number; p_missions: string[] };
+        Args: { p_uid: string; p_xp: number; p_missions: string[] };
         Returns: Json;
       };
       sync_badges: { Args: { p_codes: string[] }; Returns: undefined };

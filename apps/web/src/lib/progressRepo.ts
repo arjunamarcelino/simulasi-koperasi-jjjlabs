@@ -78,17 +78,12 @@ export const progressRepo = {
     return settle(data, error, parseSubmitQuiz);
   },
 
-  async reconcile(
-    uid: string,
-    xp: number,
-    point: number,
-    missions: string[],
-  ): Promise<RepoResult<ReconcileResult>> {
+  async reconcile(uid: string, xp: number, missions: string[]): Promise<RepoResult<ReconcileResult>> {
     if (!supabase) return { status: "degraded" };
+    // point is intentionally not migrated — see reconcile_local_progress.
     const { data, error } = await supabase.rpc("reconcile_local_progress", {
       p_uid: uid,
       p_xp: xp,
-      p_point: point,
       p_missions: missions,
     });
     return settle(data, error, parseReconcile);
