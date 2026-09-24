@@ -6,12 +6,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 type QueryResult = { data: unknown; error: unknown };
 
-/** Fake the postgREST builder chain: from().select().not().order() → Promise<QueryResult>. */
+/** Fake the postgREST builder chain: from().select().not().order().limit() → Promise<QueryResult>. */
 function fakeSupabase(result: QueryResult) {
   const builder = {
     select: () => builder,
     not: () => builder,
-    order: () => Promise.resolve(result),
+    order: () => builder,
+    limit: () => Promise.resolve(result),
   };
   return { from: () => builder };
 }

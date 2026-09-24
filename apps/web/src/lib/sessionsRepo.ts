@@ -18,7 +18,8 @@ export const sessionsRepo = {
       .from("sessions")
       .select(COLUMNS)
       .not("ended_at", "is", null)
-      .order("started_at", { ascending: false });
+      .order("started_at", { ascending: false })
+      .limit(200); // defensive bound; realistic history is far smaller (4 scenarios)
     return settle(data, error, parseSessionList);
   },
 };
