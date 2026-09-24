@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { sessionsRepo } from "../../lib/sessionsRepo";
-import { groupByScenario, toSessionEnded, type ScenarioHistory } from "../../lib/sessionHistory";
+import {
+  groupByScenario,
+  hasScores,
+  sumScores,
+  toSessionEnded,
+  type ScenarioHistory,
+} from "../../lib/sessionHistory";
 import type { EndingType, SessionRecord } from "../../lib/sessionsRepo.contracts";
 import { pushEscape } from "../../lib/escapeStack";
 import { ResultPanel } from "../session/ResultPanel";
@@ -16,8 +22,6 @@ const ENDING_META: Record<EndingType, { label: string; chip: string; accent: str
 };
 
 const dateFmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" });
-const sumScores = (r: SessionRecord): number => Object.values(r.scores).reduce((a, b) => a + b, 0);
-const hasScores = (r: SessionRecord): boolean => Object.keys(r.scores).length > 0;
 
 /**
  * "Riwayat" tab: the authenticated user's finalized attempts, grouped by scenario, with a

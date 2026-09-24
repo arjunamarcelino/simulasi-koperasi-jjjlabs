@@ -19,7 +19,13 @@ const TITLE_BY_ID = new Map(SCENARIOS.map((s) => [s.id, s.title]));
 const ORDER_BY_ID = new Map(SCENARIOS.map((s, i) => [s.id, i]));
 
 const ENDING_RANK: Record<SessionRecord["endingType"], number> = { good: 2, neutral: 1, bad: 0 };
-const sumScores = (r: SessionRecord): number => Object.values(r.scores).reduce((a, b) => a + b, 0);
+
+/** Total rubric score for an attempt (sum of scores_json values). */
+export const sumScores = (r: SessionRecord): number =>
+  Object.values(r.scores).reduce((a, b) => a + b, 0);
+
+/** True when the attempt carries any pillar score (false for tutorial rows). */
+export const hasScores = (r: SessionRecord): boolean => Object.keys(r.scores).length > 0;
 
 /** Reassemble a stored row into a SessionEnded so ResultPanel renders it like a live result. */
 export function toSessionEnded(r: SessionRecord): SessionEnded {
