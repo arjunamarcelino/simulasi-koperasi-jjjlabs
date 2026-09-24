@@ -48,7 +48,21 @@ const BAR_FILL: Record<Tone, string> = {
  * state chips + pillar scores; the tutorial (empty maps) collapses to
  * narrative-only — no `isTutorial` flag.
  */
-export function ResultPanel({ ended, onBack }: { ended: SessionEnded; onBack: () => void }) {
+/** Positioning/stacking of the backdrop, split out so callers can restack it (e.g. the
+ *  history detail renders `fixed inset-0 z-50` above the profile modal). Layout stays fixed. */
+const OVERLAY_LAYOUT = "flex items-center justify-center bg-ink/60 p-4";
+
+export function ResultPanel({
+  ended,
+  onBack,
+  backLabel = "◀ Kembali ke Kantor Koperasi",
+  overlayClassName = "absolute inset-0 z-40",
+}: {
+  ended: SessionEnded;
+  onBack: () => void;
+  backLabel?: string;
+  overlayClassName?: string;
+}) {
   const { endingType, stateClassification, scores, narrativeFeedback } = ended.result;
 
   const chips: StateChip[] = Object.entries(stateClassification).map(([k, v]) =>
@@ -62,7 +76,7 @@ export function ResultPanel({ ended, onBack }: { ended: SessionEnded; onBack: ()
   const scored = chips.length > 0 || pillars.length > 0;
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-ink/60 p-4">
+    <div className={`${overlayClassName} ${OVERLAY_LAYOUT}`}>
       <PixelPanel
         className={`flex max-h-full w-full flex-col gap-4 overflow-y-auto text-center ${
           scored ? "max-w-2xl" : "max-w-xl"
@@ -121,7 +135,7 @@ export function ResultPanel({ ended, onBack }: { ended: SessionEnded; onBack: ()
 
         <div className="flex justify-center pt-2">
           <GameButton variant="primary" onClick={onBack}>
-            ◀ Kembali ke Kantor Koperasi
+            {backLabel}
           </GameButton>
         </div>
       </PixelPanel>
