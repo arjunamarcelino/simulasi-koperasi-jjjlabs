@@ -14,6 +14,7 @@
 // the live session vocabulary. The runtime guard tables below (Record<…, true>) then fail
 // to compile if the contract adds a member — the drift guard is structural.
 import type { EndingType, FinalDecisionTrigger } from "../session/transport/contract";
+import { isRecord, str } from "./parseGuards";
 export type { EndingType };
 export type SessionTrigger = FinalDecisionTrigger;
 
@@ -30,10 +31,6 @@ export type SessionRecord = {
 };
 
 // — narrowing helpers ————————————————————————————————————————————————
-const isRecord = (u: unknown): u is Record<string, unknown> =>
-  typeof u === "object" && u !== null && !Array.isArray(u);
-const str = (u: unknown): string | null => (typeof u === "string" ? u : null);
-
 const ENDING_TYPES: Record<EndingType, true> = { good: true, bad: true, neutral: true };
 const TRIGGERS: Record<SessionTrigger, true> = {
   manual: true,
