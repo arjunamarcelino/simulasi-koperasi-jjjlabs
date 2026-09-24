@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   // publishable key here — never the RLS-bypassing secret key.
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
+  // Cloudflare Turnstile site key (SIM-41). PUBLIC; optional (unset → no widget).
+  readonly VITE_TURNSTILE_SITE_KEY?: string;
 }
 
 interface ImportMeta {

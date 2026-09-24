@@ -153,6 +153,28 @@ let mirrorUnsub: (() => void) | null = null;
 let walletOwnerUnsub: (() => void) | null = null;
 let readyTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** Degraded-mode fallback budget (ms), measured from each (re-)arm — see armDegrade. Kept
+ * DECOUPLED from the captcha token wait: it's re-armed at sign-in START (post-token), so the
+ * sign-in RTT gets a full DEGRADE_MS window instead of sharing one deadline with the ≤WAIT_MS
+ * token wait (which caused a slow-network splash→degraded→guest flash). */
+const DEGRADE_MS = 3000;
+
+/** Single degrade writer, shared by every timer site: flips to DEGRADED only while auth is
+ * still resolving (status "loading"), so a stale timer can't degrade a now-live session. */
+function degrade(): void {
+  readyTimer = null; // the timer just fired — drop the stale id
+  if (authStore.getState().auth.status === "loading") {
+    authStore.setState({ ready: true, auth: DEGRADED });
+  }
+}
+
+/** (Re-)arm the degraded fallback DEGRADE_MS from now. Cleared on any real session
+ * (writeSession). Called at boot, on SIGNED_OUT, and at sign-in start (the decouple). */
+function armDegrade(): void {
+  if (readyTimer) clearTimeout(readyTimer);
+  readyTimer = setTimeout(degrade, DEGRADE_MS);
+}
+
 /**
  * Idempotent auth bootstrap. Reconciles OFF the listener's INITIAL_SESSION event
  * (which fires AFTER detectSessionInUrl has processed a Google redirect) — never a
@@ -213,16 +235,15 @@ export function initAuth(): void {
     }
     if (event === "SIGNED_OUT") {
       reconciled = true;
+      armDegrade(); // a captcha'd re-anon can fail — degrade instead of hanging in LOADING
       queueMicrotask(() => void anonSignIn());
     }
   });
   subscription = data.subscription;
 
   // Safety net: if INITIAL_SESSION never arrives (SDK stall), still release the
-  // splash into degraded mode rather than hang forever.
-  readyTimer = setTimeout(() => {
-    if (!authStore.getState().ready) authStore.setState({ ready: true, auth: DEGRADED });
-  }, 3000);
+  // splash into degraded mode rather than hang forever. Re-armed at sign-in start.
+  armDegrade();
 
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
@@ -257,21 +278,30 @@ function writeSession(session: Session | null): void {
 
 // --- CAPTCHA seam -------------------------------------------------------------
 
-let captchaTokenProvider: (() => string | undefined) | null = null;
+/** Async Turnstile token source (lib/captcha.ts). Awaited before each anon sign-in. */
+export type CaptchaTokenProvider = () => Promise<string | undefined>;
+let captchaTokenProvider: CaptchaTokenProvider | null = null;
 
 /**
- * Wire a Turnstile token source. SIM-1 provisions CAPTCHA on the anon sign-in
+ * Wire a Turnstile token source. SIM-40 provisions CAPTCHA on the anon sign-in
  * endpoint; when it's enabled, the FE must supply a token or the launch bootstrap
- * breaks. Until then anon sign-in runs tokenless (CAPTCHA is off on the project).
+ * breaks. Until a provider is set (or it yields undefined), anon sign-in runs
+ * tokenless — the app still boots.
  */
-export function setCaptchaTokenProvider(provider: () => string | undefined): void {
+export function setCaptchaTokenProvider(provider: CaptchaTokenProvider): void {
   captchaTokenProvider = provider;
 }
 
 function anonSignIn(): Promise<unknown> {
-  const token = captchaTokenProvider?.();
-  const run = () =>
-    supabase!.auth.signInAnonymously(token ? { options: { captchaToken: token } } : {});
+  const run = async () => {
+    // Await the captcha token (the provider owns a bounded wait). Only the tab that
+    // actually signs in consumes a single-use token — see the Web Lock below.
+    const token = await captchaTokenProvider?.();
+    // Decouple: the token wait may have eaten most of the boot budget — re-arm the degrade
+    // deadline so the sign-in RTT gets its own full DEGRADE_MS window (no early flicker).
+    armDegrade();
+    return supabase!.auth.signInAnonymously(token ? { options: { captchaToken: token } } : {});
+  };
   // Elect a single tab to perform the re-anon: N open tabs all receive SIGNED_OUT
   // (via the storage event) and would each mint an anonymous user AND trigger a
   // wallet reset. Hold a cross-tab Web Lock so only the winner signs in; the others
