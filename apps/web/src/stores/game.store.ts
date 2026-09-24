@@ -434,13 +434,13 @@ export const gameStore = createStore<GameState>()(
       if (!supabase || !walletUid) return optimistic; // degraded: local mint stays
 
       const res = await progressRepo.redeemVoucher(voucherId);
-      if (!guardValid(guard)) return optimistic; // account switched mid-flight
       if (res.status === "ok" && res.data.ok) {
+        // reconcileAfterRedeem is guard-checked; a stale success no-ops (hydrate heals).
         reconcileAfterRedeem(optimistic, res.data.code, res.data.balance, guard);
         return { ...optimistic, code: res.data.code };
       }
-      if (res.status === "degraded") return optimistic;
-      rollbackWalletEffect(effect, guard);
+      if (res.status === "degraded") return optimistic; // keep the local mint
+      rollbackWalletEffect(effect, guard); // reverses the debit + removes the optimistic voucher
       return null;
     },
 
@@ -490,16 +490,15 @@ export const gameStore = createStore<GameState>()(
         missionId,
         mission.kind === "reallife" ? code : undefined,
       );
-      if (!guardValid(guard)) return { ok: true, reward }; // account switched
       if (res.status === "ok" && res.data.ok) {
-        reconcileTotals(res.data.totals, guard);
+        reconcileTotals(res.data.totals, guard); // guard-checked; a stale success no-ops
         return { ok: true, reward: res.data.reward };
       }
       if (res.status === "degraded") {
         void syncBadgesFromState();
-        return { ok: true, reward };
+        return { ok: true, reward }; // keep the local credit
       }
-      rollbackWalletEffect(effect, guard);
+      rollbackWalletEffect(effect, guard); // reverses xp/point + removes the optimistic mission
       const reason = res.status === "ok" && !res.data.ok ? res.data.reason : "unknown";
       return { ok: false, reason };
     },
@@ -538,15 +537,20 @@ function applyWalletEffect(intent: {
   return { xp: intent.xp, point: intent.point, addedMission, addedVoucher };
 }
 
-/** Reverse exactly the recorded effect (relative, no clamp — the pre-state was ≥0
- * and we added `effect`, so subtracting it returns to the pre-state). No-op if the
- * owner/epoch moved on. */
+/** Reverse the recorded effect. Skipped entirely if the OWNER changed (the effect
+ * belonged to a prior account; hydrate owns the new owner's truth). Within the same
+ * owner, membership is always reversed — removing exactly what THIS op added is safe
+ * even if a concurrent op bumped the epoch, since a unique mission/voucher can't have
+ * been added twice — while the scalar delta is reversed only when no newer edit landed
+ * (a concurrent op may have absolute-reconciled xp/point). This prevents a phantom
+ * mission/voucher from lingering when a concurrent mutation invalidates the guard. */
 function rollbackWalletEffect(effect: WalletEffect, guard: WriteGuard): void {
-  if (!guardValid(guard)) return;
   const st = gameStore.getState();
+  if (st.walletUid !== guard.uid) return; // owner changed — leave it to hydrate
+  const scalarSafe = walletEpoch === guard.epoch;
   const wallet: Wallet = {
-    xp: st.xp - effect.xp,
-    point: st.point - effect.point,
+    xp: scalarSafe ? st.xp - effect.xp : st.xp,
+    point: scalarSafe ? st.point - effect.point : st.point,
     completedMissionIds: effect.addedMission
       ? st.completedMissionIds.filter((id) => id !== effect.addedMission)
       : st.completedMissionIds,
@@ -595,11 +599,22 @@ function reconcileAfterRedeem(
   void syncBadgesFromState();
 }
 
-/** Recompute the currently-earned badge set from live wallet signals and persist it
- * (idempotent server-side). No-op when degraded / no account. */
+// Badge codes already persisted this session for `syncedBadgesUid`, so a mutation
+// that earns nothing new skips the sync RPC entirely (the earned set only grows a
+// handful of times per account). Reset lazily on an owner change.
+let syncedBadges = new Set<string>();
+let syncedBadgesUid: string | null = null;
+
+/** Recompute the currently-earned badge set from live wallet signals and persist only
+ * the NEWLY-earned codes (idempotent server-side). No-op when degraded / no account or
+ * when nothing new was earned — so it adds no round-trip to the common mutation. */
 async function syncBadgesFromState(): Promise<void> {
   const st = gameStore.getState();
   if (!supabase || !st.walletUid) return;
+  if (syncedBadgesUid !== st.walletUid) {
+    syncedBadges = new Set();
+    syncedBadgesUid = st.walletUid;
+  }
   const ctx: BadgeContext = {
     xp: st.xp,
     level: levelFromXp(st.xp),
@@ -607,8 +622,12 @@ async function syncBadgesFromState(): Promise<void> {
     completedMissionIds: st.completedMissionIds,
     voucherCount: st.redeemedVouchers.length,
   };
-  const earned = BADGES.filter((b) => isEarned(b.criteria, ctx)).map((b) => b.id);
-  if (earned.length > 0) await progressRepo.syncBadges(earned);
+  const fresh = BADGES.filter((b) => isEarned(b.criteria, ctx) && !syncedBadges.has(b.id)).map(
+    (b) => b.id,
+  );
+  if (fresh.length === 0) return;
+  const res = await progressRepo.syncBadges(fresh);
+  if (res.status === "ok") for (const code of fresh) syncedBadges.add(code);
 }
 
 /** Hydrate the owner's authoritative wallet from the DB, run the one-time migration
@@ -655,12 +674,15 @@ async function hydrateAndMigrate(uid: string, guard: WriteGuard): Promise<void> 
   if (hasLegacy) {
     // Only xp + game-mission state migrate; point/vouchers are intentionally dropped.
     const rec = await progressRepo.reconcile(uid, legacy.xp, legacy.completedMissionIds);
-    if (!guardValid(guard)) return;
     if (rec.status === "ok") {
-      const after = await progressRepo.getMyProgress();
-      if (!guardValid(guard)) return;
-      if (after.status === "ok") applyMyProgress(after.data);
+      // The server has consumed the import (reconciled_at set, or already-reconciled).
+      // Delete the device-global legacy keys NOW, unconditionally — so no later owner
+      // can re-import them, even if the write-guard has moved on in the meantime.
       for (const base of WALLET_BASES) removeKey(walletKey(null, base));
+      if (guardValid(guard)) {
+        const after = await progressRepo.getMyProgress();
+        if (guardValid(guard) && after.status === "ok") applyMyProgress(after.data);
+      }
     }
   }
 
