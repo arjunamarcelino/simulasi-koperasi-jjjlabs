@@ -10,7 +10,7 @@
 export type RepoResult<T> =
   | { status: "ok"; data: T }
   | { status: "degraded" } // supabase === null → keep local, do NOT roll back
-  | { status: "rpcError"; error: unknown } // RPC/query failed → roll back the optimistic delta
+  | { status: "rpcError"; error: unknown } // the RPC/query failed (caller decides how to react)
   | { status: "invalid"; raw: unknown }; // returned an unexpected shape
 
 /** Fold a postgREST `{ data, error }` pair through a parser into a RepoResult. */

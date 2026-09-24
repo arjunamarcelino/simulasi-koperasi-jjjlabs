@@ -195,7 +195,7 @@ function ScoreText({ record }: { record: SessionRecord }) {
 
 function HistoryMessage({ children, alert = false }: { children: ReactNode; alert?: boolean }) {
   return (
-    <p {...(alert ? { role: "alert" as const } : {})} className="py-8 text-center font-body text-lg text-ink-soft">
+    <p role={alert ? "alert" : undefined} className="py-8 text-center font-body text-lg text-ink-soft">
       {children}
     </p>
   );
