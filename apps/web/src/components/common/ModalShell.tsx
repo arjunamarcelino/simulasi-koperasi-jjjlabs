@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { PixelPanel } from "./PixelPanel";
+import { handleEscape } from "../../lib/escapeStack";
 
 type ModalShellProps = {
   /** id of the heading element inside `children` (for aria-labelledby). */
@@ -62,6 +63,9 @@ export function ModalShell({
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
+        // A nested overlay (e.g. the history detail) claims Esc first — step back one
+        // layer instead of tearing down the whole modal.
+        if (handleEscape()) return;
         onClose();
         return;
       }
