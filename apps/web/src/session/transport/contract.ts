@@ -44,7 +44,9 @@ export type FinalDecisionTrigger = "manual" | "sinyal_level_1" | "force_quit_lev
  * both the tutorial and scored scenarios later.
  */
 export type AuditorResult = {
-  scenarioId: ScenarioId;
+  // Known catalog scenario OR an arbitrary persisted code (session history may replay a
+  // legacy/uncatalogued id). `string & {}` keeps literal autocomplete for the union.
+  scenarioId: ScenarioId | (string & {});
   trigger: FinalDecisionTrigger;
   stateClassification: Record<string, string>;
   scores: Record<string, number>;
