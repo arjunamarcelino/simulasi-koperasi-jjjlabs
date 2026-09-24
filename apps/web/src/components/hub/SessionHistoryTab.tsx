@@ -11,15 +11,9 @@ import {
 import type { EndingType, SessionRecord } from "../../lib/sessionsRepo.contracts";
 import { pushEscape } from "../../lib/escapeStack";
 import { ResultPanel } from "../session/ResultPanel";
+import { ENDING_STYLE } from "../session/resultLabels";
 
 type Phase = "loading" | "ok" | "empty" | "degraded" | "error";
-
-/** Ending → label + chip tone (mirrors ResultPanel's good/neutral/bad triad) + group accent. */
-const ENDING_META: Record<EndingType, { label: string; chip: string; accent: string }> = {
-  good: { label: "Berhasil", chip: "bg-forest text-cream", accent: "border-forest" },
-  neutral: { label: "Selesai", chip: "bg-mustard text-ink", accent: "border-mustard" },
-  bad: { label: "Berakhir", chip: "bg-orange text-ink", accent: "border-orange" },
-};
 
 const dateFmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" });
 
@@ -121,7 +115,7 @@ function ScenarioGroup({
   return (
     <section
       aria-labelledby={headingId}
-      className={`flex flex-col gap-2 border-3 border-t-4 p-3 ${ENDING_META[group.best.endingType].accent}`}
+      className={`flex flex-col gap-2 border-3 border-t-4 p-3 ${ENDING_STYLE[group.best.endingType].accent}`}
     >
       <h3 id={headingId} className="font-display text-xs text-forest">
         {group.title}
@@ -151,7 +145,7 @@ function BestResultSummary({ record }: { record: SessionRecord }) {
 }
 
 function AttemptRow({ record, onOpen }: { record: SessionRecord; onOpen: (r: SessionRecord) => void }) {
-  const label = ENDING_META[record.endingType].label;
+  const label = ENDING_STYLE[record.endingType].badgeLabel;
   const when = dateFmt.format(record.startedAt);
   return (
     <li>
@@ -172,10 +166,10 @@ function AttemptRow({ record, onOpen }: { record: SessionRecord; onOpen: (r: Ses
 }
 
 function EndingBadge({ type }: { type: EndingType }) {
-  const m = ENDING_META[type];
+  const m = ENDING_STYLE[type];
   return (
     <span className={`border-2 border-border px-2 py-0.5 font-display text-[9px] ${m.chip}`}>
-      {m.label}
+      {m.badgeLabel}
     </span>
   );
 }

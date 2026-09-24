@@ -1,7 +1,8 @@
 import { PixelPanel } from "../common/PixelPanel";
 import { GameButton } from "../common/GameButton";
-import type { SessionEnded } from "../../session/transport/contract";
+import type { EndingType, SessionEnded } from "../../session/transport/contract";
 import {
+  ENDING_STYLE,
   resolveScoreLabel,
   resolveStateChip,
   scoreTone,
@@ -9,24 +10,10 @@ import {
   type Tone,
 } from "./resultLabels";
 
-type Ending = SessionEnded["result"]["endingType"];
-
-const TITLE: Record<Ending, string> = {
+const TITLE: Record<EndingType, string> = {
   good: "Selesai — Berhasil!",
   bad: "Sesi Berakhir",
   neutral: "Sesi Selesai",
-};
-
-const TITLE_COLOR: Record<Ending, string> = {
-  good: "text-forest",
-  bad: "text-orange",
-  neutral: "text-brown",
-};
-
-const ACCENT: Record<Ending, string> = {
-  good: "border-t-4 border-forest",
-  bad: "border-t-4 border-orange",
-  neutral: "border-t-4 border-mustard",
 };
 
 const CHIP_CLASS: Record<Tone, string> = {
@@ -80,9 +67,9 @@ export function ResultPanel({
       <PixelPanel
         className={`flex max-h-full w-full flex-col gap-4 overflow-y-auto text-center ${
           scored ? "max-w-2xl" : "max-w-xl"
-        } ${ACCENT[endingType]}`}
+        } border-t-4 ${ENDING_STYLE[endingType].accent}`}
       >
-        <h2 className={`font-display text-sm md:text-base ${TITLE_COLOR[endingType]}`}>
+        <h2 className={`font-display text-sm md:text-base ${ENDING_STYLE[endingType].titleColor}`}>
           {TITLE[endingType]}
         </h2>
 
