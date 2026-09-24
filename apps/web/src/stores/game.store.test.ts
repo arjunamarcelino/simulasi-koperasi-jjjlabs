@@ -199,4 +199,84 @@ describe("game.store — online (server-authoritative)", () => {
     await Promise.resolve();
     expect(gameStore.getState().xp).toBe(7); // A's late result was dropped by the guard
   });
+
+  it("redeemVoucher rolls back the optimistic debit on RPC error", async () => {
+    const { gameStore } = await loadStore({
+      online: true,
+      repo: {
+        getMyProgress: vi
+          .fn()
+          .mockResolvedValue(ok({ xp: 0, point: 100, missions: [], vouchers: [], badges: [] })),
+        redeemVoucher: vi.fn().mockResolvedValue({ status: "rpcError", error: new Error("boom") }),
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().point).toBe(100));
+    const voucher = await gameStore.getState().redeemVoucher("belanja-5k");
+    expect(voucher).toBeNull();
+    expect(gameStore.getState().point).toBe(100); // debit reversed
+    expect(gameStore.getState().redeemedVouchers).toHaveLength(0);
+  });
+
+  it("redeemVoucher rejects without an optimistic debit when the client balance is insufficient", async () => {
+    const { gameStore, repo } = await loadStore({
+      online: true,
+      repo: {
+        getMyProgress: vi
+          .fn()
+          .mockResolvedValue(ok({ xp: 0, point: 10, missions: [], vouchers: [], badges: [] })),
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().point).toBe(10));
+    const voucher = await gameStore.getState().redeemVoucher("belanja-5k"); // cost 50 > 10
+    expect(voucher).toBeNull();
+    expect(gameStore.getState().point).toBe(10); // no flash-then-restore
+    expect(repo.redeemVoucher).not.toHaveBeenCalled(); // gated before any RPC
+  });
+
+  it("retries the boot hydrate once on a transient error", async () => {
+    const { gameStore } = await loadStore({
+      online: true,
+      repo: {
+        getMyProgress: vi
+          .fn()
+          .mockResolvedValueOnce({ status: "rpcError", error: new Error("401") })
+          .mockResolvedValue(ok({ xp: 42, point: 0, missions: [], vouchers: [], badges: [] })),
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().xp).toBe(42)); // retry succeeded
+  });
+
+  it("a failed optimistic mission is fully reversed even when a concurrent claim reconciled in between", async () => {
+    // Op A (baca-mading) hangs then fails; op B (keliling) succeeds and reconciles
+    // absolute totals in between — which bumps the epoch and would previously have
+    // stranded A's phantom mission. The membership rollback must still remove it.
+    let failA: (v: RepoResult<unknown>) => void = () => {};
+    const aPromise = new Promise<RepoResult<unknown>>((r) => {
+      failA = r;
+    });
+    const { gameStore } = await loadStore({
+      online: true,
+      repo: {
+        claimMission: vi.fn().mockImplementation((missionId: string) =>
+          missionId === "baca-mading"
+            ? aPromise
+            : Promise.resolve(ok({ ok: true, reward: { xp: 10, point: 10 }, totals: { xp: 10, point: 10 } })),
+        ),
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+
+    const aDone = gameStore.getState().completeMission("baca-mading"); // optimistic, hangs
+    await gameStore.getState().completeMission("keliling"); // reconciles totals → epoch bumps
+    failA({ status: "rpcError", error: new Error("boom") });
+    await aDone;
+
+    const ids = gameStore.getState().completedMissionIds;
+    expect(ids).toContain("keliling"); // B kept
+    expect(ids).not.toContain("baca-mading"); // A's phantom removed despite the epoch bump
+  });
 });
