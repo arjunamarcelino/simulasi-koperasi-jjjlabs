@@ -15,8 +15,8 @@ export function KasirVoucherBoard() {
   const [lastCode, setLastCode] = useState<string | null>(null);
 
   const close = () => gameStore.getState().clearSelection();
-  const onRedeem = (id: string) => {
-    const result = gameStore.getState().redeemVoucher(id);
+  const onRedeem = async (id: string) => {
+    const result = await gameStore.getState().redeemVoucher(id);
     if (result) setLastCode(result.code);
   };
 
@@ -57,7 +57,7 @@ export function KasirVoucherBoard() {
                 variant="primary"
                 className="!px-4 !py-2 !text-[10px]"
                 disabled={!afford}
-                onClick={() => onRedeem(v.id)}
+                onClick={() => void onRedeem(v.id)}
               >
                 Tukar
               </GameButton>

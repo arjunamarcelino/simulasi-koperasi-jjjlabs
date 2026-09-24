@@ -41,6 +41,9 @@ vi.mock("../lib/supabase", () => {
       select: () => ({ eq: () => ({ single: h.profileSingle }) }),
       update: () => ({ eq: h.profileUpdateEq }),
     }),
+    // onOwnerChanged (game.store) hydrates progress via these on a uid change; the
+    // auth tests don't assert on progress, so resolve them harmlessly.
+    rpc: () => Promise.resolve({ data: null, error: null }),
   };
   // A live getter, not a baked value: resetModules does not re-run this factory, so
   // the supabaseNull toggle must be read at access time (else it leaks between tests).

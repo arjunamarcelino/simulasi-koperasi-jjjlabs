@@ -1,10 +1,23 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { ENV } from "../config/env";
 
+/** A JSON value — the honest wire type for every jsonb-returning RPC. Narrowed TS
+ * result contracts (progressRepo.contracts) are layered on top of this at the repo
+ * boundary; postgREST does not validate the shape for us. */
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
 /**
- * Minimal hand-written schema for the one table the FE reads directly. Kills the
+ * Minimal hand-written schema for the tables/RPCs the FE touches. Kills the
  * query-builder `any` (createClient<Database>) without pulling in generated types.
- * Mirrors apps/db/supabase/migrations (profiles: id + display_name, RLS owner-only).
+ * Mirrors apps/db/supabase/migrations. RPC Args are narrowed (we build them); every
+ * jsonb Returns stays `Json` (the DB produces it — validate at the repo boundary).
+ * Follow-up: wire `supabase gen types typescript --local` + a CI diff to kill drift.
  */
 export type Database = {
   public: {
@@ -16,8 +29,23 @@ export type Database = {
         Relationships: [];
       };
     };
-    Views: { [key: string]: never };
-    Functions: { [key: string]: never };
+    Views: {
+      quiz_catalog: {
+        Row: { code: string; prompt: string; options: Json; sort_order: number };
+        Relationships: [];
+      };
+    };
+    Functions: {
+      get_my_progress: { Args: Record<PropertyKey, never>; Returns: Json };
+      claim_mission: { Args: { p_mission_id: string; p_code?: string | null }; Returns: Json };
+      redeem_voucher: { Args: { p_voucher_id: string }; Returns: Json };
+      submit_quiz: { Args: { p_answers: { code: string; choice: number }[] }; Returns: Json };
+      reconcile_local_progress: {
+        Args: { p_uid: string; p_xp: number; p_missions: string[] };
+        Returns: Json;
+      };
+      sync_badges: { Args: { p_codes: string[] }; Returns: undefined };
+    };
     Enums: { [key: string]: never };
     CompositeTypes: { [key: string]: never };
   };

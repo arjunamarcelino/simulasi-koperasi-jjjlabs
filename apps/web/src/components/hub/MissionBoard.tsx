@@ -44,7 +44,7 @@ function GameMissionCard({ mission, done }: { mission: Mission; done: boolean })
         <GameButton
           variant="primary"
           className="!px-4 !py-2 !text-[10px]"
-          onClick={() => gameStore.getState().completeMission(mission.id)}
+          onClick={() => void gameStore.getState().completeMission(mission.id)}
         >
           Klaim
         </GameButton>
@@ -57,8 +57,8 @@ function RealLifeMissionCard({ mission, done }: { mission: RealLifeMission; done
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const submit = () => {
-    const result = gameStore.getState().completeMission(mission.id, code);
+  const submit = async () => {
+    const result = await gameStore.getState().completeMission(mission.id, code);
     if (!result.ok && result.reason === "wrong-code") setError("Kode salah");
   };
 
@@ -78,7 +78,7 @@ function RealLifeMissionCard({ mission, done }: { mission: RealLifeMission; done
           className="mt-3 flex items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            submit();
+            void submit();
           }}
         >
           <input
