@@ -4,6 +4,9 @@
 -- ranking + grouping + the narrative-only detail view.
 --
 -- NEVER run against production. Runs as the DB owner (bypasses RLS).
+-- It intentionally writes fully-finalized rows directly, bypassing record_session_result
+-- (the anti-forgery finalization path). That is fine for a dev fixture but must NEVER be
+-- adapted into any client or production code path.
 --
 -- Usage (local Supabase):
 --   1. Find your auth uid:  select id, email from auth.users;
