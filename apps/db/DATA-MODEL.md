@@ -41,10 +41,11 @@ Level and badges are **derived** in the UI from live signals, also not stored.
 
 ## TARGET — Supabase schema
 
-10 tables. Owner-only RLS on user-scoped tables; public read on `*_definition` catalogs
-(except `mission_definition`, whose reallife `redeem_code` is kept out of clients behind the
-`mission_catalog` view). Session score is folded into `sessions` (written at start,
-finalized at end).
+12 tables (10 for SIM-2 + the SIM-5 `quiz_definition`/`quiz_completion` pair). Owner-only RLS
+on user-scoped tables; public read on `*_definition` catalogs — **except** `mission_definition`
+(reallife `redeem_code`) and `quiz_definition` (the `correct_index` answer key), both kept out of
+clients behind a plain owner-privileged view (`mission_catalog` / `quiz_catalog`) that omits the
+secret column. Session score is folded into `sessions` (written at start, finalized at end).
 
 ```mermaid
 erDiagram
@@ -58,6 +59,8 @@ erDiagram
   VOUCHER_DEFINITION ||--o{ VOUCHER_REDEMPTION : redeemed_as
   PROFILES ||--o{ USER_BADGE : earns
   BADGE_DEFINITION ||--o{ USER_BADGE : awarded_as
+  PROFILES ||--o{ QUIZ_COMPLETION : answers
+  QUIZ_DEFINITION ||--o{ QUIZ_COMPLETION : graded_against
 
   PROFILES {
     uuid id PK "→ auth.users.id"
@@ -69,6 +72,7 @@ erDiagram
     uuid user_id PK "→ profiles.id"
     int xp "≥0 — level derived, not stored"
     int point "≥0"
+    timestamptz reconciled_at "SIM-5: one-time local-import marker; null until migrated"
   }
   SESSIONS {
     uuid id PK
@@ -126,6 +130,18 @@ erDiagram
     text badge_id FK
     timestamptz awarded_at "the new fact"
   }
+  QUIZ_DEFINITION {
+    text code PK
+    text prompt
+    jsonb options
+    int correct_index "SIM-5: answer key — REVOKEd from clients (quiz_catalog view omits it)"
+    text explanation "revealed post-answer by submit_quiz, never in the catalog view"
+  }
+  QUIZ_COMPLETION {
+    uuid user_id PK "→ profiles.id"
+    text question_code PK "→ quiz_definition.code"
+    timestamptz first_correct_at "credit-once ledger; a question rewards at most once"
+  }
 ```
 
 **Not tables:** `level_from_xp(int)` is an `IMMUTABLE` function (thresholds
@@ -133,12 +149,22 @@ erDiagram
 function that publishes a bounded `display_name + xp + level` projection (owner-only RLS
 would otherwise hide other players).
 
-**Server-side integrity RPCs** (`SECURITY DEFINER`, `search_path=''`, `REVOKE EXECUTE
-FROM public`): `claim_mission` (validates the gate code server-side, credits reward atomically, idempotent
+**Server-side integrity RPCs** (`SECURITY DEFINER`, `search_path=''`, `REVOKE EXECUTE FROM
+public, anon` — anon gets EXECUTE via a *default privilege*, so `from public` alone is not
+enough): `claim_mission` (validates the gate code server-side, credits reward atomically, idempotent
 via `unique(user_id, mission_id)`), `redeem_voucher` (race-safe balance debit, mints a unique
 code), `record_session_result` (finalizes an owned open session). `add_rewards` is a **private**
-helper, never client-callable. Badges are awarded by a plain RLS-guarded insert (idempotent via
+helper, never client-callable — as of SIM-5 it **returns the post-credit `{xp, point}`** so callers
+reconcile in one round-trip. Badges are awarded by a plain RLS-guarded insert (idempotent via
 `unique(user_id, badge_id)`); the earn rule stays client-side (cosmetic, client-trusted).
+
+**SIM-5 progress RPCs** (same hardening): `submit_quiz(answers)` grades server-side and credits
+only newly-correct questions once (answer key never leaves the DB); `get_my_progress()` returns the
+whole wallet snapshot (progress + missions + vouchers + badges) in one call for boot hydrate;
+`sync_badges(codes[])` batch-inserts newly-earned badges; `reconcile_local_progress(uid, xp,
+missions)` imports a pre-existing local wallet **once** (atomic `reconciled_at` marker) — migrating
+**xp + game-mission state only, never the spendable `point`**, since a fresh anonymous account is
+indistinguishable from a returning player and a client-supplied balance is unauthenticatable.
 
 ## Gap / mapping
 
@@ -149,7 +175,9 @@ helper, never client-callable. Badges are awarded by a plain RLS-guarded insert 
 | `koperasi.vouchers[]` | `voucher_redemption` | repeatable; `voucher_name` kept denormalized |
 | `koperasi.missions[]` | `mission_completion` | `unique(user_id, mission_id)`; server-side `redeem_code` for reallife |
 | (derived in UI) level | `level_from_xp()` | never a column |
-| (derived in UI) badges | `badge_definition` + `user_badge.awarded_at` | **persisted**; `awarded_at` is the new fact |
+| (derived in UI) badges | `badge_definition` + `user_badge.awarded_at` | **persisted** (SIM-5 wires it); `awarded_at` is the new fact |
+| (FE-only quiz bank + client grading) | `quiz_definition` / `quiz_completion` + `submit_quiz` | **SIM-5**: answer key server-side, credit-once per question |
+| (whole `koperasi.*` wallet, first login) | `reconcile_local_progress(uid, xp, missions)` | **SIM-5**: one-time import, xp + game-missions only (point/vouchers dropped) |
 | (transient) `AuditorResult` | `sessions` (folded score columns) | transcript **not** persisted; row written at session start |
 | FE static content arrays | `*_definition` tables | seeded from `@simkop/catalog` (shared package the FE also imports, CI parity-checked) |
 
@@ -164,11 +192,13 @@ and the seed both deriving from the shared `@simkop/catalog` package).
 > the client bundle today (see follow-up). Treat gate-code claims as best-effort, not anti-cheat.
 
 ## Follow-ups (out of scope for SIM-2 BE)
-- FE integration: `supabase-js` client, guest + Google auth (`linkIdentity`), writing the
-  session row at start + `record_session_result` at end, reading catalogs from the DB.
+- ✅ FE integration: guest + Google auth (SIM-3); progress/quiz/badges wired to the RPCs and the
+  one-time local import (SIM-5, PR #20). Remaining: writing the `sessions` row at start +
+  `record_session_result` at end (the voice-session scoring path).
 - **Stop shipping reallife codes in the client bundle** (they are still in `@simkop/catalog`,
   which the FE imports). If they must be non-guessable, mint high-entropy codes into an
-  untracked source and enter them only via the KDMP, never bundle them.
+  untracked source and enter them only via the KDMP, never bundle them. (Contrast: SIM-5's quiz
+  `correct_index` *is* fully server-side — the pattern to follow if these codes ever need to be.)
 - Enable Auth settings in the Supabase project: anonymous sign-ins, manual linking, Google
   provider, CAPTCHA/rate-limit on anonymous sign-in.
 - `pg_cron` cleanup of stale anonymous users.
