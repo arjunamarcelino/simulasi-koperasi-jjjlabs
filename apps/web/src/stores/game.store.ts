@@ -631,7 +631,15 @@ async function hydrateAndMigrate(uid: string, guard: WriteGuard): Promise<void> 
     saveWallet(uid, wallet);
   };
 
-  const hydrate = await progressRepo.getMyProgress();
+  // The boot hydrate can race the just-issued anon JWT's propagation and get a
+  // transient 401 (PostgREST rejects the not-yet-valid token). Retry once so a
+  // returning player's progress still loads rather than silently showing zero.
+  let hydrate = await progressRepo.getMyProgress();
+  if (hydrate.status === "rpcError") {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    if (!guardValid(guard)) return;
+    hydrate = await progressRepo.getMyProgress();
+  }
   if (!guardValid(guard)) return;
   if (hydrate.status === "ok") applyMyProgress(hydrate.data);
 
