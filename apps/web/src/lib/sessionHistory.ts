@@ -72,10 +72,12 @@ export function groupByScenario(records: SessionRecord[]): ScenarioHistory[] {
   const groups: ScenarioHistory[] = [];
   for (const [scenarioId, attempts] of buckets) {
     attempts.sort((a, b) => b.startedAt - a.startedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const [first, ...rest] = attempts;
+    if (!first) continue; // buckets are built from ≥1 record; this narrows to a non-empty tuple
     groups.push({
       scenarioId,
       title: TITLE_BY_ID.get(scenarioId) ?? scenarioId,
-      best: rankBestResult(attempts as [SessionRecord, ...SessionRecord[]]),
+      best: rankBestResult([first, ...rest]),
       attempts,
     });
   }
