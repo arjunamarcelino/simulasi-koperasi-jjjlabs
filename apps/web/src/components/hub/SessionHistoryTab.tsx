@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { sessionsRepo } from "../../lib/sessionsRepo";
 import {
@@ -51,6 +51,10 @@ export function SessionHistoryTab() {
     };
   }, []);
 
+  // Stable identity: an inline arrow would re-run DetailOverlay's effect (re-pushing the
+  // escape handler and refocusing) on any unrelated ProfileModal re-render.
+  const closeDetail = useCallback(() => setSelected(null), []);
+
   if (phase === "loading") return <HistorySkeleton />;
   if (phase === "degraded") return <HistoryMessage>Riwayat tidak tersedia saat offline.</HistoryMessage>;
   if (phase === "error") return <HistoryMessage alert>Gagal memuat riwayat.</HistoryMessage>;
@@ -63,7 +67,7 @@ export function SessionHistoryTab() {
           <ScenarioGroup key={g.scenarioId} group={g} onOpen={setSelected} />
         ))}
       </div>
-      {selected && <DetailOverlay record={selected} onClose={() => setSelected(null)} />}
+      {selected && <DetailOverlay record={selected} onClose={closeDetail} />}
     </>
   );
 }
