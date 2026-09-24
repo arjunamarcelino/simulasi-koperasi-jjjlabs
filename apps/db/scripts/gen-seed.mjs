@@ -18,6 +18,7 @@ import scenarios from "@simkop/catalog/data/scenarios.json" with { type: "json" 
 import missions from "@simkop/catalog/data/missions.json" with { type: "json" };
 import vouchers from "@simkop/catalog/data/vouchers.json" with { type: "json" };
 import badges from "@simkop/catalog/data/badges.json" with { type: "json" };
+import quiz from "@simkop/catalog/data/quiz.json" with { type: "json" };
 
 const here = dirname(fileURLToPath(import.meta.url));
 const seedPath = join(here, "..", "supabase", "seed.sql");
@@ -79,6 +80,15 @@ const parts = [
     badges,
     (r, i) => [s(r.id), s(r.title), s(r.requirement), s(r.icon), j(r.criteria), n(i)],
     ["title", "requirement", "icon", "criteria", "sort_order"],
+  ),
+  "",
+  block(
+    "Quiz (20) — correct_index is the answer key; base table is not client-readable (quiz_catalog omits it)",
+    "quiz_definition",
+    ["code", "prompt", "options", "correct_index", "explanation", "sort_order"],
+    quiz,
+    (r, i) => [s(r.id), s(r.prompt), j(r.options), n(r.correctIndex), s(r.explanation ?? null), n(i)],
+    ["prompt", "options", "correct_index", "explanation", "sort_order"],
   ),
   "",
 ];
