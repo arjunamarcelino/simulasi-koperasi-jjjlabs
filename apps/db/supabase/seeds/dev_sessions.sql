@@ -13,6 +13,9 @@
 
 \set ON_ERROR_STOP on
 
+-- Idempotent: clear this dev user's history first so re-running doesn't stack duplicates.
+delete from public.sessions where user_id = :'uid';
+
 insert into public.sessions
   (user_id, scenario_id, started_at, ended_at, trigger, ending_type,
    scores_json, state_json, narrative_feedback)
