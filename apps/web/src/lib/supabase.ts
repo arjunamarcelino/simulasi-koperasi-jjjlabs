@@ -28,6 +28,32 @@ export type Database = {
         Update: { id?: string; display_name?: string | null };
         Relationships: [];
       };
+      // Persisted AI-Auditor results. Owner-select RLS scopes reads to auth.uid();
+      // a row is FINALIZED exactly when ended_at is not null (DB constraints tie
+      // ended_at ⇔ trigger ⇔ ending_type). jsonb columns stay Json — validated at
+      // the repo boundary (sessionsRepo.contracts).
+      sessions: {
+        Row: {
+          id: string;
+          user_id: string;
+          scenario_id: string;
+          started_at: string;
+          ended_at: string | null;
+          trigger: string | null;
+          ending_type: string | null;
+          scores_json: Json;
+          state_json: Json;
+          narrative_feedback: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          scenario_id: string;
+          started_at?: string;
+        };
+        Update: { ended_at?: string | null };
+        Relationships: [];
+      };
     };
     Views: {
       quiz_catalog: {
