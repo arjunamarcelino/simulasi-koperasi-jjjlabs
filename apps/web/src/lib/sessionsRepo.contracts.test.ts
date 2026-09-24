@@ -60,6 +60,11 @@ describe("parseSessionRow", () => {
     expect(r?.scores).toEqual({ a: 90 });
   });
 
+  it("drops non-string state_json entries", () => {
+    const r = parseSessionRow({ ...fullRow, state_json: { a: "BENAR", b: 5, c: true } });
+    expect(r?.stateClassification).toEqual({ a: "BENAR" });
+  });
+
   it("rejects out-of-enum ending_type / trigger", () => {
     expect(parseSessionRow({ ...fullRow, ending_type: "win" })).toBeNull();
     expect(parseSessionRow({ ...fullRow, trigger: "bogus" })).toBeNull();

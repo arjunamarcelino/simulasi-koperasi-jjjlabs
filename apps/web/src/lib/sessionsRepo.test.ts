@@ -40,6 +40,11 @@ describe("sessionsRepo.listMySessions", () => {
     expect(res.status).toBe("rpcError");
   });
 
+  it("maps a non-array payload to invalid", async () => {
+    const repo = await loadRepo(fakeSupabase({ data: { nope: true }, error: null }));
+    expect((await repo.listMySessions()).status).toBe("invalid");
+  });
+
   it("parses rows into ok on success", async () => {
     const row = {
       id: "s1",
