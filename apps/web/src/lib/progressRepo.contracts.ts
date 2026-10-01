@@ -38,6 +38,13 @@ export type ReconcileResult =
 /** A quiz question as exposed by the quiz_catalog view — no answer key. */
 export type QuizCatalogQuestion = { code: string; prompt: string; options: string[] };
 
+/** The outcome of record_session (atomic insert+finalize). The `reason` on the failure
+ * arm must survive to the caller (the controller logs it); success carries nothing the
+ * caller needs. */
+export type RecordSessionResult =
+  | { ok: true }
+  | { ok: false; reason: "invalid" | "too_large" | "unauthenticated" };
+
 /** The full wallet snapshot returned by get_my_progress. */
 export type MyProgress = {
   xp: number;
@@ -136,6 +143,18 @@ export function parseReconcile(u: unknown): ReconcileResult | null {
   if (u["skipped"] === "already") return { ok: true, applied: false };
   const totals = parseTotals(u["totals"]);
   return totals ? { ok: true, applied: true, totals } : null;
+}
+
+export function parseRecordSession(u: unknown): RecordSessionResult | null {
+  if (!isRecord(u)) return null;
+  if (u["ok"] === true) return { ok: true };
+  if (u["ok"] === false) {
+    const reason = str(u["reason"]);
+    return reason === "invalid" || reason === "too_large" || reason === "unauthenticated"
+      ? { ok: false, reason }
+      : null;
+  }
+  return null;
 }
 
 export function parseQuizCatalog(u: unknown): QuizCatalogQuestion[] | null {
