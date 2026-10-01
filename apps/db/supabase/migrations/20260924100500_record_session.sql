@@ -37,6 +37,10 @@ begin
      or char_length(coalesce(p_feedback, '')) > 4000 then
     return jsonb_build_object('ok', false, 'reason', 'too_large');
   end if;
+  -- TRUST BOUNDARY (review P2-3): scores/state/feedback are CLIENT-AUTHORED — the auditor
+  -- result is produced FE-side, not recomputed here. auth.uid() scopes every row to its
+  -- caller, so a user can only fake their OWN history. Any future reward/leaderboard logic
+  -- MUST recompute server-side and MUST NOT trust sessions.scores_json as authoritative.
   -- Clamp so ended_at (now) >= started_at always holds, whatever the client clock says.
   v_started := least(coalesce(p_started_at, now()), now());
 
