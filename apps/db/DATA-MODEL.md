@@ -36,7 +36,8 @@ erDiagram
 ```
 
 The scenario result (`AuditorResult`) is produced server-side and shown at end of
-session, but **never persisted** — it lives only in transient `sessionStore` state.
+session. It was formerly **never persisted** (transient `sessionStore` only); **SIM-6
+(PR #22)** now persists it to the `sessions` table via the atomic `record_session` RPC.
 Level and badges are **derived** in the UI from live signals, also not stored.
 
 ## TARGET — Supabase schema
@@ -153,7 +154,9 @@ would otherwise hide other players).
 public, anon` — anon gets EXECUTE via a *default privilege*, so `from public` alone is not
 enough): `claim_mission` (validates the gate code server-side, credits reward atomically, idempotent
 via `unique(user_id, mission_id)`), `redeem_voucher` (race-safe balance debit, mints a unique
-code), `record_session_result` (finalizes an owned open session). `add_rewards` is a **private**
+code), `record_session` (**SIM-6**: atomically inserts + finalizes a completed session in one
+txn — clamps `started_at`, size-bounds the payload; supersedes the two-step `record_session_result`,
+which remains for history but is unused by the FE). `add_rewards` is a **private**
 helper, never client-callable — as of SIM-5 it **returns the post-credit `{xp, point}`** so callers
 reconcile in one round-trip. Badges are awarded by a plain RLS-guarded insert (idempotent via
 `unique(user_id, badge_id)`); the earn rule stays client-side (cosmetic, client-trusted).
@@ -178,11 +181,11 @@ indistinguishable from a returning player and a client-supplied balance is unaut
 | (derived in UI) badges | `badge_definition` + `user_badge.awarded_at` | **persisted** (SIM-5 wires it); `awarded_at` is the new fact |
 | (FE-only quiz bank + client grading) | `quiz_definition` / `quiz_completion` + `submit_quiz` | **SIM-5**: answer key server-side, credit-once per question |
 | (whole `koperasi.*` wallet, first login) | `reconcile_local_progress(uid, xp, missions)` | **SIM-5**: one-time import, xp + game-missions only (point/vouchers dropped) |
-| (transient) `AuditorResult` | `sessions` (folded score columns) | transcript **not** persisted; row written at session start |
+| `AuditorResult` (session end) | `sessions` (folded score columns) | **SIM-6**: row written atomically at session **end** via `record_session`; transcript **not** persisted |
 | FE static content arrays | `*_definition` tables | seeded from `@simkop/catalog` (shared package the FE also imports, CI parity-checked) |
 
-### Net-new (nothing persists these today)
-Identity/auth, `sessions` + score, `user_badge.awarded_at`, and the four `*_definition`
+### Net-new (no localStorage equivalent)
+Identity/auth, `sessions` + score (persisted SIM-6), `user_badge.awarded_at`, and the four `*_definition`
 catalog tables (formerly FE-only arrays; the DB is now the source of truth, with the FE
 and the seed both deriving from the shared `@simkop/catalog` package).
 
@@ -193,8 +196,8 @@ and the seed both deriving from the shared `@simkop/catalog` package).
 
 ## Follow-ups (out of scope for SIM-2 BE)
 - ✅ FE integration: guest + Google auth (SIM-3); progress/quiz/badges wired to the RPCs and the
-  one-time local import (SIM-5, PR #20). Remaining: writing the `sessions` row at start +
-  `record_session_result` at end (the voice-session scoring path).
+  one-time local import (SIM-5, PR #20); **session results persisted (SIM-6, PR #22)** via the
+  atomic `record_session` RPC on session end, from both the LiveKit and mock transports.
 - **Stop shipping reallife codes in the client bundle** (they are still in `@simkop/catalog`,
   which the FE imports). If they must be non-guessable, mint high-entropy codes into an
   untracked source and enter them only via the KDMP, never bundle them. (Contrast: SIM-5's quiz
