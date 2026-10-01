@@ -38,7 +38,8 @@ export type PhaseState = {
 /** The three ways a session ends — PRD §6. */
 export type FinalDecisionTrigger = "manual" | "sinyal_level_1" | "force_quit_level_2";
 
-/** The three ending classes the auditor assigns — PRD §6 Layer 3. */
+/** The three terminal states of a scored session. Single source for the transport, the
+ *  history read path, and the result UI. */
 export type EndingType = "good" | "bad" | "neutral";
 
 /**
@@ -47,7 +48,9 @@ export type EndingType = "good" | "bad" | "neutral";
  * both the tutorial and scored scenarios later.
  */
 export type AuditorResult = {
-  scenarioId: ScenarioId;
+  // Known catalog scenario OR an arbitrary persisted code (session history may replay a
+  // legacy/uncatalogued id). `string & {}` keeps literal autocomplete for the union.
+  scenarioId: ScenarioId | (string & {});
   trigger: FinalDecisionTrigger;
   stateClassification: Record<string, string>;
   scores: Record<string, number>;

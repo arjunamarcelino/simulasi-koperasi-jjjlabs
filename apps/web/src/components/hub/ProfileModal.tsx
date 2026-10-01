@@ -7,6 +7,10 @@ import { BADGES, isEarned, type BadgeContext } from "../../content/badges";
 import { ModalShell } from "../common/ModalShell";
 import { GameButton } from "../common/GameButton";
 import { BadgeIcon } from "./BadgeIcon";
+import { SessionHistoryTab } from "./SessionHistoryTab";
+
+type ProfileTab = "profil" | "badge" | "riwayat";
+const TAB_LABELS: Record<ProfileTab, string> = { profil: "Profil", badge: "Badge", riwayat: "Riwayat" };
 
 /**
  * Level derivation. Tiers (title + XP threshold, ascending, first tier at 0) are
@@ -43,9 +47,17 @@ export function ProfileModal() {
   const authStatus = useAuth((s) => s.auth.status);
   const canEditName = authStatus === "guest" || authStatus === "authenticated";
 
-  const [tab, setTab] = useState<"profil" | "badge">("profil");
+  const [tab, setTab] = useState<ProfileTab>("profil");
+  // Riwayat lazy-loads on first open, then stays mounted (CSS-hidden) so toggling tabs
+  // doesn't re-fetch / flicker. The modal unmounts on close, so each open re-fetches.
+  const [openedRiwayat, setOpenedRiwayat] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
+
+  const selectTab = (t: ProfileTab) => {
+    setTab(t);
+    if (t === "riwayat") setOpenedRiwayat(true);
+  };
 
   const close = () => gameStore.getState().clearSelection();
   const startEdit = () => {
@@ -79,29 +91,31 @@ export function ProfileModal() {
   const ctx: BadgeContext = { xp, level: index + 1, point, completedMissionIds, voucherCount };
 
   return (
-    <ModalShell titleId="profile-title" onClose={close} panelClassName="w-full max-w-md">
+    <ModalShell titleId="profile-title" onClose={close} panelClassName="w-full max-w-lg">
       <h2 id="profile-title" className="mb-4 text-center font-display text-sm text-forest md:text-base">
         Profil Anggota
       </h2>
 
-      <div className="mb-4 flex gap-2">
-        {(["profil", "badge"] as const).map((t) => (
+      <div role="tablist" aria-label="Bagian profil" className="mb-4 flex gap-2">
+        {(["profil", "badge", "riwayat"] as const).map((t) => (
           <button
             key={t}
             type="button"
-            onClick={() => setTab(t)}
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => selectTab(t)}
             className={`flex-1 border-3 border-border px-3 py-2 font-display text-[10px] focus-visible:pixel-focus focus-visible:outline-none ${
               tab === t
                 ? "pixel-press bg-forest text-cream"
                 : "pixel-raise bg-cream-2 text-forest hover:bg-parchment"
             }`}
           >
-            {t === "profil" ? "Profil" : "Badge"}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
-      {tab === "badge" ? (
+      {tab === "badge" && (
         <div className="grid grid-cols-3 gap-3">
           {BADGES.map((badge) => {
             const earned = isEarned(badge.criteria, ctx);
@@ -128,7 +142,8 @@ export function ProfileModal() {
             );
           })}
         </div>
-      ) : (
+      )}
+      {tab === "profil" && (
         <>
       <div className="mb-5 flex items-center gap-4 border-3 border-border bg-cream px-4 py-3">
         <span className="flex h-14 w-14 shrink-0 items-center justify-center border-3 border-border bg-mustard">
@@ -242,6 +257,11 @@ export function ProfileModal() {
         </div>
       )}
         </>
+      )}
+      {openedRiwayat && (
+        <div role="tabpanel" className={tab === "riwayat" ? "" : "hidden"}>
+          <SessionHistoryTab active={tab === "riwayat"} />
+        </div>
       )}
     </ModalShell>
   );

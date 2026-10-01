@@ -28,6 +28,10 @@ export type Database = {
         Update: { id?: string; display_name?: string | null };
         Relationships: [];
       };
+      // Persisted AI-Auditor results. Owner-select RLS scopes reads to auth.uid();
+      // a row is FINALIZED exactly when ended_at is not null (DB constraints tie
+      // ended_at ⇔ trigger ⇔ ending_type). jsonb columns stay Json — validated at
+      // the repo boundary (sessionsRepo.contracts).
       sessions: {
         Row: {
           id: string;

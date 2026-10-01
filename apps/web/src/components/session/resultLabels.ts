@@ -6,8 +6,33 @@
  * enum shows up rather than silently vanishing.
  * ------------------------------------------------------------------------- */
 
+import type { EndingType } from "../../session/transport/contract";
+
 /** Visual tone for a classification chip. We own this union; the wire does not. */
 export type Tone = "good" | "bad" | "warn" | "neutral";
+
+/**
+ * Shared visual tokens per session ending — the single source for both `ResultPanel`
+ * (panel accent + title color) and the history tab (row/group badge). Keeps the two from
+ * drifting (e.g. neutral consistently maps to mustard).
+ */
+export const ENDING_STYLE: Record<
+  EndingType,
+  {
+    /** Short badge label for a history row. */
+    badgeLabel: string;
+    /** Border-color token for the accent — pair with `border-t-4`. */
+    accent: string;
+    /** Panel title text color. */
+    titleColor: string;
+    /** Chip background + text for the history badge. */
+    chip: string;
+  }
+> = {
+  good: { badgeLabel: "Berhasil", accent: "border-forest", titleColor: "text-forest", chip: "bg-forest text-cream" },
+  neutral: { badgeLabel: "Selesai", accent: "border-mustard", titleColor: "text-brown", chip: "bg-mustard text-ink" },
+  bad: { badgeLabel: "Berakhir", accent: "border-orange", titleColor: "text-orange", chip: "bg-orange text-ink" },
+};
 
 /** Human label for a state-classification KEY (e.g. "State_Analisis_Masalah"). */
 const STATE_KEY_LABELS: Record<string, string> = {
