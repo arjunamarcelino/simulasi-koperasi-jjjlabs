@@ -28,6 +28,26 @@ export type Database = {
         Update: { id?: string; display_name?: string | null };
         Relationships: [];
       };
+      sessions: {
+        Row: {
+          id: string;
+          user_id: string;
+          scenario_id: string;
+          started_at: string;
+          ended_at: string | null;
+          trigger: string | null;
+          ending_type: string | null;
+          scores_json: Json;
+          state_json: Json;
+          narrative_feedback: string | null;
+        };
+        // Clients may insert an OPEN row only (RLS insert-open): send user_id +
+        // scenario_id; every other column is a server default.
+        Insert: { user_id: string; scenario_id: string };
+        // No client UPDATE policy — finalization is RPC-only. Encodes "never update".
+        Update: Record<string, never>;
+        Relationships: [];
+      };
     };
     Views: {
       quiz_catalog: {
@@ -45,6 +65,17 @@ export type Database = {
         Returns: Json;
       };
       sync_badges: { Args: { p_codes: string[] }; Returns: undefined };
+      record_session_result: {
+        Args: {
+          p_session_id: string;
+          p_trigger: string;
+          p_ending_type: string;
+          p_scores?: Json;
+          p_state?: Json;
+          p_feedback?: string | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: { [key: string]: never };
     CompositeTypes: { [key: string]: never };

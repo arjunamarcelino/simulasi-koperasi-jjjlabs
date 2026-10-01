@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   parseClaimMission,
   parseMyProgress,
+  parseOpenSession,
   parseQuizCatalog,
   parseReconcile,
+  parseRecordSession,
   parseRedeemVoucher,
   parseSubmitQuiz,
 } from "./progressRepo.contracts";
@@ -103,5 +105,38 @@ describe("parseQuizCatalog", () => {
     ]);
     expect(parseQuizCatalog("nope")).toBeNull();
     expect(parseQuizCatalog([{ code: "q1", prompt: "P", options: [1, 2] }])).toBeNull();
+  });
+});
+
+describe("parseOpenSession", () => {
+  it("parses an id, ignoring extra keys", () => {
+    expect(parseOpenSession({ id: "11111111-1111-1111-1111-111111111111", extra: 1 })).toEqual({
+      id: "11111111-1111-1111-1111-111111111111",
+    });
+  });
+  it("rejects malformed", () => {
+    expect(parseOpenSession({ id: 123 })).toBeNull();
+    expect(parseOpenSession({})).toBeNull();
+    expect(parseOpenSession(null)).toBeNull();
+    expect(parseOpenSession([{ id: "x" }])).toBeNull();
+  });
+});
+
+describe("parseRecordSession", () => {
+  it("parses success with session_id → sessionId", () => {
+    expect(parseRecordSession({ ok: true, session_id: "s1" })).toEqual({ ok: true, sessionId: "s1" });
+  });
+  it("parses the two known failure reasons", () => {
+    expect(parseRecordSession({ ok: false, reason: "invalid" })).toEqual({ ok: false, reason: "invalid" });
+    expect(parseRecordSession({ ok: false, reason: "not_found_or_closed" })).toEqual({
+      ok: false,
+      reason: "not_found_or_closed",
+    });
+  });
+  it("rejects malformed / unknown shapes", () => {
+    expect(parseRecordSession({ ok: true })).toBeNull(); // missing session_id
+    expect(parseRecordSession({ ok: false, reason: "nope" })).toBeNull();
+    expect(parseRecordSession({ ok: false })).toBeNull();
+    expect(parseRecordSession(null)).toBeNull();
   });
 });

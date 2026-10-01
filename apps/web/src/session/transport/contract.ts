@@ -38,6 +38,9 @@ export type PhaseState = {
 /** The three ways a session ends — PRD §6. */
 export type FinalDecisionTrigger = "manual" | "sinyal_level_1" | "force_quit_level_2";
 
+/** The three ending classes the auditor assigns — PRD §6 Layer 3. */
+export type EndingType = "good" | "bad" | "neutral";
+
 /**
  * AI Auditor result (PRD §6 Layer 3). For the tutorial this payload is scripted
  * (not gpt-generated); stateClassification/scores stay empty so one shape serves
@@ -48,7 +51,7 @@ export type AuditorResult = {
   trigger: FinalDecisionTrigger;
   stateClassification: Record<string, string>;
   scores: Record<string, number>;
-  endingType: "good" | "bad" | "neutral";
+  endingType: EndingType;
   narrativeFeedback: string;
 };
 
