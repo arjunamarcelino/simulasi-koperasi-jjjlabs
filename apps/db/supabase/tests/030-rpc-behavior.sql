@@ -1,6 +1,6 @@
 -- RPC behavior: the atomicity/idempotency guarantees the RPCs exist to provide.
 begin;
-select plan(19);
+select plan(20);
 
 select tests.create_user('claimer');
 select tests.create_user('spender');
@@ -73,6 +73,11 @@ select is(
 select is(
   (public.record_session_result('22222222-2222-2222-2222-222222222222'::uuid, 'BOGUS', 'good') ->> 'reason'),
   'invalid', 'record_session_result rejects an invalid trigger with a structured reason');
+-- anon (no JWT) must not be able to call the write RPC — EXECUTE revoked from anon.
+select tests.login_as_anon();
+select throws_ok(
+  $$ select public.record_session_result('11111111-1111-1111-1111-111111111111'::uuid, 'manual', 'good') $$,
+  '42501', null, 'record_session_result is not callable by anon (EXECUTE revoked)');
 
 -- badges (plain insert, idempotent via unique) --------------------------------
 select tests.login_as('claimer');
