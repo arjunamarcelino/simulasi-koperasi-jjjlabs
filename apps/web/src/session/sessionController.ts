@@ -42,9 +42,12 @@ export function createSessionController(): SessionController {
   let transport: SessionTransport | null = null;
   let unsubs: Unsubscribe[] = [];
   let generation = 0;
-  // One finalize per user-perceived session. Set synchronously at session_ended
-  // (before any await) so a duplicate event / StrictMode remount can't write a
-  // second row; reset in stop() so a replay persists a fresh session.
+  // Persistence bookkeeping (SIM-6). `sessionStartedAt` is captured at start() so the
+  // atomic record_session RPC can store a real duration. `finalizing` guarantees ONE
+  // finalize per user-perceived session: set synchronously at session_ended before any
+  // await, reset in stop(). It is the SOLE dedup — record_session always INSERTs (no
+  // DB-level idempotency) — so a duplicate event / StrictMode remount relies on it.
+  let sessionStartedAt: string | null = null;
   let finalizing = false;
 
   const fail = (cause: unknown): void => {
@@ -52,28 +55,24 @@ export function createSessionController(): SessionController {
     sessionStore.getState().setConnection("error");
   };
 
-  // Persist the auditor result (SIM-6). Best-effort side-channel: open an OPEN row then
-  // finalize it, both at session end. Any failure is swallowed — persistence must never
-  // disturb the ended session or surface a scrim over the ResultPanel.
-  const persistResult = async (scenarioId: ScenarioId, result: AuditorResult): Promise<void> => {
+  // Persist the auditor result (SIM-6) — best-effort side-channel. One atomic RPC call;
+  // any failure is swallowed so persistence never disturbs the ended session or paints a
+  // scrim over the ResultPanel. scenarioId comes from the result payload itself.
+  const persistResult = async (result: AuditorResult): Promise<void> => {
     try {
-      const opened = await progressRepo.openSession(scenarioId);
-      if (opened.status !== "ok") {
-        if (opened.status === "rpcError") console.warn("openSession gagal:", opened.error);
-        return; // degraded / invalid / rpcError → best-effort skip
-      }
-      const outcome = await progressRepo.recordSessionResult({
-        sessionId: opened.data.id,
+      const outcome = await progressRepo.recordSession({
+        scenarioId: result.scenarioId,
         trigger: result.trigger,
         endingType: result.endingType,
         scores: result.scores,
         state: result.stateClassification,
         feedback: result.narrativeFeedback,
+        startedAt: sessionStartedAt,
       });
-      if (outcome.status !== "ok") console.warn("recordSessionResult gagal:", outcome);
-      else if (!outcome.data.ok) console.warn("record_session_result ditolak:", outcome.data.reason);
+      if (outcome.status !== "ok") console.warn("Gagal menyimpan hasil sesi:", outcome.status);
+      else if (!outcome.data.ok) console.warn("Hasil sesi ditolak:", outcome.data.reason);
     } catch (cause: unknown) {
-      console.warn("Persist hasil sesi gagal:", cause);
+      console.warn("Gagal menyimpan hasil sesi:", cause instanceof Error ? cause.message : cause);
     }
   };
 
@@ -88,6 +87,7 @@ export function createSessionController(): SessionController {
 
   const start = (): void => {
     stop();
+    sessionStartedAt = new Date().toISOString();
     const myGen = generation;
     const { getState } = sessionStore;
 
@@ -106,10 +106,10 @@ export function createSessionController(): SessionController {
           getState().setEnded(e);
           getState().setMicEnabled(false);
           // Persist the result (best-effort). Synchronous guard BEFORE any await so a
-          // duplicate session_ended / StrictMode remount can't open a second row.
+          // duplicate session_ended / StrictMode remount can't double-insert.
           if (finalizing) return;
           finalizing = true;
-          void persistResult(getState().scenarioId, e.result);
+          void persistResult(e.result);
         }),
       ];
       if (next.onAgentReady) {

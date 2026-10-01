@@ -8,12 +8,11 @@
  * lives in game.store. Keeping it in lib/ preserves the stores → lib dependency
  * direction.
  */
-import { supabase, type Json } from "./supabase";
+import { supabase } from "./supabase";
 import type { EndingType, FinalDecisionTrigger, ScenarioId } from "../session/transport/contract";
 import {
   parseClaimMission,
   parseMyProgress,
-  parseOpenSession,
   parseQuizCatalog,
   parseReconcile,
   parseRecordSession,
@@ -21,11 +20,10 @@ import {
   parseSubmitQuiz,
   type ClaimMissionResult,
   type MyProgress,
-  type OpenSessionResult,
   type QuizAnswer,
   type QuizCatalogQuestion,
   type ReconcileResult,
-  type RecordSessionOutcome,
+  type RecordSessionResult,
   type RedeemVoucherResult,
   type SubmitQuizResult,
 } from "./progressRepo.contracts";
@@ -103,46 +101,31 @@ export const progressRepo = {
 
   // — session persistence (SIM-6) ——————————————————————————————————————————
   // NOTE: temporarily colocated here to stay independent of SIM-7 (session-history
-  // read side), which introduces lib/sessionsRepo.ts. Relocate both methods there
-  // once SIM-7 lands so session read + write live together. No optimistic delta /
-  // rollback — persistence is a best-effort side-channel (see sessionController).
+  // read side), which introduces lib/sessionsRepo.ts. Relocate once SIM-7 lands so
+  // session read + write live together. No optimistic delta / rollback — persistence
+  // is a best-effort side-channel (see sessionController).
 
-  /** Insert an OPEN session row (RLS insert-open) and return its id. */
-  async openSession(scenarioId: ScenarioId): Promise<RepoResult<OpenSessionResult>> {
-    if (!supabase) return { status: "degraded" };
-    // uid is read from the Supabase client (the authedFetch precedent) — never from
-    // auth.store, which would invert the stores → lib dependency direction.
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const userId = session?.user.id;
-    if (!userId) return { status: "degraded" }; // not signed in → nothing to attribute
-    const { data, error } = await supabase
-      .from("sessions")
-      .insert({ user_id: userId, scenario_id: scenarioId })
-      .select("id")
-      .single();
-    return settle(data, error, parseOpenSession);
-  },
-
-  /** Finalize an open session via the RPC. `{ok:false,reason}` is valid data, not an
-   * error — the caller inspects the discriminated outcome. */
-  async recordSessionResult(input: {
-    sessionId: string;
+  /** Atomically insert + finalize a completed session via the record_session RPC.
+   * `{ok:false,reason}` is valid data, not an error — the caller inspects the outcome.
+   * user_id is attributed server-side from auth.uid(); no client identity is sent. */
+  async recordSession(input: {
+    scenarioId: ScenarioId;
     trigger: FinalDecisionTrigger;
     endingType: EndingType;
     scores: Record<string, number>;
     state: Record<string, string>;
     feedback: string;
-  }): Promise<RepoResult<RecordSessionOutcome>> {
+    startedAt?: string | null;
+  }): Promise<RepoResult<RecordSessionResult>> {
     if (!supabase) return { status: "degraded" };
-    const { data, error } = await supabase.rpc("record_session_result", {
-      p_session_id: input.sessionId,
+    const { data, error } = await supabase.rpc("record_session", {
+      p_scenario_id: input.scenarioId,
       p_trigger: input.trigger,
       p_ending_type: input.endingType,
-      p_scores: input.scores as Json,
-      p_state: input.state as Json,
+      p_scores: input.scores,
+      p_state: input.state,
       p_feedback: input.feedback,
+      p_started_at: input.startedAt ?? null,
     });
     return settle(data, error, parseRecordSession);
   },

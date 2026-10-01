@@ -38,14 +38,12 @@ export type ReconcileResult =
 /** A quiz question as exposed by the quiz_catalog view — no answer key. */
 export type QuizCatalogQuestion = { code: string; prompt: string; options: string[] };
 
-/** The id of a freshly-opened session row (from `.insert().select("id").single()`). */
-export type OpenSessionResult = { id: string };
-
-/** The outcome of finalizing a session via record_session_result. The `reason` on the
- * failure arm must survive to the caller (the controller logs it). */
-export type RecordSessionOutcome =
-  | { ok: true; sessionId: string }
-  | { ok: false; reason: "invalid" | "not_found_or_closed" };
+/** The outcome of record_session (atomic insert+finalize). The `reason` on the failure
+ * arm must survive to the caller (the controller logs it); success carries nothing the
+ * caller needs. */
+export type RecordSessionResult =
+  | { ok: true }
+  | { ok: false; reason: "invalid" | "too_large" | "unauthenticated" };
 
 /** The full wallet snapshot returned by get_my_progress. */
 export type MyProgress = {
@@ -147,23 +145,16 @@ export function parseReconcile(u: unknown): ReconcileResult | null {
   return totals ? { ok: true, applied: true, totals } : null;
 }
 
-export function parseOpenSession(u: unknown): OpenSessionResult | null {
+export function parseRecordSession(u: unknown): RecordSessionResult | null {
   if (!isRecord(u)) return null;
-  const id = str(u["id"]);
-  return id !== null ? { id } : null;
-}
-
-export function parseRecordSession(u: unknown): RecordSessionOutcome | null {
-  if (!isRecord(u)) return null;
+  if (u["ok"] === true) return { ok: true };
   if (u["ok"] === false) {
     const reason = str(u["reason"]);
-    return reason === "invalid" || reason === "not_found_or_closed"
+    return reason === "invalid" || reason === "too_large" || reason === "unauthenticated"
       ? { ok: false, reason }
       : null;
   }
-  if (u["ok"] !== true) return null;
-  const sessionId = str(u["session_id"]);
-  return sessionId !== null ? { ok: true, sessionId } : null;
+  return null;
 }
 
 export function parseQuizCatalog(u: unknown): QuizCatalogQuestion[] | null {

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   parseClaimMission,
   parseMyProgress,
-  parseOpenSession,
   parseQuizCatalog,
   parseReconcile,
   parseRecordSession,
@@ -108,35 +107,23 @@ describe("parseQuizCatalog", () => {
   });
 });
 
-describe("parseOpenSession", () => {
-  it("parses an id, ignoring extra keys", () => {
-    expect(parseOpenSession({ id: "11111111-1111-1111-1111-111111111111", extra: 1 })).toEqual({
-      id: "11111111-1111-1111-1111-111111111111",
-    });
-  });
-  it("rejects malformed", () => {
-    expect(parseOpenSession({ id: 123 })).toBeNull();
-    expect(parseOpenSession({})).toBeNull();
-    expect(parseOpenSession(null)).toBeNull();
-    expect(parseOpenSession([{ id: "x" }])).toBeNull();
-  });
-});
-
 describe("parseRecordSession", () => {
-  it("parses success with session_id → sessionId", () => {
-    expect(parseRecordSession({ ok: true, session_id: "s1" })).toEqual({ ok: true, sessionId: "s1" });
+  it("parses success (ignoring any echoed session_id)", () => {
+    expect(parseRecordSession({ ok: true })).toEqual({ ok: true });
+    expect(parseRecordSession({ ok: true, session_id: "s1" })).toEqual({ ok: true });
   });
-  it("parses the two known failure reasons", () => {
+  it("parses the known failure reasons", () => {
     expect(parseRecordSession({ ok: false, reason: "invalid" })).toEqual({ ok: false, reason: "invalid" });
-    expect(parseRecordSession({ ok: false, reason: "not_found_or_closed" })).toEqual({
+    expect(parseRecordSession({ ok: false, reason: "too_large" })).toEqual({ ok: false, reason: "too_large" });
+    expect(parseRecordSession({ ok: false, reason: "unauthenticated" })).toEqual({
       ok: false,
-      reason: "not_found_or_closed",
+      reason: "unauthenticated",
     });
   });
   it("rejects malformed / unknown shapes", () => {
-    expect(parseRecordSession({ ok: true })).toBeNull(); // missing session_id
     expect(parseRecordSession({ ok: false, reason: "nope" })).toBeNull();
     expect(parseRecordSession({ ok: false })).toBeNull();
+    expect(parseRecordSession({})).toBeNull();
     expect(parseRecordSession(null)).toBeNull();
   });
 });
