@@ -45,13 +45,10 @@ export type Database = {
           state_json: Json;
           narrative_feedback: string | null;
         };
-        Insert: {
-          id?: string;
-          user_id: string;
-          scenario_id: string;
-          started_at?: string;
-        };
-        Update: { ended_at?: string | null };
+        // All writes go through the record_session RPC (SECURITY DEFINER); clients never
+        // INSERT or UPDATE sessions directly. Row is kept for the SIM-7 read side.
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
         Relationships: [];
       };
     };
@@ -71,6 +68,18 @@ export type Database = {
         Returns: Json;
       };
       sync_badges: { Args: { p_codes: string[] }; Returns: undefined };
+      record_session: {
+        Args: {
+          p_scenario_id: string;
+          p_trigger: string;
+          p_ending_type: string;
+          p_scores?: Json;
+          p_state?: Json;
+          p_feedback?: string | null;
+          p_started_at?: string | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: { [key: string]: never };
     CompositeTypes: { [key: string]: never };

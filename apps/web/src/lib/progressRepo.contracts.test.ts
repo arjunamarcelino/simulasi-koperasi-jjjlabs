@@ -4,6 +4,7 @@ import {
   parseMyProgress,
   parseQuizCatalog,
   parseReconcile,
+  parseRecordSession,
   parseRedeemVoucher,
   parseSubmitQuiz,
 } from "./progressRepo.contracts";
@@ -103,5 +104,26 @@ describe("parseQuizCatalog", () => {
     ]);
     expect(parseQuizCatalog("nope")).toBeNull();
     expect(parseQuizCatalog([{ code: "q1", prompt: "P", options: [1, 2] }])).toBeNull();
+  });
+});
+
+describe("parseRecordSession", () => {
+  it("parses success (ignoring any echoed session_id)", () => {
+    expect(parseRecordSession({ ok: true })).toEqual({ ok: true });
+    expect(parseRecordSession({ ok: true, session_id: "s1" })).toEqual({ ok: true });
+  });
+  it("parses the known failure reasons", () => {
+    expect(parseRecordSession({ ok: false, reason: "invalid" })).toEqual({ ok: false, reason: "invalid" });
+    expect(parseRecordSession({ ok: false, reason: "too_large" })).toEqual({ ok: false, reason: "too_large" });
+    expect(parseRecordSession({ ok: false, reason: "unauthenticated" })).toEqual({
+      ok: false,
+      reason: "unauthenticated",
+    });
+  });
+  it("rejects malformed / unknown shapes", () => {
+    expect(parseRecordSession({ ok: false, reason: "nope" })).toBeNull();
+    expect(parseRecordSession({ ok: false })).toBeNull();
+    expect(parseRecordSession({})).toBeNull();
+    expect(parseRecordSession(null)).toBeNull();
   });
 });

@@ -10,11 +10,13 @@
  */
 import { supabase } from "./supabase";
 import { settle, type RepoResult } from "./repoResult";
+import type { EndingType, FinalDecisionTrigger, ScenarioId } from "../session/transport/contract";
 import {
   parseClaimMission,
   parseMyProgress,
   parseQuizCatalog,
   parseReconcile,
+  parseRecordSession,
   parseRedeemVoucher,
   parseSubmitQuiz,
   type ClaimMissionResult,
@@ -22,6 +24,7 @@ import {
   type QuizAnswer,
   type QuizCatalogQuestion,
   type ReconcileResult,
+  type RecordSessionResult,
   type RedeemVoucherResult,
   type SubmitQuizResult,
 } from "./progressRepo.contracts";
@@ -82,5 +85,38 @@ export const progressRepo = {
     if (codes.length === 0) return { status: "ok", data: null };
     const { error } = await supabase.rpc("sync_badges", { p_codes: codes });
     return error ? { status: "rpcError", error } : { status: "ok", data: null };
+  },
+
+  // — session persistence (SIM-6) ——————————————————————————————————————————
+  // NOTE: temporarily colocated here to stay independent of SIM-7 (session-history
+  // read side), which introduces lib/sessionsRepo.ts. Relocate once SIM-7 lands so
+  // session read + write live together. No optimistic delta / rollback — persistence
+  // is a best-effort side-channel (see sessionController).
+
+  /** Atomically insert + finalize a completed session via the record_session RPC.
+   * `{ok:false,reason}` is valid data, not an error — the caller inspects the outcome.
+   * user_id is attributed server-side from auth.uid(); no client identity is sent. */
+  async recordSession(input: {
+    // widened to match AuditorResult.scenarioId (history may carry an uncatalogued id);
+    // the RPC param is `text`, so any string is valid at the DB.
+    scenarioId: ScenarioId | (string & {});
+    trigger: FinalDecisionTrigger;
+    endingType: EndingType;
+    scores: Record<string, number>;
+    state: Record<string, string>;
+    feedback: string;
+    startedAt?: string | null;
+  }): Promise<RepoResult<RecordSessionResult>> {
+    if (!supabase) return { status: "degraded" };
+    const { data, error } = await supabase.rpc("record_session", {
+      p_scenario_id: input.scenarioId,
+      p_trigger: input.trigger,
+      p_ending_type: input.endingType,
+      p_scores: input.scores,
+      p_state: input.state,
+      p_feedback: input.feedback,
+      p_started_at: input.startedAt ?? null,
+    });
+    return settle(data, error, parseRecordSession);
   },
 };
