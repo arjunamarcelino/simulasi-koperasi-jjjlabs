@@ -208,4 +208,18 @@ describe("sessionController — session-badge sync trigger", () => {
 
     expect(h.syncSessionBadges).not.toHaveBeenCalled();
   });
+
+  it("triggers the sync at most once on a duplicate session_ended", async () => {
+    const controller = createSessionController();
+    controller.startScenario("kredit-macet");
+    await flush();
+
+    h.sessionEndedCb?.(ENDED);
+    h.sessionEndedCb?.(ENDED); // redelivery / StrictMode remount
+    await flush();
+
+    // The badge sync piggybacks on the same `finalizing` guard that dedups recordSession.
+    expect(h.recordSession).toHaveBeenCalledTimes(1);
+    expect(h.syncSessionBadges).toHaveBeenCalledTimes(1);
+  });
 });
