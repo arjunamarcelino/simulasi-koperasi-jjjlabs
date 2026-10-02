@@ -7,7 +7,8 @@
  * Status is DERIVED real-time from store signals (no persistence) via
  * `isEarned(criteria, ctx)`: synchronous, reads only `ctx` — no store imports, no
  * Date.now(), no side effects. `criteria: null` marks a teaser (signal not yet
- * trackable, e.g. RAT score); it always renders locked.
+ * trackable); it always renders locked. `scenarioGoodEnding` reads
+ * `ctx.goodEndingScenarioIds`, derived from session history (see sessionHistory.ts).
  */
 import type { BadgeCriteria } from "@simkop/catalog";
 
@@ -20,6 +21,7 @@ export type BadgeContext = {
   point: number;
   completedMissionIds: readonly string[];
   voucherCount: number;
+  goodEndingScenarioIds: readonly string[];
 };
 
 /** Pure: is this badge's criteria satisfied by the current context? */
@@ -36,5 +38,14 @@ export function isEarned(criteria: BadgeCriteria, ctx: BadgeContext): boolean {
       return ctx.completedMissionIds.length >= criteria.min;
     case "missionDone":
       return ctx.completedMissionIds.includes(criteria.missionId);
+    case "scenarioGoodEnding":
+      return ctx.goodEndingScenarioIds.includes(criteria.scenarioId);
+    default: {
+      // Exhaustiveness: this file's tsconfig has no noImplicitReturns, so a
+      // missing case would silently return undefined — the `never` assignment
+      // turns that into a compile error instead.
+      const _exhaustive: never = criteria;
+      return _exhaustive;
+    }
   }
 }

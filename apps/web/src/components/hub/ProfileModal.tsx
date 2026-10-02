@@ -88,7 +88,14 @@ export function ProfileModal() {
   const pct = maxed ? 100 : Math.round(((xp - floor) / (nextXp - floor)) * 100);
 
   // Assembled here (owns levelFromXp) and passed to pure badge predicates.
-  const ctx: BadgeContext = { xp, level: index + 1, point, completedMissionIds, voucherCount };
+  const ctx: BadgeContext = {
+    xp,
+    level: index + 1,
+    point,
+    completedMissionIds,
+    voucherCount,
+    goodEndingScenarioIds: [],
+  };
 
   return (
     <ModalShell titleId="profile-title" onClose={close} panelClassName="w-full max-w-lg">

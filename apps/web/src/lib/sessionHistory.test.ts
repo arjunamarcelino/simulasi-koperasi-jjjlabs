@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { groupByScenario, rankBestResult, toSessionEnded } from "./sessionHistory";
+import {
+  goodEndingScenarioIds,
+  groupByScenario,
+  rankBestResult,
+  toSessionEnded,
+} from "./sessionHistory";
 import type { SessionRecord } from "./sessionsRepo.contracts";
 
 const rec = (o: Partial<SessionRecord> = {}): SessionRecord => ({
@@ -85,6 +90,74 @@ describe("groupByScenario", () => {
 
   it("returns [] for no records", () => {
     expect(groupByScenario([])).toEqual([]);
+  });
+});
+
+describe("goodEndingScenarioIds", () => {
+  it("returns a scenario whose only attempt ended good", () => {
+    expect(goodEndingScenarioIds([rec({ scenarioId: "kredit-macet", endingType: "good" })])).toEqual([
+      "kredit-macet",
+    ]);
+  });
+
+  it("includes a scenario with any good attempt (best-attempt invariant)", () => {
+    const ids = goodEndingScenarioIds([
+      rec({ id: "a", scenarioId: "kredit-macet", endingType: "bad", startedAt: 1 }),
+      rec({ id: "b", scenarioId: "kredit-macet", endingType: "good", startedAt: 2 }),
+      rec({ id: "c", scenarioId: "kredit-macet", endingType: "bad", startedAt: 3 }),
+    ]);
+    expect(ids).toEqual(["kredit-macet"]);
+  });
+
+  it("is not fooled by a later higher-score neutral attempt (ending rank dominates)", () => {
+    const ids = goodEndingScenarioIds([
+      rec({ id: "good", scenarioId: "kredit-macet", endingType: "good", scores: { x: 10 }, startedAt: 1 }),
+      rec({ id: "neu", scenarioId: "kredit-macet", endingType: "neutral", scores: { x: 99 }, startedAt: 2 }),
+    ]);
+    expect(ids).toEqual(["kredit-macet"]);
+  });
+
+  it("includes a tutorial good ending despite empty scores", () => {
+    expect(
+      goodEndingScenarioIds([
+        rec({ scenarioId: "tutorial-koperasi-konsumen", endingType: "good", scores: {} }),
+      ]),
+    ).toEqual(["tutorial-koperasi-konsumen"]);
+  });
+
+  it("de-duplicates across many good attempts on one scenario", () => {
+    const ids = goodEndingScenarioIds([
+      rec({ id: "a", scenarioId: "kredit-macet", endingType: "good", startedAt: 1 }),
+      rec({ id: "b", scenarioId: "kredit-macet", endingType: "good", startedAt: 2 }),
+    ]);
+    expect(ids).toEqual(["kredit-macet"]);
+  });
+
+  it("returns multiple scenarios in catalog order", () => {
+    const ids = goodEndingScenarioIds([
+      rec({ id: "k", scenarioId: "kredit-macet", endingType: "good" }),
+      rec({ id: "r", scenarioId: "rapat-anggota-tahunan", endingType: "good" }),
+    ]);
+    expect(ids).toEqual(["rapat-anggota-tahunan", "kredit-macet"]);
+  });
+
+  it("excludes scenarios with only neutral/bad attempts", () => {
+    expect(
+      goodEndingScenarioIds([
+        rec({ scenarioId: "kredit-macet", endingType: "neutral" }),
+        rec({ scenarioId: "rapat-anggota-tahunan", endingType: "bad" }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("returns [] for no records", () => {
+    expect(goodEndingScenarioIds([])).toEqual([]);
+  });
+
+  it("returns an uncatalogued raw id if its attempt ended good", () => {
+    expect(
+      goodEndingScenarioIds([rec({ scenarioId: "legacy-scenario-x", endingType: "good" })]),
+    ).toEqual(["legacy-scenario-x"]);
   });
 });
 

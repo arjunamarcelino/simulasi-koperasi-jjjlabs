@@ -622,6 +622,7 @@ async function syncBadgesFromState(): Promise<void> {
     point: st.point,
     completedMissionIds: st.completedMissionIds,
     voucherCount: st.redeemedVouchers.length,
+    goodEndingScenarioIds: [],
   };
   const fresh = BADGES.filter((b) => isEarned(b.criteria, ctx) && !syncedBadges.has(b.id)).map(
     (b) => b.id,

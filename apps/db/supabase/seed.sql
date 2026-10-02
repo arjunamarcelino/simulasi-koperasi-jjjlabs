@@ -53,9 +53,9 @@ insert into public.badge_definition (code, title, requirement, icon, criteria, s
   ('penjelajah', 'Penjelajah', 'Jelajahi koperasi', 'compass', '{"kind":"missionDone","missionId":"keliling"}'::jsonb, 4),
   ('hartawan', 'Hartawan', 'Kumpulkan 100 poin', 'coin', '{"kind":"point","min":100}'::jsonb, 5),
   ('misi-perdana', 'Misi Perdana', 'Selesaikan 1 misi', 'flag', '{"kind":"missionCount","min":1}'::jsonb, 6),
-  ('juara-rat', 'Juara RAT', 'Belum tersedia', 'trophy', NULL, 7),
-  ('simpanan-rutin', 'Simpanan Rutin', 'Belum tersedia', 'piggy', NULL, 8),
-  ('pinjaman-lancar', 'Pinjaman Lancar', 'Belum tersedia', 'check', NULL, 9)
+  ('juara-rat', 'Juara RAT', 'Raih hasil baik di RAT', 'trophy', '{"kind":"scenarioGoodEnding","scenarioId":"rapat-anggota-tahunan"}'::jsonb, 7),
+  ('simpanan-rutin', 'Simpanan Rutin', 'Selesaikan tutorial simpanan', 'piggy', '{"kind":"scenarioGoodEnding","scenarioId":"tutorial-koperasi-konsumen"}'::jsonb, 8),
+  ('pinjaman-lancar', 'Pinjaman Lancar', 'Tangani kredit macet dengan baik', 'check', '{"kind":"scenarioGoodEnding","scenarioId":"kredit-macet"}'::jsonb, 9)
 on conflict (code) do update set
   title = excluded.title,
   requirement = excluded.requirement,
