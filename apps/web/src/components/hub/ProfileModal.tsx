@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LEVELS } from "@simkop/catalog";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { useAuth, authStore, MAX_NAME } from "../../stores/auth.store";
 import { KOPERASI_IDENTITAS } from "../../content/mading-info";
 import { BADGES, isEarned, type BadgeContext } from "../../content/badges";
+import { sessionsRepo } from "../../lib/sessionsRepo";
+import { goodEndingScenarioIds } from "../../lib/sessionHistory";
+import type { SessionRecord } from "../../lib/sessionsRepo.contracts";
 import { ModalShell } from "../common/ModalShell";
 import { GameButton } from "../common/GameButton";
 import { BadgeIcon } from "./BadgeIcon";
@@ -54,6 +57,23 @@ export function ProfileModal() {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
 
+  // Session good-endings power the scenario badges (juara-rat, pinjaman-lancar,
+  // simpanan-rutin). Fetched once on open; the per-run `active` flag drops a response
+  // that resolves after close / StrictMode's double-mount. On failure the set stays
+  // empty, so those badges render locked with their real requirement — never blank.
+  // (No render test: the toolchain is node-env with no DOM harness — see vite.config.)
+  const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  useEffect(() => {
+    let active = true;
+    void sessionsRepo.listMySessions().then((res) => {
+      if (active && res.status === "ok") setSessions(res.data);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const goodIds = useMemo(() => goodEndingScenarioIds(sessions), [sessions]);
+
   const selectTab = (t: ProfileTab) => {
     setTab(t);
     if (t === "riwayat") setOpenedRiwayat(true);
@@ -94,7 +114,7 @@ export function ProfileModal() {
     point,
     completedMissionIds,
     voucherCount,
-    goodEndingScenarioIds: [],
+    goodEndingScenarioIds: goodIds,
   };
 
   return (
