@@ -65,9 +65,14 @@ export function ProfileModal() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   useEffect(() => {
     let active = true;
-    void sessionsRepo.listMySessions().then((res) => {
-      if (active && res.status === "ok") setSessions(res.data);
-    });
+    void sessionsRepo
+      .listMySessions()
+      .then((res) => {
+        if (active && res.status === "ok") setSessions(res.data);
+      })
+      // Best-effort: an aborted/torn-down fetch must not surface an unhandled
+      // rejection. On failure the set stays empty → badges render locked, never blank.
+      .catch(() => {});
     return () => {
       active = false;
     };
