@@ -50,10 +50,13 @@ export type OverlayKind =
   | "MISSION"
   | "SESSION";
 
-/** Result of completeMission — carries the granted reward on success. */
+/** Result of completeMission — carries the granted reward on success. `degraded` = no
+ * server (offline/mock): a reallife mission can't be validated client-side (the code is
+ * server-only), so the claim is refused rather than credited. `empty-code` = a blank
+ * reallife code, rejected before any round-trip (distinct from a server `wrong-code`). */
 export type MissionResult =
   | { ok: true; reward: MissionReward }
-  | { ok: false; reason: "already" | "wrong-code" | "unknown" };
+  | { ok: false; reason: "already" | "wrong-code" | "unknown" | "degraded" | "empty-code" };
 
 /** Result of submitQuiz. `degraded` = no server (offline/mock): the quiz cannot be
  * graded client-side because the answer key is server-only. */
@@ -79,12 +82,6 @@ const VALID_VIEWS: readonly View[] = [
   "GAME",
   "EVALUATION",
 ];
-
-/** Trim + case-insensitive on both sides so "kdmp2026 " matches "KDMP2026". Used only
- * as the degraded/offline gate for reallife missions (online, claim_mission validates). */
-function codeMatches(expected: string, input?: string): boolean {
-  return input != null && input.trim().toLowerCase() === expected.trim().toLowerCase();
-}
 
 /** Short mock voucher code, e.g. "KDMP-7X2A". Cosmetic; used only for the degraded
  * (offline) mint — online, redeem_voucher mints the authoritative code. */
@@ -474,9 +471,31 @@ export const gameStore = createStore<GameState>()(
       if (!mission) return { ok: false, reason: "unknown" };
       const { completedMissionIds, walletUid } = get(); // live read — the gate
       if (completedMissionIds.includes(missionId)) return { ok: false, reason: "already" };
-      if (mission.kind === "reallife" && !codeMatches(mission.code, code)) {
-        return { ok: false, reason: "wrong-code" };
+
+      // Reallife: server-authoritative. The code lives server-side (claim_mission validates
+      // it), so there is nothing to check or credit client-side — await-first, no optimism.
+      if (mission.kind === "reallife") {
+        if (!supabase || !walletUid) return { ok: false, reason: "degraded" }; // can't validate offline
+        if (!code || !code.trim()) return { ok: false, reason: "empty-code" }; // blank → no round-trip
+        const guard = captureGuard(); // BEFORE the await — owner-flip protection
+        const res = await progressRepo.claimMission(missionId, code);
+        if (res.status === "degraded") return { ok: false, reason: "degraded" };
+        if (res.status === "ok" && res.data.ok) {
+          // Skip the local apply if the write guard was superseded mid-RPC — an owner flip
+          // (anon→Google / sign-out) or a same-owner concurrent edit that bumped the epoch.
+          // The claim is already recorded server-side, so the next hydrate reflects it; this
+          // avoids writing into a new owner's wallet or stomping a newer edit's totals.
+          if (guardValid(guard)) {
+            applyWalletEffect({ xp: 0, point: 0, addMission: missionId }); // mark done + persist
+            reconcileTotals(res.data.totals, captureGuard()); // adopt authoritative totals
+            void syncBadgesFromState();
+          }
+          return { ok: true, reward: res.data.reward };
+        }
+        return { ok: false, reason: res.status === "ok" && !res.data.ok ? res.data.reason : "unknown" };
       }
+
+      // Game: client-authoritative — optimistic local credit, reconciled online.
       const reward = mission.reward;
       const effect = applyWalletEffect({ xp: reward.xp, point: reward.point, addMission: missionId });
       const guard = captureGuard(); // AFTER the apply — its epoch bump is this op's baseline
@@ -486,10 +505,7 @@ export const gameStore = createStore<GameState>()(
         return { ok: true, reward }; // degraded: local credit
       }
 
-      const res = await progressRepo.claimMission(
-        missionId,
-        mission.kind === "reallife" ? code : undefined,
-      );
+      const res = await progressRepo.claimMission(missionId);
       if (res.status === "ok" && res.data.ok) {
         reconcileTotals(res.data.totals, guard); // guard-checked; a stale success no-ops
         return { ok: true, reward: res.data.reward };
