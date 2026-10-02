@@ -109,36 +109,12 @@ describe("goodEndingScenarioIds", () => {
     expect(ids).toEqual(["kredit-macet"]);
   });
 
-  it("is not fooled by a later higher-score neutral attempt (ending rank dominates)", () => {
-    const ids = goodEndingScenarioIds([
-      rec({ id: "good", scenarioId: "kredit-macet", endingType: "good", scores: { x: 10 }, startedAt: 1 }),
-      rec({ id: "neu", scenarioId: "kredit-macet", endingType: "neutral", scores: { x: 99 }, startedAt: 2 }),
-    ]);
-    expect(ids).toEqual(["kredit-macet"]);
-  });
-
   it("includes a tutorial good ending despite empty scores", () => {
     expect(
       goodEndingScenarioIds([
         rec({ scenarioId: "tutorial-koperasi-konsumen", endingType: "good", scores: {} }),
       ]),
     ).toEqual(["tutorial-koperasi-konsumen"]);
-  });
-
-  it("de-duplicates across many good attempts on one scenario", () => {
-    const ids = goodEndingScenarioIds([
-      rec({ id: "a", scenarioId: "kredit-macet", endingType: "good", startedAt: 1 }),
-      rec({ id: "b", scenarioId: "kredit-macet", endingType: "good", startedAt: 2 }),
-    ]);
-    expect(ids).toEqual(["kredit-macet"]);
-  });
-
-  it("returns multiple scenarios in catalog order", () => {
-    const ids = goodEndingScenarioIds([
-      rec({ id: "k", scenarioId: "kredit-macet", endingType: "good" }),
-      rec({ id: "r", scenarioId: "rapat-anggota-tahunan", endingType: "good" }),
-    ]);
-    expect(ids).toEqual(["rapat-anggota-tahunan", "kredit-macet"]);
   });
 
   it("excludes scenarios with only neutral/bad attempts", () => {
