@@ -1,6 +1,6 @@
 -- RPC behavior: the atomicity/idempotency guarantees the RPCs exist to provide.
 begin;
-select plan(24);
+select plan(25);
 
 select tests.create_user('claimer');
 select tests.create_user('spender');
@@ -33,6 +33,16 @@ select is((public.claim_mission('impact-umkm', NULL) ->> 'reason'), 'wrong-code'
 select throws_ok(
   $$ select public.add_rewards(999, 999) $$,
   '42501', null, 'add_rewards is not client-callable (private helper)');
+-- Fail-closed on a NULL redeem_code (the clause the hardening migration adds). The
+-- mission_reallife_has_code CHECK normally makes this row unreachable, so drop it inside
+-- this (rolled-back) txn to construct the degenerate state and prove the RPC still rejects.
+reset role; -- back to the owner role to alter the table
+alter table public.mission_definition drop constraint mission_reallife_has_code;
+insert into public.mission_definition (code, kind, title, description, reward_xp, reward_point, redeem_code, sort_order)
+  values ('nullcode-test', 'reallife', 'Null Code Test', 'x', 10, 10, null, 99);
+select tests.login_as('claimer');
+select is((public.claim_mission('nullcode-test', 'ANYTHING') ->> 'reason'), 'wrong-code',
+  'reallife mission with a NULL redeem_code fails closed (not credited)');
 
 -- redeem_voucher --------------------------------------------------------------
 select tests.login_as_service();
