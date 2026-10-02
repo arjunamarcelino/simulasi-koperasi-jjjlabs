@@ -607,14 +607,26 @@ function reconcileAfterRedeem(
 let syncedBadges = new Set<string>();
 let syncedBadgesUid: string | null = null;
 
+// Serialize badge persistence. Overlapping triggers (a good-ending finish racing the
+// hydrate pass) would otherwise both compute `fresh` before either writes the cache and
+// fire duplicate RPCs for the same code. Chaining makes each link recompute against the
+// updated cache, so the second dedups to a no-op instead of a redundant round-trip.
+let persistChain: Promise<void> = Promise.resolve();
+function persistEarned(good: readonly string[], guard: WriteGuard): Promise<void> {
+  const run = persistChain.then(() => persistEarnedCore(good, guard));
+  persistChain = run.catch(() => {}); // keep the chain alive if a link ever rejects
+  return run;
+}
+
 /**
- * Single writer of the `syncedBadges` cache. Builds the badge context from live wallet
- * signals plus the given session good-endings, persists only the NEWLY-earned codes
- * (idempotent server-side), and re-checks the write guard AFTER the RPC before touching
- * the cache — so an owner flip mid-flight can't poison the next owner's dedup set. No-op
- * when degraded / no account or when nothing new was earned (adds no round-trip then).
+ * Single writer of the `syncedBadges` cache. Bails if the write guard was superseded
+ * while queued, builds the badge context from live wallet signals + the given session
+ * good-endings, persists only the NEWLY-earned codes (idempotent server-side), and
+ * re-checks the guard AFTER the RPC before touching the cache — so an owner flip mid-flight
+ * can't poison the next owner's dedup set. No-op when degraded / no account / nothing new.
  */
-async function persistEarned(good: readonly string[], guard: WriteGuard): Promise<void> {
+async function persistEarnedCore(good: readonly string[], guard: WriteGuard): Promise<void> {
+  if (!guardValid(guard)) return; // superseded while queued → a newer owner/op will sync
   const st = gameStore.getState();
   if (!supabase || !st.walletUid) return;
   if (syncedBadgesUid !== st.walletUid) {

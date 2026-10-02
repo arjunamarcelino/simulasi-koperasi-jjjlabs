@@ -341,6 +341,33 @@ describe("game.store — session good-ending badges", () => {
     expect(repo.syncBadges).toHaveBeenCalledWith(["pinjaman-lancar"]);
   });
 
+  it("coalesces concurrent syncs so a code is persisted only once", async () => {
+    const { gameStore, repo } = await loadStore({
+      online: true,
+      sessions: {
+        listMySessions: vi
+          .fn()
+          .mockResolvedValueOnce(ok([])) // hydrate: nothing earned yet
+          .mockResolvedValue(ok([sess({ scenarioId: "kredit-macet", endingType: "good" })])),
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    repo.syncBadges.mockClear();
+
+    // Fire two syncs concurrently; the serialization chain must let the second dedup
+    // against the first's cache write rather than fire a duplicate RPC.
+    await Promise.all([
+      gameStore.getState().syncSessionBadges(),
+      gameStore.getState().syncSessionBadges(),
+    ]);
+
+    const pinjamanCalls = repo.syncBadges.mock.calls.filter(
+      (c) => Array.isArray(c[0]) && (c[0] as string[]).includes("pinjaman-lancar"),
+    );
+    expect(pinjamanCalls).toHaveLength(1);
+  });
+
   it("is a no-op when session history is unavailable (degraded)", async () => {
     const { gameStore, repo } = await loadStore({
       online: true,
