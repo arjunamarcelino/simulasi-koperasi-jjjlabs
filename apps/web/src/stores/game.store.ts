@@ -480,8 +480,10 @@ export const gameStore = createStore<GameState>()(
         const res = await progressRepo.claimMission(missionId, code);
         if (res.status === "degraded") return { ok: false, reason: "degraded" };
         if (res.status === "ok" && res.data.ok) {
-          // If the owner changed mid-RPC (anon→Google / sign-out), this claim belonged to the
-          // prior account — don't write it into the new owner's wallet; their hydrate owns truth.
+          // Skip the local apply if the write guard was superseded mid-RPC — an owner flip
+          // (anon→Google / sign-out) or a same-owner concurrent edit that bumped the epoch.
+          // The claim is already recorded server-side, so the next hydrate reflects it; this
+          // avoids writing into a new owner's wallet or stomping a newer edit's totals.
           if (guardValid(guard)) {
             applyWalletEffect({ xp: 0, point: 0, addMission: missionId }); // mark done + persist
             reconcileTotals(res.data.totals, captureGuard()); // adopt authoritative totals
