@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "apps/db/**"
+      - "packages/**" # catalog is an input to the generated seed — re-check parity when it changes
       - ".github/workflows/db-tests.yml"
   pull_request:
     paths:
       - "apps/db/**"
+      - "packages/**" # catalog is an input to the generated seed — re-check parity when it changes
       - ".github/workflows/db-tests.yml"
 
 jobs:

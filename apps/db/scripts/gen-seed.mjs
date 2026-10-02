@@ -20,8 +20,13 @@ import vouchers from "@simkop/catalog/data/vouchers.json" with { type: "json" };
 import badges from "@simkop/catalog/data/badges.json" with { type: "json" };
 import quiz from "@simkop/catalog/data/quiz.json" with { type: "json" };
 
+// Reallife unlock codes are server-only: they live here, NOT in the client-bundled catalog
+// (@simkop/catalog ships to apps/web). We merge them into the seed by mission id below.
+import codes from "../seed-codes.json" with { type: "json" };
+
 const here = dirname(fileURLToPath(import.meta.url));
 const seedPath = join(here, "..", "supabase", "seed.sql");
+const codesPath = join(here, "..", "seed-codes.json");
 
 /** SQL-quote a string, or emit NULL. */
 const s = (v) => (v === null || v === undefined ? "NULL" : `'${String(v).replace(/'/g, "''")}'`);
@@ -39,6 +44,36 @@ function block(title, table, cols, rows, rowToVals, conflictUpdate) {
     `on conflict (code) do update set`,
     conflictUpdate.map((c) => `  ${c} = excluded.${c}`).join(",\n") + ";",
   ].join("\n");
+}
+
+// Validate the mission ⇄ code join bidirectionally so a missing, orphan, stale, mis-keyed,
+// or duplicated code fails the build instead of silently seeding a NULL or wrong redeem_code.
+// (A NULL redeem_code on a reallife row is also rejected by the DB CHECK constraint, but a
+// clear build-time error beats a load-time 23514.)
+const reallifeIds = missions.filter((m) => m.kind === "reallife").map((m) => m.id);
+const gameIds = new Set(missions.filter((m) => m.kind !== "reallife").map((m) => m.id));
+const missionIds = new Set(missions.map((m) => m.id));
+for (const id of reallifeIds) {
+  if (!codes[id] || !String(codes[id]).trim()) {
+    throw new Error(`gen-seed: reallife mission "${id}" has no code in seed-codes.json`);
+  }
+}
+for (const k of Object.keys(codes)) {
+  if (!missionIds.has(k)) throw new Error(`gen-seed: seed-codes.json has a code for unknown/stale mission id "${k}"`);
+  if (gameIds.has(k)) throw new Error(`gen-seed: seed-codes.json assigns a code to game mission "${k}" (reallife only)`);
+}
+if (Object.keys(codes).length !== reallifeIds.length) {
+  throw new Error(
+    `gen-seed: seed-codes.json has ${Object.keys(codes).length} entries, expected ${reallifeIds.length} (one per reallife mission)`,
+  );
+}
+// import() silently keeps only the last value for a duplicated JSON key — detect from raw text.
+{
+  const seen = new Set();
+  for (const [, k] of readFileSync(codesPath, "utf8").matchAll(/"([^"]+)"\s*:/g)) {
+    if (seen.has(k)) throw new Error(`gen-seed: duplicate key "${k}" in seed-codes.json`);
+    seen.add(k);
+  }
 }
 
 const parts = [
@@ -60,7 +95,7 @@ const parts = [
     "mission_definition",
     ["code", "kind", "title", "description", "reward_xp", "reward_point", "redeem_code", "sort_order"],
     missions,
-    (r, i) => [s(r.id), s(r.kind), s(r.title), s(r.description), n(r.reward.xp), n(r.reward.point), s(r.code ?? null), n(i)],
+    (r, i) => [s(r.id), s(r.kind), s(r.title), s(r.description), n(r.reward.xp), n(r.reward.point), s(r.kind === "reallife" ? codes[r.id] : null), n(i)],
     ["kind", "title", "description", "reward_xp", "reward_point", "redeem_code", "sort_order"],
   ),
   "",
