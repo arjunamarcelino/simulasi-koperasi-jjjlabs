@@ -3,7 +3,7 @@ import { LEVELS } from "@simkop/catalog";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { useAuth, authStore, MAX_NAME } from "../../stores/auth.store";
 import { KOPERASI_IDENTITAS } from "../../content/mading-info";
-import { BADGES, isEarned, type BadgeContext } from "../../content/badges";
+import { BADGES, isEarned, buildBadgeContext } from "../../content/badges";
 import { sessionsRepo } from "../../lib/sessionsRepo";
 import { goodEndingScenarioIds } from "../../lib/sessionHistory";
 import type { SessionRecord } from "../../lib/sessionsRepo.contracts";
@@ -112,15 +112,15 @@ export function ProfileModal() {
   const maxed = nextXp === null;
   const pct = maxed ? 100 : Math.round(((xp - floor) / (nextXp - floor)) * 100);
 
-  // Assembled here (owns levelFromXp) and passed to pure badge predicates.
-  const ctx: BadgeContext = {
+  // Shared builder derives `level` from xp; the local levelFromXp above stays for the
+  // richer progress-bar fields (title/floor/nextXp).
+  const ctx = buildBadgeContext({
     xp,
-    level: index + 1,
     point,
     completedMissionIds,
     voucherCount,
     goodEndingScenarioIds: goodIds,
-  };
+  });
 
   return (
     <ModalShell titleId="profile-title" onClose={close} panelClassName="w-full max-w-lg">

@@ -10,7 +10,7 @@
  * trackable); it always renders locked. `scenarioGoodEnding` reads
  * `ctx.goodEndingScenarioIds`, derived from session history (see sessionHistory.ts).
  */
-import type { BadgeCriteria } from "@simkop/catalog";
+import { LEVELS, type BadgeCriteria } from "@simkop/catalog";
 
 export type { BadgeIconKind, BadgeCriteria, Badge } from "@simkop/catalog";
 export { BADGES } from "@simkop/catalog";
@@ -23,6 +23,35 @@ export type BadgeContext = {
   voucherCount: number;
   goodEndingScenarioIds: readonly string[];
 };
+
+/** 1-based level from xp (mirrors the DB level_from_xp + ProfileModal's tier walk). */
+function levelFromXp(xp: number): number {
+  const safe = Math.max(0, xp);
+  let index = 0;
+  for (let i = 0; i < LEVELS.length; i++) if (safe >= LEVELS[i]!.minXp) index = i;
+  return index + 1;
+}
+
+/**
+ * The single place a BadgeContext is assembled from raw wallet signals — `level` is
+ * derived from xp here so the profile render and the store sync can't drift. Pure.
+ */
+export function buildBadgeContext(input: {
+  xp: number;
+  point: number;
+  completedMissionIds: readonly string[];
+  voucherCount: number;
+  goodEndingScenarioIds?: readonly string[];
+}): BadgeContext {
+  return {
+    xp: input.xp,
+    level: levelFromXp(input.xp),
+    point: input.point,
+    completedMissionIds: input.completedMissionIds,
+    voucherCount: input.voucherCount,
+    goodEndingScenarioIds: input.goodEndingScenarioIds ?? [],
+  };
+}
 
 /** Pure: is this badge's criteria satisfied by the current context? */
 export function isEarned(criteria: BadgeCriteria, ctx: BadgeContext): boolean {

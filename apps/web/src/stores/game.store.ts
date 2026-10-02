@@ -1,7 +1,6 @@
 import { createStore } from "zustand/vanilla";
 import { subscribeWithSelector } from "zustand/middleware";
 import { useStore } from "zustand";
-import { LEVELS } from "@simkop/catalog";
 import { KOPERASI_ROOMS } from "../world/rooms.config";
 import { loadNumber, saveNumber, loadJson, saveJson, removeKey } from "./persist";
 import {
@@ -10,7 +9,7 @@ import {
   type RedeemedVoucher,
 } from "../content/vouchers";
 import { MISSIONS, isStringArray, type MissionReward } from "../content/missions";
-import { BADGES, isEarned, type BadgeContext } from "../content/badges";
+import { BADGES, isEarned, buildBadgeContext } from "../content/badges";
 import { SCENARIOS } from "../scenarios/scenario.config";
 import { supabase } from "../lib/supabase";
 import { progressRepo } from "../lib/progressRepo";
@@ -94,14 +93,6 @@ function genCode(): string {
   let s = "";
   for (let i = 0; i < 4; i++) s += chars[Math.floor(Math.random() * chars.length)];
   return `KDMP-${s}`;
-}
-
-/** 1-based level from xp (mirrors ProfileModal + the DB level_from_xp). */
-function levelFromXp(xp: number): number {
-  const safe = Math.max(0, xp);
-  let index = 0;
-  for (let i = 0; i < LEVELS.length; i++) if (safe >= LEVELS[i]!.minXp) index = i;
-  return index + 1;
 }
 
 type Wallet = {
@@ -630,14 +621,13 @@ async function persistEarned(good: readonly string[], guard: WriteGuard): Promis
     syncedBadges = new Set();
     syncedBadgesUid = st.walletUid;
   }
-  const ctx: BadgeContext = {
+  const ctx = buildBadgeContext({
     xp: st.xp,
-    level: levelFromXp(st.xp),
     point: st.point,
     completedMissionIds: st.completedMissionIds,
     voucherCount: st.redeemedVouchers.length,
     goodEndingScenarioIds: good,
-  };
+  });
   const fresh = BADGES.filter((b) => isEarned(b.criteria, ctx) && !syncedBadges.has(b.id)).map(
     (b) => b.id,
   );
