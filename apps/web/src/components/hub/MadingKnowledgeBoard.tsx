@@ -39,8 +39,15 @@ export function MadingKnowledgeBoard() {
         Pengetahuan Koperasi
       </h2>
 
-      <p className="sr-only" aria-live="polite" aria-atomic="true">
-        {`Kartu ${index + 1} dari ${LEN}`}
+      {/* Visible position counter (also the live region) — the primary "where am I"
+          signal now the carousel runs long; APG endorses an "X / N" counter at high
+          card counts, where a dot-per-card row alone becomes hard to read. */}
+      <p
+        className="mb-3 text-center font-display text-[10px] text-ink-soft"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {`Kartu ${index + 1} / ${LEN}`}
       </p>
 
       {/* Card body — swaps with a quick slide-in on index change. */}
@@ -66,7 +73,7 @@ export function MadingKnowledgeBoard() {
         ) : (
           <div>
             <span className="pixel-panel -rotate-1 mb-4 inline-block bg-mustard px-3 py-1 font-display text-[10px] text-ink !shadow-none">
-              Tahukah Kamu?
+              {card.chip ?? "Tahukah Kamu?"}
             </span>
             <p className="mx-auto max-w-sm font-body text-xl leading-snug text-ink-soft md:text-2xl">
               {card.text}
@@ -86,7 +93,7 @@ export function MadingKnowledgeBoard() {
           ‹
         </GameButton>
 
-        <div className="flex items-center gap-2" role="group" aria-label="Pilih kartu">
+        <div className="flex flex-wrap items-center justify-center gap-2" role="group" aria-label="Pilih kartu">
           {MADING_KNOWLEDGE_CARDS.map((_, i) => (
             <button
               key={i}
