@@ -10,7 +10,7 @@
 
 export type KnowledgeCard =
   | { kind: "stat"; value: string; label: string; group?: string; sub?: string }
-  | { kind: "fact"; text: string; chip?: string };
+  | { kind: "fact"; text: string; chip?: "Prinsip Koperasi" | "Landasan Hukum" };
 
 /** Small attribution shown under the board (dashboard citation is permitted with source). */
 export const KNOWLEDGE_SOURCE =
@@ -115,6 +115,6 @@ export const MADING_KNOWLEDGE_CARDS: readonly KnowledgeCard[] = [
   },
   {
     kind: "fact",
-    text: "Dalam penjelasan UU No. 25/1992, koperasi ditegaskan sebagai 'soko guru perekonomian nasional' — cita-cita yang diperjuangkan Bung Hatta.",
+    text: "Dalam penjelasan UU No. 25/1992, koperasi ditegaskan sebagai “soko guru perekonomian nasional” — cita-cita yang diperjuangkan Bung Hatta.",
   },
 ];
