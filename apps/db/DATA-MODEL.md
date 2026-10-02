@@ -189,10 +189,11 @@ Identity/auth, `sessions` + score (persisted SIM-6), `user_badge.awarded_at`, an
 catalog tables (formerly FE-only arrays; the DB is now the source of truth, with the FE
 and the seed both deriving from the shared `@simkop/catalog` package).
 
-> **On the reallife codes:** `redeem_code` (`KDMP2026` etc.) is a *soft* gate — printed at
-> the KDMP and typed by the player. It is **not** a cryptographic secret. The DB hides it
-> (REVOKE + `mission_catalog` view) as defense-in-depth only; the same codes still ship in
-> the client bundle today (see follow-up). Treat gate-code claims as best-effort, not anti-cheat.
+> **On the reallife codes:** `redeem_code` is a *soft* gate — printed at the KDMP and typed
+> by the player. It is **not** a cryptographic secret. As of SIM-9 the codes live server-side
+> only (`apps/db/seed-codes.json` → `redeem_code`) and no longer ship in the client bundle;
+> the DB hides the column (REVOKE + `mission_catalog` view) and `claim_mission` validates the
+> code server-side. Treat gate-code claims as best-effort, not anti-cheat.
 
 ## Follow-ups (out of scope for SIM-2 BE)
 - ✅ FE integration: guest + Google auth (SIM-3); progress/quiz/badges wired to the RPCs and the
