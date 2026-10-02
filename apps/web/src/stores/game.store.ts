@@ -52,10 +52,11 @@ export type OverlayKind =
 
 /** Result of completeMission — carries the granted reward on success. `degraded` = no
  * server (offline/mock): a reallife mission can't be validated client-side (the code is
- * server-only), so the claim is refused rather than credited. */
+ * server-only), so the claim is refused rather than credited. `empty-code` = a blank
+ * reallife code, rejected before any round-trip (distinct from a server `wrong-code`). */
 export type MissionResult =
   | { ok: true; reward: MissionReward }
-  | { ok: false; reason: "already" | "wrong-code" | "unknown" | "degraded" };
+  | { ok: false; reason: "already" | "wrong-code" | "unknown" | "degraded" | "empty-code" };
 
 /** Result of submitQuiz. `degraded` = no server (offline/mock): the quiz cannot be
  * graded client-side because the answer key is server-only. */
@@ -475,7 +476,7 @@ export const gameStore = createStore<GameState>()(
       // it), so there is nothing to check or credit client-side — await-first, no optimism.
       if (mission.kind === "reallife") {
         if (!supabase || !walletUid) return { ok: false, reason: "degraded" }; // can't validate offline
-        if (!code || !code.trim()) return { ok: false, reason: "wrong-code" }; // skip a pointless round-trip
+        if (!code || !code.trim()) return { ok: false, reason: "empty-code" }; // blank → no round-trip
         const guard = captureGuard(); // BEFORE the await — owner-flip protection
         const res = await progressRepo.claimMission(missionId, code);
         if (res.status === "degraded") return { ok: false, reason: "degraded" };

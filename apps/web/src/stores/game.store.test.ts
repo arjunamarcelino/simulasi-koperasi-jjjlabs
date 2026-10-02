@@ -360,12 +360,12 @@ describe("game.store — reallife missions (server-validated)", () => {
     expect(gameStore.getState().completedMissionIds).not.toContain(REALLIFE);
   });
 
-  it("blank code: rejected client-side without a round-trip", async () => {
+  it("blank code: rejected as empty-code client-side without a round-trip", async () => {
     const { gameStore, repo } = await loadStore({ online: true, repo: { claimMission: vi.fn() } });
     gameStore.getState().onOwnerChanged("user-A");
     await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
     const res = await gameStore.getState().completeMission(REALLIFE, "   ");
-    expect(res).toEqual({ ok: false, reason: "wrong-code" });
+    expect(res).toEqual({ ok: false, reason: "empty-code" });
     expect(repo.claimMission).not.toHaveBeenCalled();
   });
 

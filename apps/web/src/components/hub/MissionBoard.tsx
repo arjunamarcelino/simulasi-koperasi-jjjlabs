@@ -57,6 +57,7 @@ function RealLifeMissionCard({ mission, done }: { mission: RealLifeMission; done
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
+  const [emptyHint, setEmptyHint] = useState(false);
 
   const submit = async () => {
     const result = await gameStore.getState().completeMission(mission.id, code);
@@ -64,6 +65,9 @@ function RealLifeMissionCard({ mission, done }: { mission: RealLifeMission; done
     switch (result.reason) {
       case "wrong-code":
         setError("Kode salah");
+        break;
+      case "empty-code":
+        setEmptyHint(true); // a blank code is a prompt, not an error
         break;
       case "degraded":
         setOffline(true);
@@ -103,6 +107,7 @@ function RealLifeMissionCard({ mission, done }: { mission: RealLifeMission; done
               setCode(e.target.value);
               if (error) setError(null);
               if (offline) setOffline(false);
+              if (emptyHint) setEmptyHint(false);
             }}
             placeholder="Masukkan kode"
             autoCapitalize="characters"
@@ -117,6 +122,7 @@ function RealLifeMissionCard({ mission, done }: { mission: RealLifeMission; done
         </form>
       )}
       {error && <p className="mt-2 font-body text-lg text-orange">{error}</p>}
+      {emptyHint && <p className="mt-2 font-body text-lg text-ink-soft">Masukkan kode dulu.</p>}
       {offline && (
         <div className="mt-2">
           <p className="font-body text-lg text-ink">Misi ini butuh koneksi internet.</p>
