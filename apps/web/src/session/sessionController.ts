@@ -79,9 +79,8 @@ export function createSessionController(): SessionController {
         console.warn("Hasil sesi ditolak:", outcome.data.reason);
         return;
       }
-      // A good ending may newly earn a scenarioGoodEnding badge. Re-derive + persist
-      // (best-effort, self-guarding) only after the row is committed — the follow-up
-      // listMySessions read-your-write assumes reads hit the primary (not a replica).
+      // A good ending may newly earn a scenario badge; re-derive + persist (best-effort,
+      // self-guarding) now that the row is committed. Assumes reads hit the primary.
       if (result.endingType === "good") void gameStore.getState().syncSessionBadges();
     } catch (cause: unknown) {
       console.warn("Gagal menyimpan hasil sesi:", cause instanceof Error ? cause.message : cause);

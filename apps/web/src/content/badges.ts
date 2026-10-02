@@ -41,9 +41,7 @@ export function isEarned(criteria: BadgeCriteria, ctx: BadgeContext): boolean {
     case "scenarioGoodEnding":
       return ctx.goodEndingScenarioIds.includes(criteria.scenarioId);
     default: {
-      // Exhaustiveness: this file's tsconfig has no noImplicitReturns, so a
-      // missing case would silently return undefined — the `never` assignment
-      // turns that into a compile error instead.
+      // Exhaustiveness guard: a new BadgeCriteria kind fails to compile here.
       const _exhaustive: never = criteria;
       return _exhaustive;
     }
