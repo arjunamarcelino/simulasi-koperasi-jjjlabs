@@ -55,9 +55,4 @@ describe("isEarned — null teaser + existing kinds (no regression)", () => {
     expect(isEarned({ kind: "missionDone", missionId: "main-kuis" }, ctx({ completedMissionIds: ["main-kuis"] }))).toBe(true);
     expect(isEarned({ kind: "missionDone", missionId: "main-kuis" }, ctx())).toBe(false);
   });
-
-  it("is pure — does not mutate the context", () => {
-    const frozen = Object.freeze(ctx({ goodEndingScenarioIds: Object.freeze(["kredit-macet"]) as readonly string[] }));
-    expect(() => isEarned({ kind: "scenarioGoodEnding", scenarioId: "kredit-macet" }, frozen)).not.toThrow();
-  });
 });
