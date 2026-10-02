@@ -10,6 +10,7 @@ import type { AuditorResult, SessionEnded } from "./transport/contract";
 const h = vi.hoisted(() => ({
   sessionEndedCb: null as ((e: SessionEnded) => void) | null,
   recordSession: vi.fn(),
+  syncSessionBadges: vi.fn(),
 }));
 
 vi.mock("./transport/createTransport", () => ({
@@ -30,6 +31,12 @@ vi.mock("../lib/progressRepo", () => ({
   progressRepo: { recordSession: h.recordSession },
 }));
 
+// Isolate the controller: the badge side-channel is exercised at the store level
+// (game.store.test.ts); here we only assert the controller TRIGGERS it correctly.
+vi.mock("../stores/game.store", () => ({
+  gameStore: { getState: () => ({ syncSessionBadges: h.syncSessionBadges }) },
+}));
+
 import { createSessionController } from "./sessionController";
 import { sessionStore } from "../stores/session.store";
 
@@ -42,6 +49,10 @@ const RESULT: AuditorResult = {
   narrativeFeedback: "Bagus",
 };
 const ENDED: SessionEnded = { trigger: "manual", result: RESULT };
+const ENDED_NEUTRAL: SessionEnded = {
+  trigger: "manual",
+  result: { ...RESULT, endingType: "neutral" },
+};
 
 /** Drain the microtask queue for persistResult's awaits (no timers involved). */
 const flush = async (): Promise<void> => {
@@ -52,6 +63,7 @@ beforeEach(() => {
   h.sessionEndedCb = null;
   h.recordSession.mockReset();
   h.recordSession.mockResolvedValue({ status: "ok", data: { ok: true } });
+  h.syncSessionBadges.mockReset();
   sessionStore.getState().reset();
 });
 
@@ -146,5 +158,54 @@ describe("sessionController persistence", () => {
     await flush();
 
     expect(h.recordSession).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("sessionController — session-badge sync trigger", () => {
+  it("triggers the badge sync once on a good-ending success", async () => {
+    const controller = createSessionController();
+    controller.startScenario("kredit-macet");
+    await flush();
+
+    h.sessionEndedCb?.(ENDED);
+    await flush();
+
+    expect(h.syncSessionBadges).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not trigger the sync for a non-good ending", async () => {
+    const controller = createSessionController();
+    controller.startScenario("kredit-macet");
+    await flush();
+
+    h.sessionEndedCb?.(ENDED_NEUTRAL);
+    await flush();
+
+    expect(h.recordSession).toHaveBeenCalledTimes(1); // still recorded
+    expect(h.syncSessionBadges).not.toHaveBeenCalled();
+  });
+
+  it("does not trigger the sync when the record is rejected ({ok:false})", async () => {
+    h.recordSession.mockResolvedValue({ status: "ok", data: { ok: false, reason: "invalid" } });
+    const controller = createSessionController();
+    controller.startScenario("kredit-macet");
+    await flush();
+
+    h.sessionEndedCb?.(ENDED);
+    await flush();
+
+    expect(h.syncSessionBadges).not.toHaveBeenCalled();
+  });
+
+  it("does not trigger the sync on a degraded record outcome", async () => {
+    h.recordSession.mockResolvedValue({ status: "degraded" });
+    const controller = createSessionController();
+    controller.startScenario("kredit-macet");
+    await flush();
+
+    h.sessionEndedCb?.(ENDED);
+    await flush();
+
+    expect(h.syncSessionBadges).not.toHaveBeenCalled();
   });
 });

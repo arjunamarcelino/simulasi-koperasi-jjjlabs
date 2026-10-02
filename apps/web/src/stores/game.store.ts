@@ -14,6 +14,8 @@ import { BADGES, isEarned, type BadgeContext } from "../content/badges";
 import { SCENARIOS } from "../scenarios/scenario.config";
 import { supabase } from "../lib/supabase";
 import { progressRepo } from "../lib/progressRepo";
+import { sessionsRepo } from "../lib/sessionsRepo";
+import { goodEndingScenarioIds } from "../lib/sessionHistory";
 import type { QuizAnswer, QuizResultRow, Totals } from "../lib/progressRepo.contracts";
 
 /**
@@ -241,6 +243,12 @@ export type GameState = {
    * credit. Returns the reward on success, else a failure reason.
    */
   completeMission: (missionId: string, code?: string) => Promise<MissionResult>;
+  /**
+   * Re-derive session good-ending badges from history and persist the newly-earned
+   * codes. Best-effort + self-guarding. Called by sessionController after a good-ending
+   * session finalizes (the profile modal may never open) and internally on hydrate.
+   */
+  syncSessionBadges: () => Promise<void>;
 };
 
 /** How long (ms) the scene ignores E after an overlay closes — see interactSuppressedUntil. */
@@ -503,6 +511,8 @@ export const gameStore = createStore<GameState>()(
       const reason = res.status === "ok" && !res.data.ok ? res.data.reason : "unknown";
       return { ok: false, reason };
     },
+
+    syncSessionBadges: () => syncBadgesFromSessions(),
   })),
 );
 
@@ -606,10 +616,14 @@ function reconcileAfterRedeem(
 let syncedBadges = new Set<string>();
 let syncedBadgesUid: string | null = null;
 
-/** Recompute the currently-earned badge set from live wallet signals and persist only
- * the NEWLY-earned codes (idempotent server-side). No-op when degraded / no account or
- * when nothing new was earned — so it adds no round-trip to the common mutation. */
-async function syncBadgesFromState(): Promise<void> {
+/**
+ * Single writer of the `syncedBadges` cache. Builds the badge context from live wallet
+ * signals plus the given session good-endings, persists only the NEWLY-earned codes
+ * (idempotent server-side), and re-checks the write guard AFTER the RPC before touching
+ * the cache — so an owner flip mid-flight can't poison the next owner's dedup set. No-op
+ * when degraded / no account or when nothing new was earned (adds no round-trip then).
+ */
+async function persistEarned(good: readonly string[], guard: WriteGuard): Promise<void> {
   const st = gameStore.getState();
   if (!supabase || !st.walletUid) return;
   if (syncedBadgesUid !== st.walletUid) {
@@ -622,14 +636,34 @@ async function syncBadgesFromState(): Promise<void> {
     point: st.point,
     completedMissionIds: st.completedMissionIds,
     voucherCount: st.redeemedVouchers.length,
-    goodEndingScenarioIds: [],
+    goodEndingScenarioIds: good,
   };
   const fresh = BADGES.filter((b) => isEarned(b.criteria, ctx) && !syncedBadges.has(b.id)).map(
     (b) => b.id,
   );
   if (fresh.length === 0) return;
   const res = await progressRepo.syncBadges(fresh);
-  if (res.status === "ok") for (const code of fresh) syncedBadges.add(code);
+  if (res.status === "ok" && guardValid(guard)) for (const code of fresh) syncedBadges.add(code);
+}
+
+/** Wallet path: re-evaluate badges from wallet signals only (no session signal). */
+function syncBadgesFromState(): Promise<void> {
+  return persistEarned([], captureGuard());
+}
+
+/**
+ * Session path: derive the scenarios whose best attempt ended "good" from history and
+ * persist any newly-earned scenario badges. Self-guarding — captures the write guard
+ * BEFORE the listMySessions fetch and bails if the owner changed during it, so user A's
+ * sessions never earn badges on user B's account. Best-effort: a non-ok fetch is a no-op.
+ */
+async function syncBadgesFromSessions(): Promise<void> {
+  const st = gameStore.getState();
+  if (!supabase || !st.walletUid) return;
+  const guard = captureGuard();
+  const res = await sessionsRepo.listMySessions();
+  if (res.status !== "ok" || !guardValid(guard)) return;
+  await persistEarned(goodEndingScenarioIds(res.data), guard);
 }
 
 /** Hydrate the owner's authoritative wallet from the DB, run the one-time migration
@@ -690,6 +724,8 @@ async function hydrateAndMigrate(uid: string, guard: WriteGuard): Promise<void> 
 
   if (!guardValid(guard)) return;
   await syncBadgesFromState();
+  if (!guardValid(guard)) return;
+  await syncBadgesFromSessions();
   if (!guardValid(guard)) return;
   gameStore.setState({ hydrated: true });
 }

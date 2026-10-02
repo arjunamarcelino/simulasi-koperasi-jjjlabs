@@ -37,10 +37,19 @@ vi.mock("../lib/supabase", () => {
       getSession: h.getSession,
       refreshSession: h.refreshSession,
     },
-    from: () => ({
-      select: () => ({ eq: () => ({ single: h.profileSingle }) }),
-      update: () => ({ eq: h.profileUpdateEq }),
-    }),
+    from: () => {
+      // sessionsRepo.listMySessions chain (.select().not().order().limit()); game.store
+      // hydrate now derives session badges, so resolve it to an empty history harmlessly.
+      const sessionsQuery = {
+        not: () => sessionsQuery,
+        order: () => sessionsQuery,
+        limit: () => Promise.resolve({ data: [], error: null }),
+      };
+      return {
+        select: () => ({ eq: () => ({ single: h.profileSingle }), ...sessionsQuery }),
+        update: () => ({ eq: h.profileUpdateEq }),
+      };
+    },
     // onOwnerChanged (game.store) hydrates progress via these on a uid change; the
     // auth tests don't assert on progress, so resolve them harmlessly.
     rpc: () => Promise.resolve({ data: null, error: null }),
