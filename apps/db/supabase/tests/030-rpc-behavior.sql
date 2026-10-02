@@ -1,6 +1,6 @@
 -- RPC behavior: the atomicity/idempotency guarantees the RPCs exist to provide.
 begin;
-select plan(20);
+select plan(24);
 
 select tests.create_user('claimer');
 select tests.create_user('spender');
@@ -22,6 +22,14 @@ select is((public.claim_mission('kunjungi-kdmp', 'WRONG') ->> 'reason'), 'wrong-
   'reallife claim rejects wrong code');
 select is((public.claim_mission('kunjungi-kdmp', '  kdmp2026 ') ->> 'ok'), 'true',
   'reallife claim accepts code (trim + case-insensitive)');
+-- a game mission ignores any supplied code (the code gate is reallife-only)
+select is((public.claim_mission('baca-mading', 'IGNORED') ->> 'ok'), 'true',
+  'game mission ignores a supplied code');
+select is((public.claim_mission('does-not-exist') ->> 'reason'), 'unknown',
+  'claim_mission on an unknown mission id returns unknown');
+-- a NULL submitted code must FAIL CLOSED on a reallife mission (hardened is-distinct-from gate)
+select is((public.claim_mission('impact-umkm', NULL) ->> 'reason'), 'wrong-code',
+  'reallife claim with a NULL code is rejected (fail closed)');
 select throws_ok(
   $$ select public.add_rewards(999, 999) $$,
   '42501', null, 'add_rewards is not client-callable (private helper)');
@@ -78,6 +86,9 @@ select tests.login_as_anon();
 select throws_ok(
   $$ select public.record_session_result('11111111-1111-1111-1111-111111111111'::uuid, 'manual', 'good') $$,
   '42501', null, 'record_session_result is not callable by anon (EXECUTE revoked)');
+select throws_ok(
+  $$ select public.claim_mission('main-kuis') $$,
+  '42501', null, 'claim_mission is not callable by anon (EXECUTE revoked)');
 
 -- badges (plain insert, idempotent via unique) --------------------------------
 select tests.login_as('claimer');
