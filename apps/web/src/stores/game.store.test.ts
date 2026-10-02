@@ -306,6 +306,93 @@ describe("game.store — online (server-authoritative)", () => {
   });
 });
 
+describe("game.store — reallife missions (server-validated)", () => {
+  // Codes are server-only now; tests use placeholder strings (never the real literals, which
+  // guard-secrets forbids in apps/web). claimMission is mocked, so the value is arbitrary.
+  const REALLIFE = "kunjungi-kdmp";
+
+  it("online: forwards the code, reconciles totals, marks done", async () => {
+    const { gameStore, repo } = await loadStore({
+      online: true,
+      repo: {
+        claimMission: vi
+          .fn()
+          .mockResolvedValue(ok({ ok: true, reward: { xp: 50, point: 100 }, totals: { xp: 50, point: 100 } })),
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    const res = await gameStore.getState().completeMission(REALLIFE, "any-code");
+    expect(res.ok).toBe(true);
+    expect(repo.claimMission).toHaveBeenCalledWith(REALLIFE, "any-code");
+    expect(gameStore.getState().completedMissionIds).toContain(REALLIFE);
+    expect(gameStore.getState().xp).toBe(50);
+  });
+
+  it("offline: refuses with degraded and credits nothing", async () => {
+    const { gameStore, repo } = await loadStore({ online: false });
+    gameStore.getState().onOwnerChanged(null);
+    const res = await gameStore.getState().completeMission(REALLIFE, "any-code");
+    expect(res).toEqual({ ok: false, reason: "degraded" });
+    expect(repo.claimMission).not.toHaveBeenCalled();
+    expect(gameStore.getState().completedMissionIds).not.toContain(REALLIFE);
+    expect(gameStore.getState().xp).toBe(0);
+  });
+
+  it("online guest (no wallet owner): refuses with degraded, no RPC", async () => {
+    const { gameStore, repo } = await loadStore({ online: true });
+    gameStore.getState().onOwnerChanged(null);
+    const res = await gameStore.getState().completeMission(REALLIFE, "any-code");
+    expect(res).toEqual({ ok: false, reason: "degraded" });
+    expect(repo.claimMission).not.toHaveBeenCalled();
+  });
+
+  it("online wrong code: wallet unchanged (no optimistic flash)", async () => {
+    const { gameStore } = await loadStore({
+      online: true,
+      repo: { claimMission: vi.fn().mockResolvedValue(ok({ ok: false, reason: "wrong-code" })) },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    const res = await gameStore.getState().completeMission(REALLIFE, "WRONG");
+    expect(res).toEqual({ ok: false, reason: "wrong-code" });
+    expect(gameStore.getState().xp).toBe(0);
+    expect(gameStore.getState().completedMissionIds).not.toContain(REALLIFE);
+  });
+
+  it("blank code: rejected client-side without a round-trip", async () => {
+    const { gameStore, repo } = await loadStore({ online: true, repo: { claimMission: vi.fn() } });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    const res = await gameStore.getState().completeMission(REALLIFE, "   ");
+    expect(res).toEqual({ ok: false, reason: "wrong-code" });
+    expect(repo.claimMission).not.toHaveBeenCalled();
+  });
+
+  it("owner flips during the claim RPC: the new owner is not credited", async () => {
+    let resolveClaim: (v: RepoResult<unknown>) => void = () => {};
+    const claim = new Promise<RepoResult<unknown>>((r) => {
+      resolveClaim = r;
+    });
+    const { gameStore } = await loadStore({
+      online: true,
+      repo: { claimMission: vi.fn().mockReturnValue(claim) },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+
+    const done = gameStore.getState().completeMission(REALLIFE, "any-code"); // captures guard {user-A}
+    gameStore.getState().onOwnerChanged("user-B"); // flip owner before the RPC resolves
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true)); // B hydrated (xp 0)
+    resolveClaim(ok({ ok: true, reward: { xp: 50, point: 100 }, totals: { xp: 777, point: 777 } }));
+    await done;
+
+    // A's claim must not write into B's wallet — hydrate owns B's truth.
+    expect(gameStore.getState().completedMissionIds).not.toContain(REALLIFE);
+    expect(gameStore.getState().xp).toBe(0);
+  });
+});
+
 describe("game.store — session good-ending badges", () => {
   it("persists a session badge on hydrate (retroactive earn)", async () => {
     const { gameStore, repo } = await loadStore({

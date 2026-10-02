@@ -4,9 +4,9 @@
  * cannot silently drift. This module re-exports them for the FE and keeps the
  * FE-only completed-ids guard.
  *
- * A reallife mission carries a `code` (soft gate — printed at the KDMP and typed
- * by the player; not a cryptographic secret). The discriminated union still makes
- * `code` compile-time-required for reallife missions.
+ * A reallife mission's unlock code is validated server-side by the `claim_mission`
+ * RPC and lives only in apps/db (seed-codes.json) — it never ships in the client
+ * bundle. The player types the code; the store forwards it to the server.
  */
 export type {
   MissionKind,
