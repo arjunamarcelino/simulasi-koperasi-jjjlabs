@@ -54,4 +54,10 @@ export const MADING_INFO_NOTES: readonly MadingNote[] = [
     accent: "forest",
     lines: ["Omzet 2025: Rp 1,2 M", "Unit: Sembako & Simpan Pinjam", "SHU: Rp 96.000.000"],
   },
+  // Ringkasan 7 prinsip koperasi (ICA) — set lengkapnya ada di Papan Pengetahuan (SIM-10).
+  {
+    title: "Prinsip Koperasi",
+    accent: "parchment",
+    lines: ["7 prinsip ICA jadi pedoman", "Sukarela • Demokratis • Adil", "Mandiri • Edukatif • Gotong royong"],
+  },
 ];

@@ -18,11 +18,19 @@ export function MadingKnowledgeBoard() {
     if (!active) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      // Ignore auto-repeat from a held arrow key: otherwise key-repeat (~30ms) restarts
+      // the entrance fade faster than it can finish (strobe) and backlogs the polite
+      // live region. One discrete press = one card.
+      if (e.repeat) return;
       e.preventDefault();
       e.stopPropagation();
       const cur = gameStore.getState().madingIndex;
       gameStore.getState().setMadingIndex(wrap(cur + (e.key === "ArrowRight" ? 1 : -1)));
     };
+    // NOTE: capture-phase listener on `document`, so it swallows Arrow keys page-wide
+    // while the overlay is open. Safe only because this modal holds no arrow-consuming
+    // controls (text input, select, scrollable region). If one is ever added here,
+    // scope this listener to the carousel container instead (tracked in SIM-44).
     document.addEventListener("keydown", onKeyDown, { capture: true });
     return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
   }, [active]);
@@ -39,15 +47,25 @@ export function MadingKnowledgeBoard() {
         Pengetahuan Koperasi
       </h2>
 
-      <p className="sr-only" aria-live="polite" aria-atomic="true">
+      {/* Visual-only position indicator for sighted users. The card body below is the
+          live region that announces position + content to assistive tech, so this is
+          aria-hidden to avoid a double reading. APG endorses an "X dari N" counter at
+          high card counts, where a dot-per-card row alone becomes hard to read. */}
+      <p aria-hidden="true" className="mb-3 text-center font-display text-[10px] text-ink-soft">
         {`Kartu ${index + 1} dari ${LEN}`}
       </p>
 
-      {/* Card body — swaps with a quick slide-in on index change. */}
+      {/* Card body — the keyed remount drives the entrance fade and doubles as the
+          polite live region, so each change announces position + content together
+          (aria-atomic). Fixed height keeps the modal from pumping as cards of different
+          lengths scroll by; the fade is disabled under prefers-reduced-motion. */}
       <div
         key={index}
-        className="flex min-h-44 animate-[fadeIn_120ms_ease-out] items-center justify-center border-3 border-border bg-cream px-5 py-6 text-center"
+        aria-live="polite"
+        aria-atomic="true"
+        className="flex h-60 animate-[fadeIn_120ms_ease-out] items-center justify-center overflow-y-auto border-3 border-border bg-cream px-5 py-6 text-center motion-reduce:animate-none"
       >
+        <span className="sr-only">{`Kartu ${index + 1} dari ${LEN}.`}</span>
         {card.kind === "stat" ? (
           <div>
             {card.group && (
@@ -66,7 +84,7 @@ export function MadingKnowledgeBoard() {
         ) : (
           <div>
             <span className="pixel-panel -rotate-1 mb-4 inline-block bg-mustard px-3 py-1 font-display text-[10px] text-ink !shadow-none">
-              Tahukah Kamu?
+              {card.chip ?? "Tahukah Kamu?"}
             </span>
             <p className="mx-auto max-w-sm font-body text-xl leading-snug text-ink-soft md:text-2xl">
               {card.text}
@@ -86,7 +104,7 @@ export function MadingKnowledgeBoard() {
           ‹
         </GameButton>
 
-        <div className="flex items-center gap-2" role="group" aria-label="Pilih kartu">
+        <div className="flex flex-wrap items-center justify-center gap-2" role="group" aria-label="Pilih kartu">
           {MADING_KNOWLEDGE_CARDS.map((_, i) => (
             <button
               key={i}
