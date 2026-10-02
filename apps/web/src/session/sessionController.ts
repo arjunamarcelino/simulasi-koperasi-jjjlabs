@@ -7,11 +7,13 @@ import type {
   Unsubscribe,
 } from "./transport/contract";
 import { sessionStore } from "../stores/session.store";
+import { gameStore } from "../stores/game.store";
 import { progressRepo } from "../lib/progressRepo";
 
 /**
  * One-way glue: Transport → store. React never reads the transport directly; it
- * only calls the actions here.
+ * only calls the actions here. (On a good-ending session finish it also pokes
+ * gameStore.syncSessionBadges — a best-effort cosmetic side-channel, see persistResult.)
  *
  * A monotonic `generation` counter makes teardown race-proof: every stop()/start()
  * bumps it, and any async work (a resolving connect()) whose captured generation
@@ -69,8 +71,17 @@ export function createSessionController(): SessionController {
         feedback: result.narrativeFeedback,
         startedAt: sessionStartedAt,
       });
-      if (outcome.status !== "ok") console.warn("Gagal menyimpan hasil sesi:", outcome.status);
-      else if (!outcome.data.ok) console.warn("Hasil sesi ditolak:", outcome.data.reason);
+      if (outcome.status !== "ok") {
+        console.warn("Gagal menyimpan hasil sesi:", outcome.status);
+        return;
+      }
+      if (!outcome.data.ok) {
+        console.warn("Hasil sesi ditolak:", outcome.data.reason);
+        return;
+      }
+      // A good ending may newly earn a scenario badge; re-derive + persist (best-effort,
+      // self-guarding) now that the row is committed. Assumes reads hit the primary.
+      if (result.endingType === "good") void gameStore.getState().syncSessionBadges();
     } catch (cause: unknown) {
       console.warn("Gagal menyimpan hasil sesi:", cause instanceof Error ? cause.message : cause);
     }

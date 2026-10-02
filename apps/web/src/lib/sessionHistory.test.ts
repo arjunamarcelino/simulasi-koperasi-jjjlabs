@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { groupByScenario, rankBestResult, toSessionEnded } from "./sessionHistory";
+import {
+  goodEndingScenarioIds,
+  groupByScenario,
+  rankBestResult,
+  toSessionEnded,
+} from "./sessionHistory";
 import type { SessionRecord } from "./sessionsRepo.contracts";
 
 const rec = (o: Partial<SessionRecord> = {}): SessionRecord => ({
@@ -85,6 +90,50 @@ describe("groupByScenario", () => {
 
   it("returns [] for no records", () => {
     expect(groupByScenario([])).toEqual([]);
+  });
+});
+
+describe("goodEndingScenarioIds", () => {
+  it("returns a scenario whose only attempt ended good", () => {
+    expect(goodEndingScenarioIds([rec({ scenarioId: "kredit-macet", endingType: "good" })])).toEqual([
+      "kredit-macet",
+    ]);
+  });
+
+  it("includes a scenario with any good attempt (best-attempt invariant)", () => {
+    const ids = goodEndingScenarioIds([
+      rec({ id: "a", scenarioId: "kredit-macet", endingType: "bad", startedAt: 1 }),
+      rec({ id: "b", scenarioId: "kredit-macet", endingType: "good", startedAt: 2 }),
+      rec({ id: "c", scenarioId: "kredit-macet", endingType: "bad", startedAt: 3 }),
+    ]);
+    expect(ids).toEqual(["kredit-macet"]);
+  });
+
+  it("includes a tutorial good ending despite empty scores", () => {
+    expect(
+      goodEndingScenarioIds([
+        rec({ scenarioId: "tutorial-koperasi-konsumen", endingType: "good", scores: {} }),
+      ]),
+    ).toEqual(["tutorial-koperasi-konsumen"]);
+  });
+
+  it("excludes scenarios with only neutral/bad attempts", () => {
+    expect(
+      goodEndingScenarioIds([
+        rec({ scenarioId: "kredit-macet", endingType: "neutral" }),
+        rec({ scenarioId: "rapat-anggota-tahunan", endingType: "bad" }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("returns [] for no records", () => {
+    expect(goodEndingScenarioIds([])).toEqual([]);
+  });
+
+  it("returns an uncatalogued raw id if its attempt ended good", () => {
+    expect(
+      goodEndingScenarioIds([rec({ scenarioId: "legacy-scenario-x", endingType: "good" })]),
+    ).toEqual(["legacy-scenario-x"]);
   });
 });
 

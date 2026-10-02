@@ -61,7 +61,7 @@ function isBetter(a: SessionRecord, b: SessionRecord): boolean {
 }
 
 /** Group finalized attempts by scenario (attempts newest-first, groups in catalog order). */
-export function groupByScenario(records: SessionRecord[]): ScenarioHistory[] {
+export function groupByScenario(records: readonly SessionRecord[]): ScenarioHistory[] {
   const buckets = new Map<string, SessionRecord[]>();
   for (const r of records) {
     const bucket = buckets.get(r.scenarioId);
@@ -89,4 +89,17 @@ export function groupByScenario(records: SessionRecord[]): ScenarioHistory[] {
       (a.title < b.title ? -1 : a.title > b.title ? 1 : 0),
   );
   return groups;
+}
+
+/**
+ * Scenario ids whose BEST attempt ended "good". Reuses groupByScenario's
+ * best-attempt ranking (ENDING_RANK dominates score/recency), so a single good
+ * attempt earns the scenario even if later attempts were neutral/bad. One group
+ * per scenario, so the result is inherently de-duplicated. Pure — feeds
+ * BadgeContext.goodEndingScenarioIds.
+ */
+export function goodEndingScenarioIds(records: readonly SessionRecord[]): string[] {
+  return groupByScenario(records)
+    .filter((g) => g.best.endingType === "good")
+    .map((g) => g.scenarioId);
 }

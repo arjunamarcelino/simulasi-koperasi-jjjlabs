@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SessionRecord } from "../lib/sessionsRepo.contracts";
 
 /** Memory-backed Storage stub, optionally pre-seeded. */
 function memStorage(seed: Record<string, string> = {}): Storage {
@@ -23,6 +24,19 @@ type RepoResult<T> =
 
 const ok = <T>(data: T): RepoResult<T> => ({ status: "ok", data });
 
+/** Minimal SessionRecord factory for the session-badge tests. */
+const sess = (o: Partial<SessionRecord> = {}): SessionRecord => ({
+  id: "s1",
+  scenarioId: "kredit-macet",
+  startedAt: 1000,
+  endingType: "good",
+  trigger: "manual",
+  scores: {},
+  stateClassification: {},
+  narrativeFeedback: "",
+  ...o,
+});
+
 type RepoMock = {
   getMyProgress: ReturnType<typeof vi.fn>;
   fetchQuiz: ReturnType<typeof vi.fn>;
@@ -33,12 +47,15 @@ type RepoMock = {
   syncBadges: ReturnType<typeof vi.fn>;
 };
 
+type SessionsMock = { listMySessions: ReturnType<typeof vi.fn> };
+
 /** Import a fresh game.store with a stubbed localStorage, a mocked supabase (online
- * flag), and a controllable progressRepo. */
+ * flag), a controllable progressRepo, and a controllable sessionsRepo. */
 async function loadStore(opts: {
   seed?: Record<string, string>;
   online?: boolean;
   repo?: Partial<RepoMock>;
+  sessions?: Partial<SessionsMock>;
 }) {
   vi.resetModules();
   const storage = memStorage(opts.seed ?? {});
@@ -55,14 +72,22 @@ async function loadStore(opts: {
     ...opts.repo,
   };
   vi.doMock("../lib/progressRepo", () => ({ progressRepo: repo }));
+  // hydrate now also derives session badges, so every hydrate hits sessionsRepo;
+  // default to an empty history so unrelated tests are unaffected.
+  const sessions: SessionsMock = {
+    listMySessions: vi.fn().mockResolvedValue(ok([])),
+    ...opts.sessions,
+  };
+  vi.doMock("../lib/sessionsRepo", () => ({ sessionsRepo: sessions }));
   const mod = await import("./game.store");
-  return { gameStore: mod.gameStore, storage, repo };
+  return { gameStore: mod.gameStore, storage, repo, sessions };
 }
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.doUnmock("../lib/supabase");
   vi.doUnmock("../lib/progressRepo");
+  vi.doUnmock("../lib/sessionsRepo");
   vi.resetModules();
 });
 
@@ -278,5 +303,120 @@ describe("game.store — online (server-authoritative)", () => {
     const ids = gameStore.getState().completedMissionIds;
     expect(ids).toContain("keliling"); // B kept
     expect(ids).not.toContain("baca-mading"); // A's phantom removed despite the epoch bump
+  });
+});
+
+describe("game.store — session good-ending badges", () => {
+  it("persists a session badge on hydrate (retroactive earn)", async () => {
+    const { gameStore, repo } = await loadStore({
+      online: true,
+      sessions: {
+        listMySessions: vi
+          .fn()
+          .mockResolvedValue(ok([sess({ scenarioId: "rapat-anggota-tahunan", endingType: "good" })])),
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    // Exactly once with only the scenario badge: the wallet pass earns nothing at xp 0.
+    expect(repo.syncBadges).toHaveBeenCalledTimes(1);
+    expect(repo.syncBadges).toHaveBeenCalledWith(["juara-rat"]);
+  });
+
+  it("earns a fresh scenario badge via a direct syncSessionBadges call", async () => {
+    const { gameStore, repo } = await loadStore({
+      online: true,
+      sessions: {
+        listMySessions: vi
+          .fn()
+          .mockResolvedValueOnce(ok([])) // hydrate: nothing earned yet
+          .mockResolvedValue(ok([sess({ scenarioId: "kredit-macet", endingType: "good" })])),
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    repo.syncBadges.mockClear();
+    await gameStore.getState().syncSessionBadges();
+    expect(repo.syncBadges).toHaveBeenCalledTimes(1);
+    expect(repo.syncBadges).toHaveBeenCalledWith(["pinjaman-lancar"]);
+  });
+
+  it("coalesces concurrent syncs so a code is persisted only once", async () => {
+    const { gameStore, repo } = await loadStore({
+      online: true,
+      sessions: {
+        listMySessions: vi
+          .fn()
+          .mockResolvedValueOnce(ok([])) // hydrate: nothing earned yet
+          .mockResolvedValue(ok([sess({ scenarioId: "kredit-macet", endingType: "good" })])),
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    repo.syncBadges.mockClear();
+
+    // Fire two syncs concurrently; the serialization chain must let the second dedup
+    // against the first's cache write rather than fire a duplicate RPC.
+    await Promise.all([
+      gameStore.getState().syncSessionBadges(),
+      gameStore.getState().syncSessionBadges(),
+    ]);
+
+    const pinjamanCalls = repo.syncBadges.mock.calls.filter(
+      (c) => Array.isArray(c[0]) && (c[0] as string[]).includes("pinjaman-lancar"),
+    );
+    expect(pinjamanCalls).toHaveLength(1);
+  });
+
+  it("is a no-op when session history is unavailable (degraded)", async () => {
+    const { gameStore, repo } = await loadStore({
+      online: true,
+      sessions: { listMySessions: vi.fn().mockResolvedValue({ status: "degraded" }) },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    expect(repo.syncBadges).not.toHaveBeenCalled();
+  });
+
+  it("does not persist a badge for a neutral/bad ending", async () => {
+    const { gameStore, repo } = await loadStore({
+      online: true,
+      sessions: {
+        listMySessions: vi
+          .fn()
+          .mockResolvedValue(ok([sess({ scenarioId: "kredit-macet", endingType: "neutral" })])),
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    expect(repo.syncBadges).not.toHaveBeenCalled();
+  });
+
+  it("drops the sync when the owner changes during the session fetch", async () => {
+    let resolveFetch: (v: RepoResult<SessionRecord[]>) => void = () => {};
+    const hanging = new Promise<RepoResult<SessionRecord[]>>((r) => {
+      resolveFetch = r;
+    });
+    const { gameStore, repo } = await loadStore({
+      online: true,
+      sessions: {
+        listMySessions: vi
+          .fn()
+          .mockResolvedValueOnce(ok([])) // A's hydrate: empty, lets hydrate finish
+          .mockReturnValueOnce(hanging) // our explicit call: hangs so we can flip owner mid-fetch
+          .mockResolvedValue(ok([])), // B's hydrate: empty
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    repo.syncBadges.mockClear();
+
+    const pending = gameStore.getState().syncSessionBadges(); // captures guard {epoch, user-A}
+    gameStore.getState().onOwnerChanged("user-B"); // bump epoch + owner before the fetch resolves
+    resolveFetch(ok([sess({ scenarioId: "rapat-anggota-tahunan", endingType: "good" })]));
+    await pending;
+
+    // The stale result belonged to user-A; the guard must drop it rather than write to user-B.
+    expect(repo.syncBadges).not.toHaveBeenCalled();
   });
 });

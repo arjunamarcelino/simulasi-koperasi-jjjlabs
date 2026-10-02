@@ -5,7 +5,7 @@
   { "id": "penjelajah", "title": "Penjelajah", "requirement": "Jelajahi koperasi", "icon": "compass", "criteria": { "kind": "missionDone", "missionId": "keliling" } },
   { "id": "hartawan", "title": "Hartawan", "requirement": "Kumpulkan 100 poin", "icon": "coin", "criteria": { "kind": "point", "min": 100 } },
   { "id": "misi-perdana", "title": "Misi Perdana", "requirement": "Selesaikan 1 misi", "icon": "flag", "criteria": { "kind": "missionCount", "min": 1 } },
-  { "id": "juara-rat", "title": "Juara RAT", "requirement": "Belum tersedia", "icon": "trophy", "criteria": null },
-  { "id": "simpanan-rutin", "title": "Simpanan Rutin", "requirement": "Belum tersedia", "icon": "piggy", "criteria": null },
-  { "id": "pinjaman-lancar", "title": "Pinjaman Lancar", "requirement": "Belum tersedia", "icon": "check", "criteria": null }
+  { "id": "juara-rat", "title": "Juara RAT", "requirement": "Raih hasil baik di RAT", "icon": "trophy", "criteria": { "kind": "scenarioGoodEnding", "scenarioId": "rapat-anggota-tahunan" } },
+  { "id": "simpanan-rutin", "title": "Simpanan Rutin", "requirement": "Selesaikan tutorial simpanan", "icon": "piggy", "criteria": { "kind": "scenarioGoodEnding", "scenarioId": "tutorial-koperasi-konsumen" } },
+  { "id": "pinjaman-lancar", "title": "Pinjaman Lancar", "requirement": "Tangani kredit macet dengan baik", "icon": "check", "criteria": { "kind": "scenarioGoodEnding", "scenarioId": "kredit-macet" } }
 ]
