@@ -318,6 +318,8 @@ describe("game.store — session good-ending badges", () => {
     });
     gameStore.getState().onOwnerChanged("user-A");
     await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    // Exactly once with only the scenario badge: the wallet pass earns nothing at xp 0.
+    expect(repo.syncBadges).toHaveBeenCalledTimes(1);
     expect(repo.syncBadges).toHaveBeenCalledWith(["juara-rat"]);
   });
 
@@ -335,6 +337,7 @@ describe("game.store — session good-ending badges", () => {
     await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
     repo.syncBadges.mockClear();
     await gameStore.getState().syncSessionBadges();
+    expect(repo.syncBadges).toHaveBeenCalledTimes(1);
     expect(repo.syncBadges).toHaveBeenCalledWith(["pinjaman-lancar"]);
   });
 
