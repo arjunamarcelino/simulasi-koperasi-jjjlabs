@@ -5,7 +5,7 @@ import type { ScenarioConfig } from "../types/scenario";
  * (RAT); all four here are authored and `AVAILABLE` (content-complete and
  * playable when reached). A scenario's `status` reflects its own content, not
  * where it's exposed — hub wiring (rooms vs. NPC stations) lives elsewhere
- * (rooms.config.ts, KoperasiInteriorScene).
+ * (src/world/rooms.config.ts, src/game/scenes/KoperasiInteriorScene.ts).
  */
 export const SCENARIOS: readonly ScenarioConfig[] = [
   {
