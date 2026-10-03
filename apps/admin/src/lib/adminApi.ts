@@ -1,0 +1,104 @@
+import { supabase } from "./supabase";
+import { ENV } from "../config/env";
+
+/**
+ * Total outcome of probing `GET /admin/me`. The store is a pure reducer over this —
+ * it never sees a raw Response and never branches on the body's `is_admin` (which is
+ * always true in a 200, so it carries no authorization info). Authorization lives in
+ * the HTTP STATUS only.
+ */
+export type ProbeOutcome =
+  | { kind: "authorized"; userId: string }
+  | { kind: "notAuthorized" } // 403
+  | { kind: "unauthenticated" } // 401 (after a single refresh-retry) or no session
+  | { kind: "serviceUnavailable"; transient: boolean } // 503 transient / 500 hard
+  | { kind: "networkError" } // fetch threw / CORS / aborted
+  | { kind: "authUnavailable" }; // null client (missing env)
+
+/** Narrow the 200 body with a real guard — no `as` cast (which `no-explicit-any` rejects). */
+function isProbeBody(x: unknown): x is { user_id: string } {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    typeof (x as Record<string, unknown>)["user_id"] === "string"
+  );
+}
+
+/** Shared in-flight refresh so N concurrent 401s trigger one token rotation, not N. */
+let refreshInFlight: Promise<string | undefined> | null = null;
+function refreshOnce(): Promise<string | undefined> {
+  refreshInFlight ??= (async () => {
+    try {
+      const { data } = await supabase!.auth.refreshSession();
+      return data.session?.access_token;
+    } catch {
+      return undefined;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+/** Absolute URL of GET /admin/me, or null when the endpoint env is unset/invalid. */
+function adminMeUrl(): string | null {
+  const base = ENV.adminApiEndpoint;
+  if (!base?.trim()) return null;
+  try {
+    return new URL("/admin/me", new URL(base).origin).href;
+  } catch {
+    return null;
+  }
+}
+
+async function classify(res: Response): Promise<ProbeOutcome> {
+  switch (res.status) {
+    case 200: {
+      const body: unknown = await res.json().catch(() => null);
+      return isProbeBody(body)
+        ? { kind: "authorized", userId: body.user_id }
+        : { kind: "serviceUnavailable", transient: false }; // 200 but malformed → fault
+    }
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    case 503:
+      return { kind: "serviceUnavailable", transient: true };
+    default:
+      return { kind: "serviceUnavailable", transient: false };
+  }
+}
+
+/**
+ * Probe `GET /admin/me`. Gates on STATUS, not the body. The SOLE owner of the 401
+ * refresh-retry (the store must never refresh on 401). The Bearer attaches ONLY to the
+ * admin-API origin — never anywhere else. A null client → `authUnavailable` with NO
+ * network call (do not fall through to a tokenless fetch, which would 401 → wrong
+ * "login" bounce).
+ */
+export async function probeAdmin(signal?: AbortSignal): Promise<ProbeOutcome> {
+  if (!supabase) return { kind: "authUnavailable" };
+  const url = adminMeUrl();
+  if (!url) return { kind: "serviceUnavailable", transient: false };
+
+  const send = (token: string): Promise<Response> =>
+    fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: signal ?? null });
+
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) return { kind: "unauthenticated" };
+
+    let res = await send(session.access_token);
+    if (res.status === 401) {
+      const refreshed = await refreshOnce();
+      if (!refreshed) return { kind: "unauthenticated" };
+      res = await send(refreshed);
+    }
+    return classify(res);
+  } catch {
+    return { kind: "networkError" };
+  }
+}

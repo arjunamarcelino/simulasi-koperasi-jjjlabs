@@ -1,0 +1,36 @@
+# Admin frontend gates: typecheck + lint + unit tests + production build. Runs on any
+# change to apps/admin or the lockfile (admin has no @simkop/catalog dep, so not packages/**).
+name: admin-ci
+
+on:
+  push:
+    paths:
+      - "apps/admin/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/admin-ci.yml"
+  pull_request:
+    paths:
+      - "apps/admin/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/admin-ci.yml"
+
+jobs:
+  admin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm --filter admin typecheck
+      - name: Lint
+        run: pnpm --filter admin lint
+      - name: Test
+        run: pnpm --filter admin test
+      - name: Build
+        run: pnpm --filter admin build
