@@ -1,9 +1,11 @@
 import type { ScenarioConfig } from "../types/scenario";
 
 /**
- * Config-driven scenario list. The headline scenario for this project is
- * Rapat Anggota Tahunan (RAT); the rest are placeholders ("Segera Hadir")
- * until their mechanics are designed.
+ * Config-driven scenario list. The headline scenario is Rapat Anggota Tahunan
+ * (RAT); all four here are authored and `AVAILABLE` (content-complete and
+ * playable when reached). A scenario's `status` reflects its own content, not
+ * where it's exposed — hub wiring (rooms vs. NPC stations) lives elsewhere
+ * (rooms.config.ts, KoperasiInteriorScene).
  */
 export const SCENARIOS: readonly ScenarioConfig[] = [
   {
