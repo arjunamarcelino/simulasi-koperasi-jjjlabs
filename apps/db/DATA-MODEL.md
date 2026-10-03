@@ -189,6 +189,19 @@ Identity/auth, `sessions` + score (persisted SIM-6), `user_badge.awarded_at`, an
 catalog tables (formerly FE-only arrays; the DB is now the source of truth, with the FE
 and the seed both deriving from the shared `@simkop/catalog` package).
 
+### Admin role (SIM-14)
+`public.admins` (`user_id` PK → `auth.users` on delete cascade, `created_at`) is a membership
+table **separate from `profiles`/user** — used ONLY by the admin dashboard (`apps/admin`), never by
+the game. RLS is on with **no client policies** (clients cannot read/write it); only
+`supabase_auth_admin` has a `select` policy, needed because that role does **not** bypass RLS.
+Membership is managed by `service_role`/seed only (`seeds/dev_admins.sql`, kept out of the generated
+`seed.sql`). A **custom access token hook** (`public.custom_access_token_hook`, grant-based, fail-safe)
+reads `admins` and stamps a **top-level boolean `is_admin`** claim into every JWT at mint/refresh; the
+DB-free backend reads that claim and enforces `require_role('admin')` (`is_admin AND NOT is_anonymous`).
+
+> **Invariant:** `is_admin` is only meaningful paired with `is_anonymous = false` (an admin is never an
+> anonymous session). The backend enforces the pairing today; any future `is_admin()` RLS helper must too.
+
 > **On the reallife codes:** `redeem_code` is a *soft* gate — printed at the KDMP and typed
 > by the player. It is **not** a cryptographic secret. As of SIM-9 the codes live server-side
 > only (`apps/db/seed-codes.json` → `redeem_code`) and no longer ship in the client bundle;
