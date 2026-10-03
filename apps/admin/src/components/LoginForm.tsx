@@ -26,7 +26,7 @@ export function LoginForm() {
     void signIn(email.trim(), password, token);
   };
 
-  // NO signup path — admin accounts are provisioned (service_role/dashboard).
+  // NO signup path — admin accounts are provisioned server-side (dashboard).
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-6">
       <h1 className="text-xl font-bold text-forest">Admin — Simulasi Koperasi</h1>

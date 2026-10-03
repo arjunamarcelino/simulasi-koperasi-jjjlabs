@@ -1,7 +1,7 @@
 /**
  * Admin app env. No eager validation — the app must still boot with zero env
  * (lib/supabase.ts degrades to a null client → the UI shows "auth unavailable").
- * All keys are PUBLIC/build-time; the service_role key is NEVER referenced here.
+ * All keys are PUBLIC/build-time; the RLS-bypassing secret key is NEVER referenced here.
  */
 export const ENV = {
   // Left `string | undefined` on purpose so "is it configured?" is a plain truthiness

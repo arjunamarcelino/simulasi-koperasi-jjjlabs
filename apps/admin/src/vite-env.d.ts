@@ -3,7 +3,7 @@
 interface ImportMetaEnv {
   // Supabase auth. Both PUBLIC (ship in the bundle); optional so the app still boots
   // with zero env in a degraded "auth unavailable" mode. Only ever the anon /
-  // publishable key here — NEVER the RLS-bypassing service_role key.
+  // publishable key here — NEVER the RLS-bypassing secret key.
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
   // Origin of the FastAPI backend that serves GET /admin/me (SIM-14).

@@ -24,7 +24,7 @@ export type TypedSupabaseClient = SupabaseClient<AdminDatabase>;
  * The single Supabase client, or **null** when the public env is absent (degraded —
  * the UI shows a terminal "auth unavailable" screen and never renders the shell).
  * Password-only: no OAuth redirect, so PKCE / detectSessionInUrl are off;
- * persistSession + autoRefreshToken stay on. Only the anon key — never service_role.
+ * persistSession + autoRefreshToken stay on. Only the anon key — never the secret key.
  */
 export const supabase: TypedSupabaseClient | null =
   ENV.supabaseUrl && ENV.supabaseAnonKey
