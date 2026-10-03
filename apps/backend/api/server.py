@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import uuid
+from collections.abc import Mapping
 from datetime import timedelta
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from livekit import api
 from pydantic import BaseModel
 
 from . import auth
-from .auth import AuthedUser, verify_supabase_jwt
+from .auth import AuthedUser, require_role, verify_supabase_jwt
 from .ratelimit import RateLimiter
 
 log = logging.getLogger("koperasi.token")
@@ -32,7 +33,18 @@ LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "")
 LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
 LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
 AGENT_NAME = os.environ.get("LIVEKIT_AGENT_NAME", "koperasi-agent")
-CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "http://localhost:5173")
+def _parse_cors_origins(env: Mapping[str, str] | None = None) -> list[str]:
+    """Daftar origin CORS. Prioritas: CORS_ALLOW_ORIGINS (comma-split) → fallback ke
+    CORS_ALLOW_ORIGIN lama (agar CORS prod game tak diam-diam rusak saat rename) →
+    default dev game+admin. Strip spasi & buang entri kosong (trailing comma dll)."""
+    e = os.environ if env is None else env
+    raw = e.get("CORS_ALLOW_ORIGINS") or e.get(
+        "CORS_ALLOW_ORIGIN", "http://localhost:5173,http://localhost:5174"
+    )
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+CORS_ALLOW_ORIGINS = _parse_cors_origins()
 
 # Rate limit per-user pada /token (mitigasi H1: tiap mint men-dispatch agent
 # berbayar). Default: TOKEN_RATE_CAPACITY permintaan per TOKEN_RATE_WINDOW_SEC.
@@ -54,13 +66,13 @@ LIVEKIT_TOKEN_TTL = timedelta(hours=1)
 
 app = FastAPI(title="Koperasi Token Server")
 
-# CORS eksplisit (bukan wildcard): FE mengirim header `Authorization` (Bearer),
-# jadi request /token menjadi preflighted. `allow_origins` di sini BUKAN kontrol
-# auth — JWT-lah gerbangnya. Tanpa credentials (Bearer di header, bukan cookie).
+# CORS eksplisit (bukan wildcard): FE mengirim header `Authorization` (Bearer), jadi
+# request /token dan GET /admin/me menjadi preflighted. `allow_origins` di sini BUKAN
+# kontrol auth — JWT-lah gerbangnya. Tanpa credentials (Bearer di header, bukan cookie).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[CORS_ALLOW_ORIGIN],
-    allow_methods=["POST", "OPTIONS"],
+    allow_origins=CORS_ALLOW_ORIGINS,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -75,9 +87,27 @@ class TokenResponse(BaseModel):
     url: str
 
 
+class AdminMeResponse(BaseModel):
+    user_id: str
+    is_admin: bool
+
+
+# Singleton level-modul (bukan call di argumen default → hindari B008, dan validasi
+# role 'admin' sekali saat import, bukan tiap request).
+_require_admin = require_role("admin")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/admin/me", response_model=AdminMeResponse)
+def admin_me(user: AuthedUser = Depends(_require_admin)) -> AdminMeResponse:
+    # Probe gerbang admin (SIM-14). require_role sudah menjamin admin & non-anon:
+    # token hilang/invalid → 401 (verifier), authenticated non-admin/anon → 403.
+    # Body minimal (tanpa bocoran sebab); is_admin dibaca dari user, bukan literal True.
+    return AdminMeResponse(user_id=user.user_id, is_admin=user.is_admin)
 
 
 @app.post("/token", response_model=TokenResponse)
