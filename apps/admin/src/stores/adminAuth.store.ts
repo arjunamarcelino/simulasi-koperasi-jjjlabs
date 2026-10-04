@@ -72,12 +72,12 @@ export const adminAuthStore = createStore<AdminAuthState>()((set, get) => ({
     const g = get().gate;
     if (g.status === "notAuthorized" && g.refreshing) return; // double-click guard
     set({ gate: { status: "notAuthorized", refreshing: true } });
-    const { error } = await supabase.auth.refreshSession();
-    // On success TOKEN_REFRESHED drives the single re-probe (which resets refreshing via
-    // applyOutcome). On failure, clear the spinner so the buttons work again.
-    if (error && get().gate.status === "notAuthorized") {
-      set({ gate: { status: "notAuthorized", refreshing: false } });
-    }
+    await supabase.auth.refreshSession();
+    // Don't rely on TOKEN_REFRESHED alone to clear `refreshing` — refreshSession may
+    // resolve without emitting a new-token event (e.g. token unchanged), leaving the
+    // spinner stuck forever. Deterministically re-probe (dedups with any TOKEN_REFRESHED
+    // probe on the same token), which always resolves to a gate that clears `refreshing`.
+    await get().retry();
   },
 
   retry: async () => {
@@ -159,7 +159,13 @@ async function runProbe(token: string): Promise<void> {
 function handleAuth(event: string, token: string | null): void {
   if (event === "SIGNED_OUT" || !token) {
     lastProbedToken = null;
+    // Bump the epoch BEFORE aborting: aborting the in-flight probe makes its fetch
+    // reject, which probeAdmin turns into an outcome — without this bump that stale
+    // outcome would pass runProbe's epoch guard and clobber UNAUTH (e.g. flip the gate
+    // to serviceUnavailable, or worse, a late `authorized` after sign-out).
+    probeEpoch++;
     currentAbort?.abort();
+    currentAbort = null;
     setResolved(UNAUTH); // NEVER signInAnonymously here
     return;
   }

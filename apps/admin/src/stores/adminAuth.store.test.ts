@@ -97,6 +97,23 @@ describe("adminAuth store", () => {
     expect(h.probeAdmin).toHaveBeenCalledTimes(1);
   });
 
+  it("SIGNED_OUT during an in-flight probe is NOT clobbered by the stale probe result", async () => {
+    // Regression for the epoch-tombstone race: a probe that resolves AFTER sign-out
+    // (its fetch was aborted → late outcome) must be dropped, never overwrite UNAUTH —
+    // not even with a stale `authorized`.
+    let resolveProbe!: (o: unknown) => void;
+    h.probeAdmin.mockImplementation(() => new Promise((r) => (resolveProbe = r)));
+    initAdminAuth();
+    emit("INITIAL_SESSION", "t1");
+    await flush(); // probe started, still pending
+    emit("SIGNED_OUT", null);
+    await flush(); // sign-out resolves the gate to unauthenticated
+    expect(gate().status).toBe("unauthenticated");
+    resolveProbe({ kind: "authorized", userId: "stale" }); // late result from the aborted probe
+    await flush();
+    expect(gate().status).toBe("unauthenticated"); // dropped by the epoch bump, NOT authorized
+  });
+
   it("TOKEN_REFRESHED with a NEW token re-probes (demotion reflected)", async () => {
     h.probeAdmin.mockResolvedValueOnce({ kind: "authorized", userId: "u1" });
     initAdminAuth();
