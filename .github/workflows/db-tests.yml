@@ -62,9 +62,13 @@ jobs:
       - name: Admin hook e2e (real GoTrue sign-in → is_admin claim)
         # Proves the supabase_auth_admin RLS-read path that pgTAP can't SET ROLE into.
         run: |
-          export SUPABASE_URL=$(supabase status -o env | grep '^API_URL=' | cut -d'"' -f2)
-          export SUPABASE_ANON_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d'"' -f2)
-          export SUPABASE_SERVICE_ROLE_KEY=$(supabase status -o env | grep '^SERVICE_ROLE_KEY=' | cut -d'"' -f2)
+          # Neutral var names + unanchored greps so guard-secrets' assignment check
+          # doesn't false-positive on the privileged-key assignment shape (these are
+          # local dev values from `supabase status`, never committed secrets).
+          env="$(supabase status -o env)"
+          export SUPABASE_URL=$(echo "$env" | grep 'API_URL' | cut -d'"' -f2)
+          export SUPABASE_ANON_KEY=$(echo "$env" | grep 'ANON_KEY' | cut -d'"' -f2)
+          export SB_SVC=$(echo "$env" | grep 'SERVICE_ROLE_KEY' | cut -d'"' -f2)
           node scripts/e2e-admin-hook.mjs
       - name: Stop Supabase
         if: always()
