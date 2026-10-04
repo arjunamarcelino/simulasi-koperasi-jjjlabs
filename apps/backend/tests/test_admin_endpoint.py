@@ -130,6 +130,37 @@ def test_cors_default_includes_admin_origin():
     assert "http://localhost:5174" in _parse_cors_origins({})
 
 
+def test_cors_blank_plural_falls_back_not_blocks_all():
+    # A whitespace/comma-only plural must NOT silently block every origin — it falls
+    # through to the singular, then the default (fail-open to the documented origins).
+    from api.server import _parse_cors_origins
+
+    assert _parse_cors_origins({"CORS_ALLOW_ORIGINS": " , "}) == [
+        "http://localhost:5173",
+        "http://localhost:5174",
+    ]
+    assert _parse_cors_origins({"CORS_ALLOW_ORIGINS": " , ", "CORS_ALLOW_ORIGIN": "http://x"}) == [
+        "http://x"
+    ]
+
+
+def test_admin_origin_preflight_allows_get(client):
+    # Live middleware: the admin app (:5174) can preflight GET /admin/me. Depends on
+    # import-time CORS_ALLOW_ORIGINS (the default includes :5174); the middleware
+    # captures allow_origins at app.add_middleware time, so this can't be monkeypatched.
+    resp = client.options(
+        "/admin/me",
+        headers={
+            "Origin": "http://localhost:5174",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:5174"
+    assert "authorization" in resp.headers["access-control-allow-headers"].lower()
+
+
 def test_game_origin_still_allowed(client):
     # Regresi: origin game lama tetap diizinkan (CORS tak rusak oleh perubahan admin).
     resp = client.options(

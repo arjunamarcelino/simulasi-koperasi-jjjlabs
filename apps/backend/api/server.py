@@ -33,15 +33,22 @@ LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "")
 LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
 LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
 AGENT_NAME = os.environ.get("LIVEKIT_AGENT_NAME", "koperasi-agent")
+
+CORS_DEFAULT_ORIGINS = "http://localhost:5173,http://localhost:5174"  # dev: game + admin
+
+
 def _parse_cors_origins(env: Mapping[str, str] | None = None) -> list[str]:
     """Daftar origin CORS. Prioritas: CORS_ALLOW_ORIGINS (comma-split) → fallback ke
     CORS_ALLOW_ORIGIN lama (agar CORS prod game tak diam-diam rusak saat rename) →
-    default dev game+admin. Strip spasi & buang entri kosong (trailing comma dll)."""
+    default dev game+admin. Strip spasi & buang entri kosong. Jika sebuah sumber hanya
+    berisi spasi/koma (→ kosong setelah filter), JATUH ke sumber berikutnya alih-alih
+    memblokir semua origin diam-diam."""
     e = os.environ if env is None else env
-    raw = e.get("CORS_ALLOW_ORIGINS") or e.get(
-        "CORS_ALLOW_ORIGIN", "http://localhost:5173,http://localhost:5174"
-    )
-    return [o.strip() for o in raw.split(",") if o.strip()]
+    for raw in (e.get("CORS_ALLOW_ORIGINS"), e.get("CORS_ALLOW_ORIGIN"), CORS_DEFAULT_ORIGINS):
+        origins = [o.strip() for o in (raw or "").split(",") if o.strip()]
+        if origins:
+            return origins
+    return []
 
 
 CORS_ALLOW_ORIGINS = _parse_cors_origins()
