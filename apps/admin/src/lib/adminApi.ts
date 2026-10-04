@@ -11,9 +11,12 @@ export type ProbeOutcome =
   | { kind: "authorized"; userId: string }
   | { kind: "notAuthorized" } // 403
   | { kind: "unauthenticated" } // 401 (after a single refresh-retry) or no session
-  | { kind: "serviceUnavailable"; transient: boolean } // 503 transient / 500 hard
-  | { kind: "networkError" } // fetch threw / CORS / aborted
+  | { kind: "serviceUnavailable" } // 503/500/network/timeout/malformed-200 — all "try again"
   | { kind: "authUnavailable" }; // null client (missing env)
+
+/** Per-probe request timeout: a hung/black-holed backend must not strand the UI
+ * (the boot watchdog only covers the pre-login "loading" state). */
+const PROBE_TIMEOUT_MS = 10_000;
 
 /** Narrow the 200 body with a real guard — no `as` cast (which `no-explicit-any` rejects). */
 function isProbeBody(x: unknown): x is { user_id: string } {
@@ -57,16 +60,14 @@ async function classify(res: Response): Promise<ProbeOutcome> {
       const body: unknown = await res.json().catch(() => null);
       return isProbeBody(body)
         ? { kind: "authorized", userId: body.user_id }
-        : { kind: "serviceUnavailable", transient: false }; // 200 but malformed → fault
+        : { kind: "serviceUnavailable" }; // 200 but malformed → fault
     }
     case 403:
       return { kind: "notAuthorized" };
     case 401:
       return { kind: "unauthenticated" };
-    case 503:
-      return { kind: "serviceUnavailable", transient: true };
     default:
-      return { kind: "serviceUnavailable", transient: false };
+      return { kind: "serviceUnavailable" }; // 503, 500, anything else → try again
   }
 }
 
@@ -80,10 +81,15 @@ async function classify(res: Response): Promise<ProbeOutcome> {
 export async function probeAdmin(signal?: AbortSignal): Promise<ProbeOutcome> {
   if (!supabase) return { kind: "authUnavailable" };
   const url = adminMeUrl();
-  if (!url) return { kind: "serviceUnavailable", transient: false };
+  if (!url) return { kind: "serviceUnavailable" };
 
+  // A timeout so a hung backend resolves to serviceUnavailable instead of hanging
+  // forever; combined with the caller's supersession signal (whose aborts are dropped
+  // by the store's epoch guard anyway).
+  const timeout = AbortSignal.timeout(PROBE_TIMEOUT_MS);
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const send = (token: string): Promise<Response> =>
-    fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: signal ?? null });
+    fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: combined });
 
   try {
     const {
@@ -99,6 +105,7 @@ export async function probeAdmin(signal?: AbortSignal): Promise<ProbeOutcome> {
     }
     return classify(res);
   } catch {
-    return { kind: "networkError" };
+    // timeout, supersession-abort, or a genuine network/CORS failure → all "try again".
+    return { kind: "serviceUnavailable" };
   }
 }

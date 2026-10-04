@@ -75,24 +75,24 @@ describe("probeAdmin", () => {
     expect(await probeAdmin()).toEqual({ kind: "unauthenticated" });
   });
 
-  it("503 → serviceUnavailable transient; 500 → hard", async () => {
+  it("503 and 500 → serviceUnavailable", async () => {
     h.getSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
     h.fetch.mockResolvedValue(resp(503));
-    expect(await probeAdmin()).toEqual({ kind: "serviceUnavailable", transient: true });
+    expect(await probeAdmin()).toEqual({ kind: "serviceUnavailable" });
     h.fetch.mockResolvedValue(resp(500));
-    expect(await probeAdmin()).toEqual({ kind: "serviceUnavailable", transient: false });
+    expect(await probeAdmin()).toEqual({ kind: "serviceUnavailable" });
   });
 
   it("200 with a malformed body → serviceUnavailable (fault, not authorized)", async () => {
     h.getSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
     h.fetch.mockResolvedValue(resp(200, { nope: 1 }));
-    expect(await probeAdmin()).toEqual({ kind: "serviceUnavailable", transient: false });
+    expect(await probeAdmin()).toEqual({ kind: "serviceUnavailable" });
   });
 
-  it("networkError when fetch throws", async () => {
+  it("fetch throwing (network / timeout / abort) → serviceUnavailable", async () => {
     h.getSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
     h.fetch.mockRejectedValue(new Error("boom"));
-    expect(await probeAdmin()).toEqual({ kind: "networkError" });
+    expect(await probeAdmin()).toEqual({ kind: "serviceUnavailable" });
   });
 
   it("authUnavailable with NO network when the client is null", async () => {

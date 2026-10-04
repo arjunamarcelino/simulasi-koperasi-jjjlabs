@@ -25,7 +25,7 @@ export type GateState =
   | { status: "unauthenticated"; loginError: LoginErrorKind | null; signingIn: boolean }
   | { status: "authorized"; userId: string }
   | { status: "notAuthorized"; refreshing: boolean }
-  | { status: "serviceUnavailable"; transient: boolean };
+  | { status: "serviceUnavailable" };
 
 export type AdminAuthState = {
   gate: GateState;
@@ -145,10 +145,7 @@ async function runProbe(token: string): Promise<void> {
       setResolved(UNAUTH);
       break;
     case "serviceUnavailable":
-      setResolved({ status: "serviceUnavailable", transient: outcome.transient });
-      break;
-    case "networkError":
-      setResolved({ status: "serviceUnavailable", transient: true });
+      setResolved({ status: "serviceUnavailable" });
       break;
     case "authUnavailable":
       setResolved({ status: "authUnavailable" });
@@ -195,7 +192,7 @@ export function initAdminAuth(): void {
   watchdog = setTimeout(() => {
     watchdog = null;
     if (adminAuthStore.getState().gate.status === "loading") {
-      adminAuthStore.setState({ gate: { status: "serviceUnavailable", transient: true } });
+      adminAuthStore.setState({ gate: { status: "serviceUnavailable" } });
     }
   }, WATCHDOG_MS);
 
