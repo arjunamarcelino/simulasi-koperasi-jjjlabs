@@ -27,7 +27,7 @@ def test_admin_token_reaches_admin_me(client, install_jwks, token_factory):
     token = token_factory(**_admin())
     resp = client.get("/admin/me", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
-    assert resp.json() == {"user_id": "admin-1", "is_admin": True}
+    assert resp.json() == {"user_id": "admin-1"}  # body carries only user_id; authz = status
 
 
 def test_authenticated_non_admin_is_403(client, install_jwks, token_factory):

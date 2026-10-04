@@ -91,10 +91,10 @@ tabel `public.admins` (SIM-14 DB).
 
 Response `200`:
 ```json
-{ "user_id": "<sub>", "is_admin": true }
+{ "user_id": "<sub>" }
 ```
-`is_admin` di body 200 selalu `true` → tak membawa info otorisasi; **FE memutuskan
-gerbang dari kode status, bukan body**.
+Body hanya `user_id` (untuk tampilan). **Otorisasi ada di KODE STATUS, bukan body** —
+`200` berarti admin; FE memutuskan gerbang dari status, tak pernah dari isi body.
 
 Status:
 

@@ -89,7 +89,6 @@ class TokenResponse(BaseModel):
 
 class AdminMeResponse(BaseModel):
     user_id: str
-    is_admin: bool
 
 
 # Singleton level-modul (bukan call di argumen default → hindari B008, dan validasi
@@ -106,8 +105,9 @@ def health() -> dict[str, str]:
 def admin_me(user: AuthedUser = Depends(_require_admin)) -> AdminMeResponse:
     # Probe gerbang admin (SIM-14). require_role sudah menjamin admin & non-anon:
     # token hilang/invalid → 401 (verifier), authenticated non-admin/anon → 403.
-    # Body minimal (tanpa bocoran sebab); is_admin dibaca dari user, bukan literal True.
-    return AdminMeResponse(user_id=user.user_id, is_admin=user.is_admin)
+    # Body cuma user_id (tampilan) — OTORISASI ada di KODE STATUS, bukan body (200 =
+    # admin). Sengaja TANPA is_admin agar tak jadi jebakan "gate on body".
+    return AdminMeResponse(user_id=user.user_id)
 
 
 @app.post("/token", response_model=TokenResponse)
