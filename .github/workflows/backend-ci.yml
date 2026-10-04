@@ -1,0 +1,30 @@
+# Backend gates: ruff lint + pytest (Supabase-JWT verifier, admin gate, rate-limit).
+# The admin authorization core (require_role, /admin/me, strict is_admin parse) lives
+# here, so it must run in CI. Tests need no network/real Supabase (JWKS is faked).
+name: backend-ci
+
+on:
+  push:
+    paths:
+      - "apps/backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "apps/backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install (frozen)
+        run: uv sync --frozen
+      - name: Lint
+        run: uvx ruff check api/ tests/
+      - name: Test
+        run: uv run pytest

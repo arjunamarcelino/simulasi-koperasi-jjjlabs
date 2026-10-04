@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -71,12 +71,16 @@ class AuthedUser:
 
     Sengaja MINIMAL — hanya field yang dipakai downstream. Klaim penuh (yang bisa
     memuat email/phone) TIDAK disimpan di objek ini agar tak mungkin bocor ke log
-    atau metadata LiveKit. Saat SIM-14 butuh role, hitung `is_admin: bool` di sini
-    saat verifikasi, jangan bawa klaim mentah.
+    atau metadata LiveKit. `is_admin` dihitung di sini saat verifikasi (SIM-14) —
+    jangan bawa klaim mentah, dan JANGAN masukkan ke participant_metadata() (wire
+    LiveKit itu khusus game, non-PII).
     """
 
     user_id: str  # klaim `sub` (dijamin non-kosong)
     is_anonymous: bool  # parse ketat; ambiguous/absen → True (guest, fail-safe)
+    # Default False = fail-closed ke non-admin, DAN menjaga call-site AuthedUser(...)
+    # lama (tes) tetap valid. Hanya verify_supabase_jwt yang men-set True.
+    is_admin: bool = False
 
     def participant_metadata(self) -> dict[str, object]:
         """Bentuk metadata peserta LiveKit (wire server→worker).
@@ -169,4 +173,29 @@ def verify_supabase_jwt(
     # Hanya boolean asli yang dipercaya; sisanya → guest (sisi restricted/fail-safe).
     is_anonymous = raw if isinstance(raw, bool) else True
 
-    return AuthedUser(user_id=sub, is_anonymous=is_anonymous)
+    # Parse KETAT juga, tapi defaultnya SENGAJA berlawanan dgn is_anonymous:
+    # fail-CLOSED ke non-admin. `is True` menolak "true"/1/null/absen → semua False.
+    # JANGAN "disamakan" bentuknya dgn is_anonymous — arah default-nya beda.
+    is_admin = claims.get("is_admin") is True
+
+    return AuthedUser(user_id=sub, is_anonymous=is_anonymous, is_admin=is_admin)
+
+
+def require_role(role: str) -> Callable[..., AuthedUser]:
+    """Factory dependency FastAPI: izinkan hanya user ber-role `role`.
+
+    Dibangun di atas `verify_supabase_jwt`, jadi urutan status terjaga: token
+    hilang/invalid → 401 (dari verifier) SEBELUM cek role; authenticated non-admin
+    → 403. v1 hanya mengenal 'admin'. `raise` (bukan `assert`, yang hilang di -O)
+    agar role tak dikenal gagal nyaring saat route didaftarkan.
+    """
+    if role != "admin":
+        raise ValueError(f"require_role: role tak didukung {role!r}")
+
+    def _dep(user: AuthedUser = Depends(verify_supabase_jwt)) -> AuthedUser:
+        # Admin = is_admin DAN bukan sesi anonim (keputusan SIM-14: tak ada admin anon).
+        if not user.is_admin or user.is_anonymous:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
+        return user
+
+    return _dep

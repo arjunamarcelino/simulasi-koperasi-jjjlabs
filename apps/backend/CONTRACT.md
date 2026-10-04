@@ -63,7 +63,8 @@ Status:
 | `500` | verifier/LiveKit belum dikonfigurasi (fail-closed) | surface error |
 | `503` | endpoint JWKS tak terjangkau | surface error |
 
-`403` **dicadangkan** (belum dipakai di v1; role admin ditunda ke SIM-14).
+`403` kini **dipakai** oleh gerbang admin `GET /admin/me` (SIM-14, di bawah); `/token`
+sendiri tak pernah 403.
 
 **Rate limit (`429`):** batas per-user (`sub`) in-memory pada `/token` (tiap mint
 men-dispatch agent LLM berbayar). Batas ini **tidak** membatasi abuse anonim secara
@@ -81,9 +82,37 @@ agar jalur worker mengatribusikan sesi ke user server-side. `is_anonymous:true`
 menandai guest (RLS Postgres, bukan endpoint ini, yang menolak reward guest).
 Terpisah dari **job metadata** dispatch `{scenario_id}` (§1).
 
-`GET /health` → `{ "status": "ok" }` (tanpa auth). CORS diizinkan untuk origin di
-env `CORS_ALLOW_ORIGIN` (default `http://localhost:5173`); ini **bukan** kontrol
-auth — JWT-lah gerbangnya.
+### `GET /admin/me`
+Gerbang area admin (SIM-14). **Wajib** `Authorization: Bearer <supabase-jwt>`. Backend
+memverifikasi JWT (sama seperti `/token`) lalu `require_role('admin')`: lolos hanya
+bila klaim **top-level `is_admin == true` DAN `is_anonymous == false`** (tak ada admin
+anonim). Klaim `is_admin` distempel ke JWT oleh Custom Access Token Hook Supabase dari
+tabel `public.admins` (SIM-14 DB).
+
+Response `200`:
+```json
+{ "user_id": "<sub>" }
+```
+Body hanya `user_id` (untuk tampilan). **Otorisasi ada di KODE STATUS, bukan body** —
+`200` berarti admin; FE memutuskan gerbang dari status, tak pernah dari isi body.
+
+Status:
+
+| kode | arti | perilaku FE |
+|---|---|---|
+| `200` | admin terverifikasi | render shell admin |
+| `401` | token hilang/invalid/kedaluwarsa (`WWW-Authenticate: Bearer`) | refresh sesi + retry SEKALI → login |
+| `403` | authenticated non-admin **atau** sesi anonim | "tak berwenang" (body `{"detail":"forbidden"}`, identik untuk kedua sebab); JANGAN refresh-loop |
+| `500` | verifier belum dikonfigurasi (fail-closed) | surface error |
+| `503` | endpoint JWKS tak terjangkau | surface error |
+
+Konsumen: **app admin terpisah** (`apps/admin`), bukan game. Gerbang client hanya
+tampilan — server (JWT terverifikasi + `require_role`) yang otoritatif.
+
+`GET /health` → `{ "status": "ok" }` (tanpa auth). CORS diizinkan untuk origin di env
+`CORS_ALLOW_ORIGINS` (comma-split; fallback ke `CORS_ALLOW_ORIGIN` lama; default dev
+`http://localhost:5173,http://localhost:5174` = game + admin), method `GET`/`POST`/
+`OPTIONS`, header `Authorization`; ini **bukan** kontrol auth — JWT-lah gerbangnya.
 
 ---
 

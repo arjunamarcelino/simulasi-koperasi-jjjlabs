@@ -23,3 +23,24 @@ enable_anonymous_sign_ins = true
 # Google OAuth (guest → permanent upgrade via linkIdentity) is not wired yet. When it
 # lands, add [auth.external.google] with enabled = true + client_id/secret via env(...).
 # Left out for now so `supabase start` can never fail resolving unset placeholders.
+
+# Admin login (SIM-14). Email/password provider ON so admins can sign in. The local
+# CLI config CANNOT express "email provider on + email-signup off" — [auth.email]
+# enable_signup=false disables the whole email provider (GOTRUE_EXTERNAL_EMAIL_ENABLED
+# =false → "Email logins are disabled"), and the top-level [auth].enable_signup would
+# also kill the game's anonymous guests. So locally email signup stays ON; this is
+# harmless (self-signup grants NO admin — that requires the public.admins table — and
+# the admin app ships no signup UI). Signup-off is enforced on the HOSTED project:
+# Dashboard → Authentication → Providers → Email → "Allow new users to sign up" OFF
+# (keep the provider enabled). See the WS-D runbook in the plan.
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+# Custom access token hook (SIM-14): stamps a top-level boolean `is_admin` claim from
+# public.admins into every JWT. NOTE: this only wires the hook for LOCAL `supabase
+# start` — the hosted project must register the same function in the dashboard
+# (Authentication → Hooks). See the WS-D runbook in the plan.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/custom_access_token_hook"
