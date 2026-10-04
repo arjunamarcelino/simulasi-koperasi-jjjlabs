@@ -52,10 +52,20 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.117.0   # pinned; bump deliberately (avoids a CLI release breaking CI)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Start Supabase (applies migrations + seed)
         run: supabase start
       - name: Run pgTAP tests
         run: supabase test db
+      - name: Admin hook e2e (real GoTrue sign-in → is_admin claim)
+        # Proves the supabase_auth_admin RLS-read path that pgTAP can't SET ROLE into.
+        run: |
+          export SUPABASE_URL=$(supabase status -o env | grep '^API_URL=' | cut -d'"' -f2)
+          export SUPABASE_ANON_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d'"' -f2)
+          export SUPABASE_SERVICE_ROLE_KEY=$(supabase status -o env | grep '^SERVICE_ROLE_KEY=' | cut -d'"' -f2)
+          node scripts/e2e-admin-hook.mjs
       - name: Stop Supabase
         if: always()
         run: supabase stop

@@ -6,9 +6,14 @@
 -- role's access via has_*_privilege (the grant matrix) rather than SET ROLE. The live
 -- RLS-read path for the hook is proven by the WS-D e2e (real login decodes is_admin).
 begin;
-select plan(14);
+select plan(16);
 
 select tests.rls_enabled('public', 'admins');
+
+-- supabase_auth_admin needs USAGE on schema public to even resolve the hook function;
+-- its absence would break token issuance game-wide, OUTSIDE the catchable hook body.
+select is(has_schema_privilege('supabase_auth_admin', 'public', 'USAGE'), true,
+  'supabase_auth_admin has USAGE on schema public');
 
 -- Grant matrix: supabase_auth_admin can read the table + execute the hook; clients can't.
 select is(has_table_privilege('supabase_auth_admin', 'public.admins', 'SELECT'), true,
@@ -65,12 +70,18 @@ select is(
   public.custom_access_token_hook('{"user_id":"not-a-uuid","claims":{"role":"authenticated"}}'::jsonb)
     -> 'claims' ->> 'is_admin',
   'false', 'hook is fail-safe on a malformed event (never raises)');
+-- The exception/fail-safe branch must also preserve the original claims (it rebuilds
+-- from event->'claims'), not just stamp is_admin:false.
+select is(
+  public.custom_access_token_hook('{"user_id":"not-a-uuid","claims":{"role":"authenticated"}}'::jsonb)
+    -> 'claims' ->> 'role',
+  'authenticated', 'hook preserves claims on the exception/fail-safe path');
 select is(
   public.custom_access_token_hook(
     jsonb_build_object('user_id', tests.get_uid('sim14_user')::text,
                        'claims', jsonb_build_object('role', 'authenticated'))
   ) -> 'claims' ->> 'role',
-  'authenticated', 'hook preserves the original role claim');
+  'authenticated', 'hook preserves the original role claim (happy path)');
 
 select * from finish();
 rollback;
