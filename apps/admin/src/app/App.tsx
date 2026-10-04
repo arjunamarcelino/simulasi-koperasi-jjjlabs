@@ -4,6 +4,7 @@ import { LoginForm } from "../components/LoginForm";
 import { AdminShell } from "../components/AdminShell";
 import { NotAuthorized } from "../components/NotAuthorized";
 import { StatusScreen } from "../components/StatusScreen";
+import { assertNever } from "../lib/assertNever";
 
 export function App() {
   const gate = useAdminAuth((s) => s.gate);
@@ -38,5 +39,7 @@ export function App() {
           showRetry
         />
       );
+    default:
+      return assertNever(gate); // compile error if a new GateState member is unhandled
   }
 }

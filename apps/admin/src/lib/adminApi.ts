@@ -43,7 +43,9 @@ function refreshOnce(): Promise<string | undefined> {
   return refreshInFlight;
 }
 
-/** Absolute URL of GET /admin/me, or null when the endpoint env is unset/invalid. */
+/** Absolute URL of GET /admin/me, or null when the endpoint env is unset/invalid.
+ * NOTE: VITE_ADMIN_API_ENDPOINT is treated as an ORIGIN — any path in it is ignored
+ * (e.g. https://api.example.com/v1 → https://api.example.com/admin/me). */
 function adminMeUrl(): string | null {
   const base = ENV.adminApiEndpoint;
   if (!base?.trim()) return null;

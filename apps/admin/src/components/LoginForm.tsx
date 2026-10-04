@@ -1,5 +1,5 @@
 import { useCallback, useState, type FormEvent } from "react";
-import { useAdminAuth } from "../stores/adminAuth.store";
+import { adminAuthStore, useAdminAuth } from "../stores/adminAuth.store";
 import { Turnstile } from "./Turnstile";
 import type { LoginErrorKind } from "../lib/mapAuthError";
 
@@ -16,14 +16,23 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [token, setToken] = useState<string | undefined>(undefined);
+  // Remounts the Turnstile widget (fresh single-use token) after a failed attempt.
+  const [turnstileKey, setTurnstileKey] = useState(0);
   const onToken = useCallback((t: string | undefined) => setToken(t), []);
 
   const error = gate.status === "unauthenticated" ? gate.loginError : null;
   const signingIn = gate.status === "unauthenticated" && gate.signingIn;
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    void signIn(email.trim(), password, token);
+    await signIn(email.trim(), password, token);
+    // On failure the Turnstile token was spent (single-use) — reset so a retry gets a
+    // fresh one instead of replaying a used token. On success the form unmounts, so a
+    // no-op. (Guarded on the post-await gate to avoid resetting a succeeding login.)
+    if (adminAuthStore.getState().gate.status === "unauthenticated") {
+      setToken(undefined);
+      setTurnstileKey((k) => k + 1);
+    }
   };
 
   // NO signup path — admin accounts are provisioned server-side (dashboard).
@@ -53,7 +62,7 @@ export function LoginForm() {
             className="rounded border border-brown bg-parchment px-3 py-2"
           />
         </label>
-        <Turnstile onToken={onToken} />
+        <Turnstile key={turnstileKey} onToken={onToken} />
         {error && <p className="text-sm text-danger">{MESSAGES[error]}</p>}
         <button
           type="submit"
