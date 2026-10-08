@@ -146,8 +146,15 @@ Status:
 | `500` | verifier JWT belum dikonfigurasi (fail-closed) | surface error |
 
 Konsumen: `apps/admin` (dasbor). `completion_rate` = sesi yang BUKAN `force_quit_level_2` ÷
-total; `avg_score` = rata-rata skor per-sesi (mean nilai rubrik numerik 0–100). Definisi + runbook
-di `docs/plans/2026-10-09-feat-admin-dashboard-metrics-plan.md`.
+total (`sinyal_level_1` dihitung selesai — akhir terpandu tapi sukarela; hanya force-quit L2 =
+tak selesai); `avg_score` = rata-rata dari mean-rubrik per-sesi (nilai numerik 0–100 saja).
+
+> **Sumber kebenaran bentuk ini = blok JSON di atas.** Ia dikodekan di empat tempat yang harus
+> seiring: `admin.metrics_overview()` (SQL), `AdminMetricsResponse` (pydantic, `extra="forbid"`),
+> tipe `AdminMetrics` (TS), dan guard `isMetricsBody` (TS). Karena `extra="forbid"`, menambah
+> kunci baru TIDAK forward-compatible: tambah field dengan urutan **model+guard dulu, SQL terakhir**
+> (SQL duluan → 500 sampai model menyusul). Definisi lengkap + runbook di
+> `docs/plans/2026-10-09-feat-admin-dashboard-metrics-plan.md`.
 
 `GET /health` → `{ "status": "ok" }` (tanpa auth). CORS diizinkan untuk origin di env
 `CORS_ALLOW_ORIGINS` (comma-split; fallback ke `CORS_ALLOW_ORIGIN` lama; default dev
