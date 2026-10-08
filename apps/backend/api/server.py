@@ -12,17 +12,20 @@ import logging
 import os
 import uuid
 from collections.abc import Mapping
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from livekit import api
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
-from . import auth
+from . import auth, metrics_db
 from .auth import AuthedUser, require_role, verify_supabase_jwt
+from .metrics_db import MetricsUnavailable
 from .ratelimit import RateLimiter
 
 log = logging.getLogger("koperasi.token")
@@ -71,7 +74,22 @@ VALID_SCENARIOS = frozenset(
 # Token LiveKit berumur pendek (selaras satu sesi), bukan default 6 jam.
 LIVEKIT_TOKEN_TTL = timedelta(hours=1)
 
-app = FastAPI(title="Koperasi Token Server")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Fail-soft: create_pool() returns None (never raises) if the metrics DB is
+    # unset/unreachable/slow, so /token + /health still come up (SIM-15).
+    app.state.metrics_pool = await metrics_db.create_pool()
+    try:
+        yield
+    finally:
+        if app.state.metrics_pool is not None:
+            await app.state.metrics_pool.close()
+
+
+app = FastAPI(title="Koperasi Token Server", lifespan=lifespan)
+# Module-scope default so a bare TestClient(app) (lifespan not run) sees None → 503, not
+# AttributeError → 500.
+app.state.metrics_pool = None
 
 # CORS eksplisit (bukan wildcard): FE mengirim header `Authorization` (Bearer), jadi
 # request /token dan GET /admin/me menjadi preflighted. `allow_origins` di sini BUKAN
@@ -115,6 +133,64 @@ def admin_me(user: AuthedUser = Depends(_require_admin)) -> AdminMeResponse:
     # Body cuma user_id (tampilan) — OTORISASI ada di KODE STATUS, bukan body (200 =
     # admin). Sengaja TANPA is_admin agar tak jadi jebakan "gate on body".
     return AdminMeResponse(user_id=user.user_id)
+
+
+# --- GET /admin/metrics (SIM-15) --------------------------------------------------------
+# Typed sub-models so response_model benar-benar memvalidasi output SQL + jadi kontrak
+# OpenAPI nyata (bukan `dict` + extra="allow" yang tak memvalidasi apa pun). Rate & avg
+# bernilai number ATAU null (number|null), count selalu int. `null` = tak terdefinisi.
+class EndingSplit(BaseModel):
+    good: float
+    neutral: float
+    bad: float
+
+
+class UsersMetrics(BaseModel):
+    active_30d: int
+    total_registered: int
+    new_7d: int
+
+
+class SessionsMetrics(BaseModel):
+    total: int
+    completion_rate: float | None
+    ending_split: EndingSplit | None
+    avg_score: float | None
+
+
+class ScenarioRow(BaseModel):
+    scenario_id: str
+    title: str
+    sessions: int
+    completion_rate: float | None
+    ending_split: EndingSplit | None
+    avg_score: float | None
+
+
+class AdminMetricsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # kontrak beku → tolak kunci SQL tak terduga
+    generated_at: str
+    users: UsersMetrics
+    sessions: SessionsMetrics
+    per_scenario: list[ScenarioRow]
+
+
+async def get_metrics(
+    request: Request,
+    # Gerbang admin SEBAGAI dependency struktural → DB tak tersentuh sebelum 401/403 lolos
+    # (tak bergantung urutan argumen). pytest mem-patch metrics_db.fetch_metrics / pool.
+    _admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    try:
+        return await metrics_db.fetch_metrics(request.app.state.metrics_pool)
+    except MetricsUnavailable:
+        # DB mati/salah-konfig/lambat → 503 (fail-soft), JANGAN 500. Game tak terpengaruh.
+        raise HTTPException(503, "metrics_unavailable") from None
+
+
+@app.get("/admin/metrics", response_model=AdminMetricsResponse)
+async def admin_metrics(data: dict[str, Any] = Depends(get_metrics)) -> dict[str, Any]:
+    return data  # get_metrics sudah admin-gated; FastAPI memvalidasi `data` ke model
 
 
 @app.post("/token", response_model=TokenResponse)
@@ -177,6 +253,8 @@ def _log_config_readiness() -> None:
         )
     if not (LIVEKIT_API_KEY and LIVEKIT_API_SECRET and LIVEKIT_URL):
         log.warning("Kredensial LiveKit belum lengkap — /token akan 500.")
+    if not os.environ.get("METRICS_DB_URL"):
+        log.warning("METRICS_DB_URL belum di-set — GET /admin/metrics akan 503 (fail-soft).")
 
 
 _log_config_readiness()
