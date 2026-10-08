@@ -202,6 +202,18 @@ DB-free backend reads that claim and enforces `require_role('admin')` (`is_admin
 > **Invariant:** `is_admin` is only meaningful paired with `is_anonymous = false` (an admin is never an
 > anonymous session). The backend enforces the pairing today; any future `is_admin()` RLS helper must too.
 
+### Admin analytics read path (SIM-15)
+The admin dashboard's metrics (active users, completion rate, avg scores) are served by
+`admin.metrics_overview()` — a single `SECURITY DEFINER` function in a dedicated **`admin` schema**
+that aggregates `public.sessions` + `public.profiles` + `public.scenario_definition` into one `jsonb`
+object (counts, fractions, scenario titles — **aggregate-only, no row-level PII**). It is reached ONLY by
+a dedicated login role **`metrics_reader`** (`EXECUTE`-only, no table grants, null password in git) that
+the FastAPI backend connects to via asyncpg; the game and the DB-free voice/token path are untouched.
+No new tables, no changes to game tables. **Convention for future admin analytics:** live in the `admin`
+schema, **never** add it to the PostgREST-exposed schemas, and grant `EXECUTE` only to `metrics_reader`
+(NOT `leaderboard()`'s `grant … to authenticated`). An `is_admin()` RLS helper is deliberately NOT used
+here — admin-ness is enforced at the backend and the function is role-scoped.
+
 > **On the reallife codes:** `redeem_code` is a *soft* gate — printed at the KDMP and typed
 > by the player. It is **not** a cryptographic secret. As of SIM-9 the codes live server-side
 > only (`apps/db/seed-codes.json` → `redeem_code`) and no longer ship in the client bundle;
