@@ -59,6 +59,15 @@ jobs:
         run: supabase start
       - name: Run pgTAP tests
         run: supabase test db
+      - name: Admin metrics e2e (real metrics_reader role → admin.metrics_overview)
+        # Proves the least-privilege role path pgTAP can't: set the role's (null) password to a
+        # local throwaway, then connect AS metrics_reader and assert it executes the function but
+        # cannot read the tables. psql ships on ubuntu-latest + the local supabase DB (:54322).
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            -c "alter role metrics_reader password 'postgres'"
+          METRICS_DB_URL="postgresql://metrics_reader:postgres@127.0.0.1:54322/postgres" \
+            bash scripts/e2e-metrics.sh
       - name: Admin hook e2e (real GoTrue sign-in → is_admin claim)
         # Proves the supabase_auth_admin RLS-read path that pgTAP can't SET ROLE into.
         run: |
