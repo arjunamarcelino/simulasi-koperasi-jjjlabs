@@ -16,13 +16,14 @@ export function count(n: number): string {
 }
 
 /** Rate fraction [0,1] → whole-percent string, or "—". Deterministic rounding (locale-proof;
- * avoids Intl percent's NBSP / half-expand quirks). `0.8667 → "87%"`. */
+ * avoids Intl percent's NBSP / half-expand quirks). `0.8667 → "87%"`. An out-of-contract value
+ * (e.g. a backend that returns a percent `87` instead of `0.87`) renders "—", not "8700%". */
 export function pct(x: number | null): string {
-  return x === null ? EMPTY : `${Math.round(x * 100)}%`;
+  return x === null || x < 0 || x > 1 ? EMPTY : `${Math.round(x * 100)}%`;
 }
 
-/** Score 0–100 → one decimal in id-ID (comma decimal): `71.4 → "71,4"`, or "—".
+/** Score 0–100 → one decimal in id-ID (comma decimal): `71.4 → "71,4"`, or "—" (incl. out of range).
  * NOT `toFixed` (which emits a dot that clashes with id-ID's "." thousands separator). */
 export function score(x: number | null): string {
-  return x === null ? EMPTY : idScore.format(x);
+  return x === null || x < 0 || x > 100 ? EMPTY : idScore.format(x);
 }

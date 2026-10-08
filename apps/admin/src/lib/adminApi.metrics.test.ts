@@ -102,9 +102,9 @@ describe("fetchMetrics", () => {
     expect(await fetchMetrics()).toEqual({ kind: "serviceUnavailable" });
   });
 
-  it("authUnavailable with NO network when the client is null", async () => {
+  it("null client → serviceUnavailable with NO network (collapsed; unreachable once gated)", async () => {
     h.supabaseNull = true;
-    expect(await fetchMetrics()).toEqual({ kind: "authUnavailable" });
+    expect(await fetchMetrics()).toEqual({ kind: "serviceUnavailable" });
     expect(h.fetch).not.toHaveBeenCalled();
   });
 });

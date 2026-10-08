@@ -15,6 +15,7 @@ export function ScenarioTable({ rows }: { rows: ScenarioRow[] }) {
               <th className="py-2 pr-4 font-semibold">Sesi</th>
               <th className="py-2 pr-4 font-semibold">Penyelesaian</th>
               <th className="py-2 pr-4 font-semibold">Skor rata-rata</th>
+              <th className="py-2 pr-4 font-semibold">Hasil (baik/netral/buruk)</th>
             </tr>
           </thead>
           <tbody>
@@ -24,6 +25,11 @@ export function ScenarioTable({ rows }: { rows: ScenarioRow[] }) {
                 <td className="py-2 pr-4 text-ink-soft">{count(r.sessions)}</td>
                 <td className="py-2 pr-4 text-ink-soft">{pct(r.completion_rate)}</td>
                 <td className="py-2 pr-4 text-ink-soft">{score(r.avg_score)}</td>
+                <td className="py-2 pr-4 text-ink-soft">
+                  {r.ending_split
+                    ? `${pct(r.ending_split.good)} / ${pct(r.ending_split.neutral)} / ${pct(r.ending_split.bad)}`
+                    : "—"}
+                </td>
               </tr>
             ))}
           </tbody>

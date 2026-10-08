@@ -13,8 +13,7 @@ export type MetricsState =
   | { status: "loading" }
   | { status: "ready"; data: AdminMetrics }
   | { status: "error" } // retryable (serviceUnavailable) — manual "Coba lagi"
-  | { status: "authLost" } // handed to the gate; passive spinner, NO retry button
-  | { status: "unavailable" }; // terminal (null Supabase client) — no retry
+  | { status: "authLost" }; // handed to the gate; passive spinner, NO retry button
 
 export type DashboardMetricsState = {
   state: MetricsState;
@@ -51,9 +50,6 @@ async function run(): Promise<void> {
       break;
     case "serviceUnavailable":
       dashboardMetricsStore.setState({ state: { status: "error" } });
-      break;
-    case "authUnavailable":
-      dashboardMetricsStore.setState({ state: { status: "unavailable" } });
       break;
     case "unauthenticated":
     case "notAuthorized":

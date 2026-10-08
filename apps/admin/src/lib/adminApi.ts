@@ -21,8 +21,7 @@ export type MetricsOutcome =
   | { kind: "ok"; data: AdminMetrics }
   | { kind: "notAuthorized" } // 403 (admin revoked mid-session)
   | { kind: "unauthenticated" } // 401 after one refresh
-  | { kind: "serviceUnavailable" } // 503/500/404/network/timeout/malformed-200
-  | { kind: "authUnavailable" }; // null client
+  | { kind: "serviceUnavailable" }; // 503/500/404/network/timeout/malformed-200/null-client
 
 export type EndingSplit = { good: number; neutral: number; bad: number };
 export type ScenarioRow = {
@@ -201,7 +200,10 @@ export async function probeAdmin(signal?: AbortSignal): Promise<ProbeOutcome> {
  */
 export async function fetchMetrics(signal?: AbortSignal): Promise<MetricsOutcome> {
   const r = await authedGet("/admin/metrics", signal);
-  if (r.kind !== "response") return r;
+  // A null client (authUnavailable) is unreachable once the gate is "authorized" (that state
+  // requires a non-null client); collapse it into retryable serviceUnavailable rather than
+  // carry a dead terminal state into the dashboard.
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
   switch (r.res.status) {
     case 200: {
       const body: unknown = await r.res.json().catch(() => null);

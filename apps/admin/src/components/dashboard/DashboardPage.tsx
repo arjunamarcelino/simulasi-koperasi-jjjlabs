@@ -20,9 +20,6 @@ export function DashboardPage({ userId }: { userId: string }) {
   if (state.status === "loading" || state.status === "authLost") {
     return <p className="text-ink-soft">Memuat dasbor…</p>;
   }
-  if (state.status === "unavailable") {
-    return <p className="text-ink-soft">Layanan metrik tidak tersedia.</p>;
-  }
   if (state.status === "error") {
     return (
       <div className="flex flex-col items-start gap-3">
@@ -53,6 +50,12 @@ export function DashboardPage({ userId }: { userId: string }) {
         />
         <KpiCard label="Skor rata-rata" value={score(sessions.avg_score)} sub="dari 0–100" />
       </section>
+      {sessions.ending_split && (
+        <p className="text-sm text-ink-soft">
+          Hasil sesi: baik {pct(sessions.ending_split.good)} · netral{" "}
+          {pct(sessions.ending_split.neutral)} · buruk {pct(sessions.ending_split.bad)}
+        </p>
+      )}
       {sessions.total === 0 ? (
         <p className="text-ink-soft">Belum ada data.</p>
       ) : (

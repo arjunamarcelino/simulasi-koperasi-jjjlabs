@@ -46,19 +46,25 @@ describe("dashboardMetrics store", () => {
     expect(state()).toEqual({ status: "error" });
   });
 
-  it("authUnavailable → unavailable (terminal)", async () => {
-    h.fetchMetrics.mockResolvedValue({ kind: "authUnavailable" });
-    dashboardMetricsStore.getState().load("u1");
-    await flush();
-    expect(state()).toEqual({ status: "unavailable" });
-  });
-
-  it("load is once-per-userId (StrictMode-safe)", async () => {
+  it("load dedupes a gate re-affirm of the same userId (no refetch)", async () => {
     h.fetchMetrics.mockResolvedValue({ kind: "ok", data: DATA });
     dashboardMetricsStore.getState().load("u1");
-    dashboardMetricsStore.getState().load("u1");
+    dashboardMetricsStore.getState().load("u1"); // same userId, no intervening dispose
     await flush();
     expect(h.fetchMetrics).toHaveBeenCalledTimes(1);
+  });
+
+  it("StrictMode mount→dispose→mount refetches and settles correctly", async () => {
+    // The real StrictMode sequence (unlike a bare double-load): dispose resets activeUserId,
+    // so the second mount legitimately refetches; epoch+abort drop the first in-flight result.
+    h.fetchMetrics.mockResolvedValue({ kind: "ok", data: DATA });
+    const s = dashboardMetricsStore.getState();
+    s.load("u1");
+    s.dispose();
+    s.load("u1");
+    await flush();
+    expect(h.fetchMetrics).toHaveBeenCalledTimes(2);
+    expect(state()).toEqual({ status: "ready", data: DATA });
   });
 
   it("retry() refetches /admin/metrics", async () => {
