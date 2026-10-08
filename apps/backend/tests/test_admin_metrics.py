@@ -225,6 +225,13 @@ def test_fetch_metrics_returns_dict_on_success():
     assert asyncio.run(metrics_db.fetch_metrics(pool)) == {"generated_at": "x"}
 
 
+def test_fetch_metrics_null_row_maps_to_unavailable():
+    # A SQL NULL from fetchval must degrade to 503, not flow None into the typed route (→500).
+    pool = _FakePool(_FakeConn(value=None))
+    with pytest.raises(MetricsUnavailable):
+        asyncio.run(metrics_db.fetch_metrics(pool))
+
+
 # ------------------------- response model (frozen contract) -------------------------
 
 

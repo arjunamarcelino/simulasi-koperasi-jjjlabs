@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-import ssl
+from typing import Any
 
 import asyncpg
 
@@ -30,22 +30,16 @@ class MetricsUnavailable(Exception):
     """
 
 
-def _ssl_arg() -> object:
+def _ssl_mode() -> str:
     """SSL mode for the pool, driven by env (NOT hardcoded).
 
     Hosted pooler → `verify-full` (encrypt AND authenticate the server; plain `require`
     is MITM-open on the public pooler path, which would leak the password). Local
-    Supabase (127.0.0.1) serves no TLS → `disable`. `METRICS_DB_SSL` defaults to
-    `verify-full`; `METRICS_DB_CA_CERT` optionally pins Supabase's CA.
+    Supabase (127.0.0.1) serves no TLS → set `METRICS_DB_SSL=disable`. asyncpg accepts the
+    libpq sslmode strings directly. `… or "verify-full"` treats an empty value as unset
+    (secure default) instead of passing "" → create_pool error → 503.
     """
-    mode = os.environ.get("METRICS_DB_SSL", "verify-full")
-    ca = os.environ.get("METRICS_DB_CA_CERT")
-    if ca and mode in ("verify-ca", "verify-full"):
-        ctx = ssl.create_default_context(cafile=ca)
-        if mode == "verify-ca":
-            ctx.check_hostname = False
-        return ctx
-    return mode  # asyncpg accepts the libpq sslmode strings directly
+    return os.environ.get("METRICS_DB_SSL") or "verify-full"
 
 
 async def _init_conn(conn: asyncpg.Connection) -> None:
@@ -60,9 +54,10 @@ async def create_pool() -> asyncpg.Pool | None:
 
     Reads METRICS_DB_URL HERE (not at import) — this runs in the FastAPI lifespan, after
     load_dotenv(); a module-scope read would execute before server.py's load_dotenv and be
-    empty. `timeout` bounds connection establishment so a blackholed host fails fast instead
-    of hanging startup (which would delay /token and /health). `min_size=0` keeps nothing
-    pinned on the scarce pooler while idle.
+    empty. `min_size=0` keeps nothing pinned on the scarce session pooler while idle, so
+    startup NEVER connects (a dead host can't hang lifespan / delay /token+/health). The
+    first request pays the connect, bounded by `timeout` here and by acquire() in fetch_metrics.
+    The try/except still catches synchronous DSN/config errors at build time.
     """
     dsn = os.environ.get("METRICS_DB_URL", "")
     if not dsn:
@@ -71,12 +66,12 @@ async def create_pool() -> asyncpg.Pool | None:
     try:
         return await asyncpg.create_pool(
             dsn=dsn,
-            ssl=_ssl_arg(),
+            ssl=_ssl_mode(),
             min_size=0,
-            max_size=5,  # keep < role CONNECTION LIMIT / instance count (session pooler pins a backend)
+            max_size=5,  # keep ≤ role CONNECTION LIMIT / instance count (session pooler pins a backend)
             init=_init_conn,
-            timeout=5.0,  # bound connect: a dead host must NOT hang lifespan startup
-            command_timeout=8.0,  # per-query bound, under the FE 10s probe timeout
+            timeout=4.0,  # per-connection connect bound (applies at first acquire; ≤ acquire budget)
+            command_timeout=4.0,  # per-query bound; acquire(5) + command(4) = 9s < the FE 10s probe
         )
     except Exception as exc:  # noqa: BLE001 — fail-soft core: ANY failure → no pool → 503 (never raise)
         log.error(
@@ -86,19 +81,22 @@ async def create_pool() -> asyncpg.Pool | None:
         return None
 
 
-async def fetch_metrics(pool: asyncpg.Pool | None) -> dict[str, object]:
+async def fetch_metrics(pool: asyncpg.Pool | None) -> dict[str, Any]:
     """Call admin.metrics_overview() and return its jsonb as a dict.
 
     Raises MetricsUnavailable on any fault (no pool / dropped connection / timeout / query
-    error). The except is deliberately BROAD: asyncpg splits PostgresError (server) and
-    InterfaceError (client — dropped conn/closed pool) into unrelated roots, so a narrow
-    catch would let a dropped connection escape as a 500 and break the fail-soft guarantee.
+    error / unexpected NULL). The except is deliberately BROAD: asyncpg splits PostgresError
+    (server) and InterfaceError (client — dropped conn/closed pool) into unrelated roots, so a
+    narrow catch would let a dropped connection escape as a 500 and break the fail-soft guarantee.
     """
     if pool is None:
         raise MetricsUnavailable
     try:
-        async with pool.acquire(timeout=3.0) as conn:  # bound acquire → 503, never a hang
-            return await conn.fetchval("select admin.metrics_overview()")
+        async with pool.acquire(timeout=5.0) as conn:  # bound acquire (≥ connect) → 503, never a hang
+            row = await conn.fetchval("select admin.metrics_overview()")
     except Exception as exc:  # BROAD: PostgresError AND InterfaceError (dropped conn) → 503, never 500
         log.error("Query metrics gagal (%s)", type(exc).__name__)  # never log DSN/claims
         raise MetricsUnavailable from exc
+    if row is None:  # the fn always builds an object; a NULL would 500 the typed route → keep fail-soft
+        raise MetricsUnavailable
+    return row
