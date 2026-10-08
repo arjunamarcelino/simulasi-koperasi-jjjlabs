@@ -16,8 +16,12 @@ project `uv`:
   menangani SELURUH skenario & persona (PRD §2.1). STT (Azure) → LLM dialog
   (Azure OpenAI `gpt-5-mini`) → TTS (Azure).
 
-Tidak ada database — seluruh state sesi in-memory, hidup selama room LiveKit
-aktif (PRD §2.5, §8).
+Jalur voice/token **tanpa database** — seluruh state sesi in-memory, hidup selama
+room LiveKit aktif (PRD §2.5, §8). **Satu pengecualian (SIM-15):** `GET /admin/metrics`
+membuka pool asyncpg **fail-soft** ke Supabase sebagai role least-privilege
+`metrics_reader` untuk memanggil `admin.metrics_overview()` (`api/metrics_db.py`). Pool
+gagal-aman: DB mati/salah-konfig/lambat → endpoint 503, TAK PERNAH menjatuhkan
+`/token` atau `/health`. Jangan bawa DB ke jalur voice/token.
 
 ## Menjalankan & memverifikasi
 
