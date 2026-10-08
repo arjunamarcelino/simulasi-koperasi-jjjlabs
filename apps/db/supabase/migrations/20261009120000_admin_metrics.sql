@@ -18,14 +18,21 @@ create schema if not exists admin;
 -- ── metrics_reader: the backend's execute-only login role ───────────────────────────
 -- CREATE ROLE is NOT idempotent (and roles are cluster-global, surviving `db reset`) → guard.
 -- Null password: cannot authenticate until set out-of-band (CI/local throwaway; hosted secret).
--- CONNECTION LIMIT must exceed (pool max_size × backend instances) + the CI e2e's own slot;
--- 10 leaves headroom over the backend pool's max_size=5. No elevated attributes.
+-- CONNECTION LIMIT ≥ (pool max_size × backend instances) + 1 CI e2e slot. 15 covers up to
+-- 2 instances × max_size 5 (=10) + headroom; bump further if you scale out more. No elevated attrs.
 do $$
 begin
   if not exists (select from pg_roles where rolname = 'metrics_reader') then
-    create role metrics_reader login noinherit connection limit 10;  -- no password (null)
+    create role metrics_reader login noinherit connection limit 15;  -- no password (null)
+  else
+    -- Convergent: reconcile attributes on a pre-existing (cluster-global) role so a re-apply
+    -- enforces the documented limit/flags. Does NOT touch the password (set out-of-band).
+    alter role metrics_reader login noinherit connection limit 15;
   end if;
 end $$;
+-- Self-sufficient connect right: don't rely on the PUBLIC default CONNECT (a future
+-- `revoke connect ... from public` hardening would otherwise silently 503 the backend).
+grant connect on database postgres to metrics_reader;
 
 -- ── entry function: one jsonb overview (one round-trip, pooler-friendly) ─────────────
 -- Owner = postgres (table-owner ⇒ bypasses RLS, repo convention cf. public.leaderboard).
@@ -61,6 +68,11 @@ returns jsonb language sql stable security definer set search_path = '' as $$
   overall as (
     select
       count(*)                                                              as total,
+      -- completion = NOT force_quit_level_2. `sinyal_level_1` (drift L1 → player chose to end)
+      -- and `manual` both count as completed; only the involuntary L2 force-quit is "did not
+      -- complete" (SIM-15 review decision). avg_score below is the mean of per-session rubric
+      -- means (each session weighted equally), over numeric in-range (0–100) values only —
+      -- assumes scores_json holds ONLY rubric scores (invariant owned by record_session).
       count(*) filter (where trigger <> 'force_quit_level_2')::numeric
         / nullif(count(*), 0)                                               as completion_rate,
       count(*) filter (where ending_type = 'good')::numeric    / nullif(count(*), 0) as good,
@@ -85,6 +97,12 @@ returns jsonb language sql stable security definer set search_path = '' as $$
     left join session_score ss on ss.scenario_id = sd.code         -- zero-session scenarios survive
     where sd.status = 'AVAILABLE'                                  -- hide COMING_SOON (no sessions ever)
     group by sd.code, sd.title
+  ),
+  -- profiles scanned ONCE (both headline counts from one pass; referenced twice → materialized).
+  prof as (
+    select count(*)                                                     as total_registered,
+           count(*) filter (where created_at >= now() - interval '7 days') as new_7d
+    from public.profiles
   )
   select jsonb_build_object(
     'generated_at', to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
@@ -93,8 +111,8 @@ returns jsonb language sql stable security definer set search_path = '' as $$
       -- EXISTS → no O(n^2)); keys off the server-stamped ended_at (stable), not client started_at.
       'active_30d', (select count(distinct user_id) filter (where ended_at >= now() - interval '30 days')
                        from ended),
-      'total_registered', (select count(*) from public.profiles),
-      'new_7d', (select count(*) from public.profiles where created_at >= now() - interval '7 days')
+      'total_registered', (select total_registered from prof),
+      'new_7d', (select new_7d from prof)
     ),
     'sessions', (select jsonb_build_object(
         'total', total,
