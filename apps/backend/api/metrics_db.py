@@ -1,11 +1,14 @@
-"""Admin metrics DB access (SIM-15).
+"""Admin DB access (SIM-15/16/17).
 
 The ONLY database path in this otherwise DB-free backend. A fail-soft asyncpg pool
-connects as the least-privilege `metrics_reader` role and calls the SECURITY DEFINER
-`admin.metrics_overview()`. "Fail-soft" is the backbone: a metrics DB that is down,
-misconfigured, OR slow must degrade `GET /admin/metrics` to 503 and must NEVER take
-down `/token` or `/health` — so pool creation is bounded and never raises out of this
-module, and the DSN/host are never logged.
+connects as the `metrics_reader` role — an admin DB role that performs **reads** (metrics
+/ scenario analytics / leaderboard overview via STABLE SECURITY DEFINER fns) AND, since
+SIM-17, **admin-gated writes** (leaderboard capture/delete via VOLATILE SECURITY DEFINER
+fns). The role still holds NO direct table privileges — every statement goes through a
+definer fn; the blast radius of `METRICS_DB_URL` widened from read-only to admin writes.
+"Fail-soft" is the backbone: a DB that is down, misconfigured, OR slow must degrade the
+`/admin/*` endpoints to 503 and must NEVER take down `/token` or `/health` — so pool
+creation is bounded and never raises out of this module, and the DSN/host are never logged.
 
 The connection string lives in `METRICS_DB_URL` (backend env only; never committed or
 logged). Through the Supabase pooler the username MUST be `metrics_reader.<project-ref>`.
@@ -16,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import uuid
 from typing import Any
 
 import asyncpg
@@ -119,6 +123,84 @@ async def fetch_scenario_analytics(pool: asyncpg.Pool | None, scenario_id: str) 
         # scenario_id is a bounded non-PII code (VALID_SCENARIOS) → safe to log for triage; still
         # NEVER log the DSN/claims/exception message.
         log.error("Query scenario_analytics gagal untuk %s (%s)", scenario_id, type(exc).__name__)
+        raise MetricsUnavailable from exc
+    if row is None:
+        raise MetricsUnavailable
+    return row
+
+
+async def fetch_leaderboard_overview(
+    pool: asyncpg.Pool | None, season_id: uuid.UUID | None
+) -> dict[str, Any]:
+    """Call admin.leaderboard_overview($1) and return its jsonb as a dict (SIM-17).
+
+    Same fail-soft contract as fetch_scenario_analytics: no pool / dropped connection / timeout
+    / query error / unexpected NULL → MetricsUnavailable (→ 503, never 500). The except is
+    deliberately BROAD (PostgresError server-side AND InterfaceError client-side) for the same
+    reason as fetch_metrics. season_id (a uuid.UUID or None) is bound as $1 — asyncpg encodes it
+    natively, so NO `::uuid` cast is needed and it is never string-interpolated. A null param →
+    the DB resolves the latest season.
+    """
+    if pool is None:
+        raise MetricsUnavailable
+    try:
+        async with pool.acquire(timeout=5.0) as conn:  # bound acquire (≥ connect) → 503, never a hang
+            row = await conn.fetchval("select admin.leaderboard_overview($1)", season_id)
+    except Exception as exc:  # BROAD: PostgresError AND InterfaceError (dropped conn) → 503, never 500
+        # season_id (uuid) is a non-PII identifier → safe to log for triage; NEVER log the DSN/claims.
+        log.error("Query leaderboard_overview gagal untuk %s (%s)", season_id, type(exc).__name__)
+        raise MetricsUnavailable from exc
+    if row is None:
+        raise MetricsUnavailable
+    return row
+
+
+async def capture_leaderboard_snapshot(
+    pool: asyncpg.Pool | None, label: str | None
+) -> dict[str, Any]:
+    """Call admin.capture_leaderboard_snapshot($1) and return its jsonb as a dict (SIM-17).
+
+    An admin-gated WRITE through a VOLATILE definer fn. Same fail-soft contract: any fault →
+    MetricsUnavailable (→ 503). Advisory-lock contention inside the fn (a concurrent capture)
+    surfaces here as a bounded wait → fail-soft 503 on timeout, NOT a DB outage — the lock is
+    transaction-scoped and auto-releases, so a retry succeeds.
+
+    NEVER log `label` (arbitrary admin-authored text) — it is bound as $1 only, never logged or
+    string-interpolated. Attribution is logged server-side at the route (acting user_id +
+    season_number), not here.
+    """
+    if pool is None:
+        raise MetricsUnavailable
+    try:
+        async with pool.acquire(timeout=5.0) as conn:  # bound acquire (≥ connect) → 503, never a hang
+            row = await conn.fetchval("select admin.capture_leaderboard_snapshot($1)", label)
+    except Exception as exc:  # BROAD: PostgresError AND InterfaceError (dropped conn) → 503, never 500
+        # NEVER log `label`; and never the DSN/claims/exception message.
+        log.error("Query capture_leaderboard_snapshot gagal (%s)", type(exc).__name__)
+        raise MetricsUnavailable from exc
+    if row is None:
+        raise MetricsUnavailable
+    return row
+
+
+async def delete_leaderboard_season(
+    pool: asyncpg.Pool | None, season_id: uuid.UUID
+) -> dict[str, Any]:
+    """Call admin.delete_leaderboard_season($1) and return its jsonb as a dict (SIM-17).
+
+    An admin-gated WRITE through a VOLATILE definer fn. Same fail-soft contract: any fault →
+    MetricsUnavailable (→ 503). The fn returns `{deleted: bool, season_number}` — it does NOT
+    raise on an absent season (a raise would be masked by the broad except as a 503); the route
+    inspects `deleted` and maps false → 404. season_id (uuid) is bound as $1 (native encode, no
+    `::uuid` cast) and is OK to log for triage; NEVER log the DSN/claims.
+    """
+    if pool is None:
+        raise MetricsUnavailable
+    try:
+        async with pool.acquire(timeout=5.0) as conn:  # bound acquire (≥ connect) → 503, never a hang
+            row = await conn.fetchval("select admin.delete_leaderboard_season($1)", season_id)
+    except Exception as exc:  # BROAD: PostgresError AND InterfaceError (dropped conn) → 503, never 500
+        log.error("Query delete_leaderboard_season gagal untuk %s (%s)", season_id, type(exc).__name__)
         raise MetricsUnavailable from exc
     if row is None:
         raise MetricsUnavailable

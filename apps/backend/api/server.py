@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, Any
+from uuid import UUID
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -97,7 +98,8 @@ app.state.metrics_pool = None
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ALLOW_ORIGINS,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    # DELETE ditambah untuk DELETE /admin/leaderboard/seasons/{id} (SIM-17).
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -262,6 +264,128 @@ async def scenario_analytics(
     data: dict[str, Any] = Depends(get_scenario_analytics),
 ) -> dict[str, Any]:
     return data  # sudah admin-gated + validasi scenario_id; FastAPI memvalidasi `data` ke model
+
+
+# --- Leaderboard XP musiman (SIM-17) ----------------------------------------------------
+# Tiga route admin-gated di atas pool metrics_reader yang SAMA; capture/delete adalah WRITE
+# lewat definer fn VOLATILE (blast radius METRICS_DB_URL meluas: baca → tulis admin-gated).
+# season_id diketik `UUID` (query & path) → input salah-bentuk jadi 422 bersih di boundary
+# FastAPI, BUKAN 503 menyesatkan; `UUID` di-bind native (tanpa cast `$1::uuid`).
+class CaptureRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # kunci asing → 422 (kontrak beku)
+    # Panjang label dibatasi 120 char (selaras CHECK di DB); overlong → 422 sebelum sentuh DB.
+    label: Annotated[str, Field(max_length=120)] | None = None
+
+
+class LeaderboardEntry(BaseModel):
+    rank: int
+    display_name: str
+    xp: int
+    level: int
+
+
+class SeasonHeader(BaseModel):
+    id: str
+    season_number: int
+    label: str | None
+    captured_at: str
+    entry_count: int
+
+
+class SelectedSeason(SeasonHeader):
+    entries: list[LeaderboardEntry]
+
+
+class LeaderboardOverviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # kontrak beku (model luar); sub-model tidak
+    seasons: list[SeasonHeader]
+    selected: SelectedSeason | None
+
+
+class CaptureResultResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    season_id: str
+    season_number: int
+    captured_at: str
+    entry_count: int
+
+
+class DeleteResultResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    deleted: bool
+    season_number: int | None
+
+
+async def get_leaderboard_overview(
+    request: Request,
+    # season_id OPSIONAL (query). Diketik UUID → salah-bentuk = 422 (boundary FastAPI) sebelum DB.
+    season_id: UUID | None = None,
+    # Gerbang admin SEBAGAI dependency → DB tak tersentuh sebelum 401/403 lolos (sama get_metrics).
+    _admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    try:
+        return await metrics_db.fetch_leaderboard_overview(
+            request.app.state.metrics_pool, season_id
+        )
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+
+
+@app.get("/admin/leaderboard", response_model=LeaderboardOverviewResponse)
+async def leaderboard_overview(
+    data: dict[str, Any] = Depends(get_leaderboard_overview),
+) -> dict[str, Any]:
+    return data  # sudah admin-gated; FastAPI memvalidasi `data` ke model
+
+
+@app.post("/admin/leaderboard/capture", response_model=CaptureResultResponse)
+async def leaderboard_capture(
+    req: CaptureRequest,
+    request: Request,
+    # Gerbang admin → DB tak tersentuh sebelum 401/403 lolos. Dinamai `admin` karena DIBACA
+    # untuk atribusi log (user_id), bukan sekadar gerbang buang.
+    admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    try:
+        # Contention advisory-lock (capture bersamaan) muncul sebagai fail-soft 503, BUKAN DB
+        # down — lock transaction-scoped auto-release, retry berhasil.
+        result = await metrics_db.capture_leaderboard_snapshot(
+            request.app.state.metrics_pool, req.label
+        )
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+    # Atribusi server-side (captured_by TIDAK disimpan di DB): user_id + season_number, TANPA label.
+    log.info(
+        "Leaderboard snapshot captured by %s → musim #%s (%s peserta)",
+        admin.user_id,
+        result["season_number"],
+        result["entry_count"],
+    )
+    return result
+
+
+@app.delete("/admin/leaderboard/seasons/{season_id}", response_model=DeleteResultResponse)
+async def leaderboard_delete_season(
+    season_id: UUID,  # path diketik UUID → salah-bentuk = 422 bersih sebelum sentuh DB
+    request: Request,
+    admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    try:
+        result = await metrics_db.delete_leaderboard_season(
+            request.app.state.metrics_pool, season_id
+        )
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+    # Musim tak ada → fn mengembalikan {deleted:false} (BUKAN raise, yang akan tertelan broad-except
+    # jadi 503 menyesatkan). Peta eksplisit ke 404 di sini.
+    if not result["deleted"]:
+        raise HTTPException(404, "season_not_found")
+    log.info(
+        "Leaderboard season deleted by %s → musim #%s",
+        admin.user_id,
+        result["season_number"],
+    )
+    return result
 
 
 @app.post("/token", response_model=TokenResponse)
