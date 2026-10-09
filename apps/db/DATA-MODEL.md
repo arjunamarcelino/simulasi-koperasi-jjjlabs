@@ -214,6 +214,30 @@ schema, **never** add it to the PostgREST-exposed schemas, and grant `EXECUTE` o
 (NOT `leaderboard()`'s `grant … to authenticated`). An `is_admin()` RLS helper is deliberately NOT used
 here — admin-ness is enforced at the backend and the function is role-scoped.
 
+### Seasonal leaderboard snapshots (SIM-17)
+First feature to add **tables** to the admin read path and the **first destructive (write/delete)
+functions** in the `admin` schema. Two new `public` tables hold frozen, point-in-time standings:
+- **`leaderboard_seasons`** (`id` PK, `season_number` unique+monotonic — resolves "latest" via
+  `max()`; gaps/reuse possible after deletes — `label?`, `captured_at`, `entry_count`).
+- **`leaderboard_entries`** (`season_id` FK **cascade**, `rank`, `user_id`, `display_name`, `xp`,
+  `level`; `UNIQUE(season_id, rank)`). **`user_id` is `ON DELETE SET NULL` (NOT cascade)** — the one
+  identity FK in the repo that doesn't cascade: a snapshot is frozen history, so deleting a player
+  preserves their past name/xp/level/rank and only nulls the back-reference.
+
+Ranking is by cumulative `user_progress.xp` (server-authoritative; NEVER `sessions.scores_json`). An
+admin manually **captures** current standings (`admin.capture_leaderboard_snapshot(label)` — xact
+advisory lock + `UNIQUE(season_number)` for gapless numbers, `row_number()` over a total order, top
+100), **deletes** a season (`admin.delete_leaderboard_season(id)` — returns `{deleted:false}` on
+absent, never raises), and reads list+selected (`admin.leaderboard_overview(id?)`). The in-game
+"mading" reads `public.leaderboard_current()` (`SECURITY DEFINER`, granted `anon/authenticated` like
+`public.leaderboard()`, latest season top 20) — it **never projects `user_id`**. Both tables are
+RLS-on with no client policies + explicit `revoke … from anon, authenticated, public`.
+
+> **`metrics_reader` widened (SIM-17):** it now `EXECUTE`s the `VOLATILE` capture/delete definer fns,
+> so the admin DB role does **reads + admin-gated writes** — still NO direct table privileges (writes
+> run with the postgres-owned fn's rights), but a leaked `METRICS_DB_URL` now reaches writes. The
+> require_role('admin') backend gate is the control; a dedicated writer-role split is deferred.
+
 > **On the reallife codes:** `redeem_code` is a *soft* gate — printed at the KDMP and typed
 > by the player. It is **not** a cryptographic secret. As of SIM-9 the codes live server-side
 > only (`apps/db/seed-codes.json` → `redeem_code`) and no longer ship in the client bundle;

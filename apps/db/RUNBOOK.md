@@ -108,10 +108,16 @@ project outlives the hackathon. Cascade if you do run it: `auth.users` → `prof
 - **Rotate/revoke** the CI bot's `SUPABASE_ACCESS_TOKEN`.
 - Decide dev vs prod project separation if the project outlives the hackathon.
 
-## 10. Admin metrics role (SIM-15)
+## 10. Admin metrics role (SIM-15; widened in SIM-17)
 The `20261009120000_admin_metrics.sql` migration creates `metrics_reader` with a **null password** (it
 cannot authenticate until a password is set out-of-band — keeps secrets out of git). The FastAPI backend
-connects as this role to call `admin.metrics_overview()`.
+connects as this role to call `admin.metrics_overview()` (and, since SIM-16, `admin.scenario_analytics()`).
+
+> **SIM-17 note:** `metrics_reader` now ALSO `EXECUTE`s the seasonal-leaderboard functions, including the
+> `VOLATILE` **writes** `admin.capture_leaderboard_snapshot` and `admin.delete_leaderboard_season` — so
+> this credential can now create/delete leaderboard seasons (still via definer fns only; NO direct table
+> privileges). Treat `METRICS_DB_URL` as a higher-value secret accordingly. The password/DSN setup below
+> is unchanged; the real-role `scripts/e2e-metrics.sh` now also exercises capture → overview → delete.
 
 - **Local dev / branch previews:** after `supabase start` (or a branch reset), set a throwaway password so
   the backend can connect:
