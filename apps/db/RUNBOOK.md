@@ -107,3 +107,26 @@ project outlives the hackathon. Cascade if you do run it: `auth.users` → `prof
 ## 9. After the demo
 - **Rotate/revoke** the CI bot's `SUPABASE_ACCESS_TOKEN`.
 - Decide dev vs prod project separation if the project outlives the hackathon.
+
+## 10. Admin metrics role (SIM-15)
+The `20261009120000_admin_metrics.sql` migration creates `metrics_reader` with a **null password** (it
+cannot authenticate until a password is set out-of-band — keeps secrets out of git). The FastAPI backend
+connects as this role to call `admin.metrics_overview()`.
+
+- **Local dev / branch previews:** after `supabase start` (or a branch reset), set a throwaway password so
+  the backend can connect:
+  `psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "alter role metrics_reader password 'postgres'"`
+  then set the backend's `METRICS_DB_URL=postgresql://metrics_reader:postgres@127.0.0.1:54322/postgres`
+  (`METRICS_DB_SSL=disable` — local Postgres serves no TLS). CI does this automatically (`db-tests.yml`).
+- **Hosted:** set a real URL-safe secret via a transient `psql` (history off), NOT the dashboard SQL editor:
+  `ALTER ROLE metrics_reader WITH PASSWORD '<url-safe-secret>'`; store it in the deploy secret manager; set
+  the backend `METRICS_DB_URL` to the **session-pooler** DSN with username **`metrics_reader.<project-ref>`**
+  (`:5432`, host from the Supabase Connect dialog) + `METRICS_DB_SSL=verify-full`. A bare role name through
+  the pooler → `FATAL: Tenant or user not found`. See the full Go/No-Go in the SIM-15 plan.
+- **Teardown (if ever needed):** `drop schema admin cascade;` **then** `drop role metrics_reader;` —
+  order matters (the role holds grants on `admin` objects until the schema is dropped, so `drop role`
+  first fails "role cannot be dropped because some objects depend on it"). The role is cluster-global,
+  survives `db reset`, and must be dropped manually (migrations are forward-only). On teardown also
+  **rotate/clear the hosted `METRICS_DB_URL` secret**. Because migrations are forward-only, re-applying
+  the migration after a teardown recreates the role with a **NULL password** → re-set the password or
+  the backend 503s.

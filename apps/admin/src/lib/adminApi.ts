@@ -14,11 +14,40 @@ export type ProbeOutcome =
   | { kind: "serviceUnavailable" } // 503/500/network/timeout/malformed-200 — all "try again"
   | { kind: "authUnavailable" }; // null client (missing env)
 
-/** Per-probe request timeout: a hung/black-holed backend must not strand the UI
- * (the boot watchdog only covers the pre-login "loading" state). */
-const PROBE_TIMEOUT_MS = 10_000;
+/** GET /admin/metrics outcome (SIM-15). Mirrors ProbeOutcome's non-200 kinds + an `ok`
+ * carrying the validated dashboard payload. Gated on STATUS; the 200 body is accepted
+ * only when it passes the DEEP shape guard (a malformed 200 is a fault, not data). */
+export type MetricsOutcome =
+  | { kind: "ok"; data: AdminMetrics }
+  | { kind: "notAuthorized" } // 403 (admin revoked mid-session)
+  | { kind: "unauthenticated" } // 401 after one refresh
+  | { kind: "serviceUnavailable" }; // 503/500/404/network/timeout/malformed-200/null-client
 
-/** Narrow the 200 body with a real guard — no `as` cast (which `no-explicit-any` rejects). */
+export type EndingSplit = { good: number; neutral: number; bad: number };
+export type ScenarioRow = {
+  scenario_id: string;
+  title: string;
+  sessions: number;
+  completion_rate: number | null;
+  ending_split: EndingSplit | null;
+  avg_score: number | null;
+};
+export type AdminMetrics = {
+  generated_at: string;
+  users: { active_30d: number; total_registered: number; new_7d: number };
+  sessions: {
+    total: number;
+    completion_rate: number | null;
+    ending_split: EndingSplit | null;
+    avg_score: number | null;
+  };
+  per_scenario: ScenarioRow[];
+};
+
+/** Per-request timeout: a hung/black-holed backend must not strand the UI. */
+const REQUEST_TIMEOUT_MS = 10_000;
+
+/** Narrow the /admin/me 200 body with a real guard — no blind `as AdminMetrics` cast. */
 function isProbeBody(x: unknown): x is { user_id: string } {
   return (
     typeof x === "object" &&
@@ -27,7 +56,51 @@ function isProbeBody(x: unknown): x is { user_id: string } {
   );
 }
 
-/** Shared in-flight refresh so N concurrent 401s trigger one token rotation, not N. */
+// --- deep guard for the metrics 200 body (every leaf validated) ---------------
+function rec(x: unknown): Record<string, unknown> | null {
+  return typeof x === "object" && x !== null ? (x as Record<string, unknown>) : null;
+}
+const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+const isNumOrNull = (x: unknown): x is number | null => x === null || isNum(x);
+function isEndingSplitOrNull(x: unknown): x is EndingSplit | null {
+  if (x === null) return true;
+  const o = rec(x);
+  return o !== null && isNum(o["good"]) && isNum(o["neutral"]) && isNum(o["bad"]);
+}
+function isScenarioRow(x: unknown): x is ScenarioRow {
+  const o = rec(x);
+  return (
+    o !== null &&
+    typeof o["scenario_id"] === "string" &&
+    typeof o["title"] === "string" &&
+    isNum(o["sessions"]) &&
+    isNumOrNull(o["completion_rate"]) &&
+    isEndingSplitOrNull(o["ending_split"]) &&
+    isNumOrNull(o["avg_score"])
+  );
+}
+function isMetricsBody(x: unknown): x is AdminMetrics {
+  const o = rec(x);
+  if (o === null || typeof o["generated_at"] !== "string") return false;
+  const u = rec(o["users"]);
+  if (u === null || !isNum(u["active_30d"]) || !isNum(u["total_registered"]) || !isNum(u["new_7d"])) {
+    return false;
+  }
+  const s = rec(o["sessions"]);
+  if (
+    s === null ||
+    !isNum(s["total"]) ||
+    !isNumOrNull(s["completion_rate"]) ||
+    !isEndingSplitOrNull(s["ending_split"]) ||
+    !isNumOrNull(s["avg_score"])
+  ) {
+    return false;
+  }
+  return Array.isArray(o["per_scenario"]) && o["per_scenario"].every(isScenarioRow);
+}
+
+/** Shared in-flight refresh so N concurrent 401s trigger one token rotation, not N.
+ * The SOLE owner of the 401 refresh across probeAdmin + fetchMetrics. */
 let refreshInFlight: Promise<string | undefined> | null = null;
 function refreshOnce(): Promise<string | undefined> {
   refreshInFlight ??= (async () => {
@@ -43,52 +116,37 @@ function refreshOnce(): Promise<string | undefined> {
   return refreshInFlight;
 }
 
-/** Absolute URL of GET /admin/me, or null when the endpoint env is unset/invalid.
- * NOTE: VITE_ADMIN_API_ENDPOINT is treated as an ORIGIN — any path in it is ignored
- * (e.g. https://api.example.com/v1 → https://api.example.com/admin/me). */
-function adminMeUrl(): string | null {
+/** Absolute URL of a backend `path`, or null when the endpoint env is unset/invalid.
+ * VITE_ADMIN_API_ENDPOINT is treated as an ORIGIN — any path in it is ignored
+ * (e.g. https://api.example.com/v1 + /admin/me → https://api.example.com/admin/me). */
+function adminApiUrl(path: string): string | null {
   const base = ENV.adminApiEndpoint;
   if (!base?.trim()) return null;
   try {
-    return new URL("/admin/me", new URL(base).origin).href;
+    return new URL(path, new URL(base).origin).href;
   } catch {
     return null;
   }
 }
 
-async function classify(res: Response): Promise<ProbeOutcome> {
-  switch (res.status) {
-    case 200: {
-      const body: unknown = await res.json().catch(() => null);
-      return isProbeBody(body)
-        ? { kind: "authorized", userId: body.user_id }
-        : { kind: "serviceUnavailable" }; // 200 but malformed → fault
-    }
-    case 403:
-      return { kind: "notAuthorized" };
-    case 401:
-      return { kind: "unauthenticated" };
-    default:
-      return { kind: "serviceUnavailable" }; // 503, 500, anything else → try again
-  }
-}
+/** Non-response terminal outcomes shared by probe + metrics (both unions include them). */
+type NoResponse = { kind: "unauthenticated" } | { kind: "authUnavailable" } | { kind: "serviceUnavailable" };
 
 /**
- * Probe `GET /admin/me`. Gates on STATUS, not the body. The SOLE owner of the 401
- * refresh-retry (the store must never refresh on 401). The Bearer attaches ONLY to the
- * admin-API origin — never anywhere else. A null client → `authUnavailable` with NO
- * network call (do not fall through to a tokenless fetch, which would 401 → wrong
- * "login" bounce).
+ * Authed GET against the admin-API origin. Reads the session, attaches the Bearer ONLY
+ * to that origin, and on a 401 refreshes ONCE (shared owner) and resends. Returns the
+ * Response to classify, or a terminal NoResponse kind. A null client → authUnavailable
+ * with NO network call. The SOLE owner of the 401 refresh — callers must not refresh.
  */
-export async function probeAdmin(signal?: AbortSignal): Promise<ProbeOutcome> {
+async function authedGet(
+  path: string,
+  signal?: AbortSignal,
+): Promise<{ kind: "response"; res: Response } | NoResponse> {
   if (!supabase) return { kind: "authUnavailable" };
-  const url = adminMeUrl();
+  const url = adminApiUrl(path);
   if (!url) return { kind: "serviceUnavailable" };
 
-  // A timeout so a hung backend resolves to serviceUnavailable instead of hanging
-  // forever; combined with the caller's supersession signal (whose aborts are dropped
-  // by the store's epoch guard anyway).
-  const timeout = AbortSignal.timeout(PROBE_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const send = (token: string): Promise<Response> =>
     fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: combined });
@@ -105,9 +163,57 @@ export async function probeAdmin(signal?: AbortSignal): Promise<ProbeOutcome> {
       if (!refreshed) return { kind: "unauthenticated" };
       res = await send(refreshed);
     }
-    return classify(res);
+    return { kind: "response", res };
   } catch {
     // timeout, supersession-abort, or a genuine network/CORS failure → all "try again".
     return { kind: "serviceUnavailable" };
+  }
+}
+
+/**
+ * Probe `GET /admin/me`. Gates on STATUS, not the body. A null client → authUnavailable
+ * with NO network call (do not fall through to a tokenless fetch → 401 → wrong bounce).
+ */
+export async function probeAdmin(signal?: AbortSignal): Promise<ProbeOutcome> {
+  const r = await authedGet("/admin/me", signal);
+  if (r.kind !== "response") return r;
+  switch (r.res.status) {
+    case 200: {
+      const body: unknown = await r.res.json().catch(() => null);
+      return isProbeBody(body)
+        ? { kind: "authorized", userId: body.user_id }
+        : { kind: "serviceUnavailable" }; // 200 but malformed → fault
+    }
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+/**
+ * Fetch `GET /admin/metrics` (SIM-15). Gates on STATUS; the 200 body must pass the deep
+ * `isMetricsBody` guard or it's a fault (serviceUnavailable), never a half-parsed `ok`.
+ * Unknown statuses (e.g. a 404 after a rollback) degrade to serviceUnavailable.
+ */
+export async function fetchMetrics(signal?: AbortSignal): Promise<MetricsOutcome> {
+  const r = await authedGet("/admin/metrics", signal);
+  // A null client (authUnavailable) is unreachable once the gate is "authorized" (that state
+  // requires a non-null client); collapse it into retryable serviceUnavailable rather than
+  // carry a dead terminal state into the dashboard.
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const body: unknown = await r.res.json().catch(() => null);
+      return isMetricsBody(body) ? { kind: "ok", data: body } : { kind: "serviceUnavailable" };
+    }
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
   }
 }

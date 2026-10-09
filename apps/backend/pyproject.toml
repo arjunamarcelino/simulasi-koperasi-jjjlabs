@@ -16,6 +16,9 @@ dependencies = [
     # `crypto` extra menarik `cryptography` (WAJIB untuk ES256; sebelumnya pyjwt
     # hanya dep transitif tanpa extra ini).
     "pyjwt[crypto]~=2.10",
+    # SIM-15: satu-satunya jalur DB backend — pool fail-soft untuk GET /admin/metrics
+    # (role metrics_reader → admin.metrics_overview()). Voice/token path tetap tanpa DB.
+    "asyncpg~=0.30",
 ]
 
 [dependency-groups]

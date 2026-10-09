@@ -109,6 +109,53 @@ Status:
 Konsumen: **app admin terpisah** (`apps/admin`), bukan game. Gerbang client hanya
 tampilan — server (JWT terverifikasi + `require_role`) yang otoritatif.
 
+### `GET /admin/metrics`
+Metrik dasbor admin (SIM-15). **Wajib** `Authorization: Bearer <supabase-jwt>`; sama
+`require_role('admin')` seperti `/admin/me` (401 → 403 SEBELUM sentuh DB). Backend membuka
+pool asyncpg **fail-soft** sebagai role `metrics_reader` (EXECUTE-only) dan memanggil
+`admin.metrics_overview()`. Semua `*_rate`/`avg_*` bernilai **number ATAU `null`** (`null` =
+tak terdefinisi: pembagi 0 / tak ada sesi berskor) — FE merender `null` sebagai "—". Rate
+berupa pecahan `[0,1]` (bukan persen/teks). `per_scenario` memuat SEMUA skenario `AVAILABLE`
+(urut by title), termasuk yang 0 sesi.
+
+Response `200`:
+```json
+{
+  "generated_at": "2026-10-09T04:00:00Z",
+  "users": { "active_30d": 42, "total_registered": 120, "new_7d": 8 },
+  "sessions": {
+    "total": 300, "completion_rate": 0.9,
+    "ending_split": { "good": 0.5, "neutral": 0.3, "bad": 0.2 }, "avg_score": 71.4
+  },
+  "per_scenario": [
+    { "scenario_id": "kredit-macet", "title": "Kredit Macet", "sessions": 120,
+      "completion_rate": 0.9, "ending_split": { "good": 0.6, "neutral": 0.2, "bad": 0.2 },
+      "avg_score": 73.2 }
+  ]
+}
+```
+
+Status:
+
+| kode | arti | perilaku FE |
+|---|---|---|
+| `200` | metrik admin | render dasbor |
+| `401` | token hilang/invalid/kedaluwarsa (`WWW-Authenticate: Bearer`) | refresh + retry SEKALI → login |
+| `403` | authenticated non-admin **atau** sesi anonim (`{"detail":"forbidden"}`) | "tak berwenang"; JANGAN refresh-loop |
+| `503` | DB metrik tak dikonfigurasi/tak terjangkau/lambat (fail-soft) | state "layanan tidak tersedia" + retry |
+| `500` | verifier JWT belum dikonfigurasi (fail-closed) | surface error |
+
+Konsumen: `apps/admin` (dasbor). `completion_rate` = sesi yang BUKAN `force_quit_level_2` ÷
+total (`sinyal_level_1` dihitung selesai — akhir terpandu tapi sukarela; hanya force-quit L2 =
+tak selesai); `avg_score` = rata-rata dari mean-rubrik per-sesi (nilai numerik 0–100 saja).
+
+> **Sumber kebenaran bentuk ini = blok JSON di atas.** Ia dikodekan di empat tempat yang harus
+> seiring: `admin.metrics_overview()` (SQL), `AdminMetricsResponse` (pydantic, `extra="forbid"`),
+> tipe `AdminMetrics` (TS), dan guard `isMetricsBody` (TS). Karena `extra="forbid"`, menambah
+> kunci baru TIDAK forward-compatible: tambah field dengan urutan **model+guard dulu, SQL terakhir**
+> (SQL duluan → 500 sampai model menyusul). Definisi lengkap + runbook di
+> `docs/plans/2026-10-09-feat-admin-dashboard-metrics-plan.md`.
+
 `GET /health` → `{ "status": "ok" }` (tanpa auth). CORS diizinkan untuk origin di env
 `CORS_ALLOW_ORIGINS` (comma-split; fallback ke `CORS_ALLOW_ORIGIN` lama; default dev
 `http://localhost:5173,http://localhost:5174` = game + admin), method `GET`/`POST`/
