@@ -81,16 +81,28 @@ export const adminAuthStore = createStore<AdminAuthState>()((set, get) => ({
   },
 
   retry: async () => {
-    if (!supabase) return;
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) {
-      set({ gate: UNAUTH });
-      return;
-    }
-    lastProbedToken = null; // force a re-probe of the same token
-    await runProbe(session.access_token);
+    // Coalesce concurrent callers into ONE probe. SIM-16 added a second fetch-loss bridge
+    // (scenarioAnalytics.store alongside dashboardMetrics.store); if both call retry() in the same
+    // tick, each resets lastProbedToken/bumps probeEpoch and aborts the other's in-flight probe,
+    // leaving both bridge continuations reading a stale gate. A shared in-flight promise makes
+    // every concurrent caller await the SAME probe and observe the SAME resolved gate.
+    retryInFlight ??= (async () => {
+      try {
+        if (!supabase) return;
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) {
+          set({ gate: UNAUTH });
+          return;
+        }
+        lastProbedToken = null; // force a re-probe of the same token
+        await runProbe(session.access_token);
+      } finally {
+        retryInFlight = null;
+      }
+    })();
+    return retryInFlight;
   },
 }));
 
@@ -102,6 +114,7 @@ let watchdog: ReturnType<typeof setTimeout> | null = null;
 let probeEpoch = 0;
 let lastProbedToken: string | null = null;
 let currentAbort: AbortController | null = null;
+let retryInFlight: Promise<void> | null = null; // coalesces concurrent retry() callers (SIM-16)
 
 /** Boot watchdog (ms): if no session/probe ever resolves (SDK stall, hung backend),
  * leave the splash instead of spinning forever. Only acts while still "loading". */
@@ -213,6 +226,7 @@ export function __resetAdminAuthForTest(): void {
   probeEpoch = 0;
   lastProbedToken = null;
   currentAbort = null;
+  retryInFlight = null;
   adminAuthStore.setState({ gate: { status: "loading" } });
 }
 
