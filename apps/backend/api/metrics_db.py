@@ -129,79 +129,73 @@ async def fetch_scenario_analytics(pool: asyncpg.Pool | None, scenario_id: str) 
     return row
 
 
-async def fetch_leaderboard_overview(
-    pool: asyncpg.Pool | None, season_id: uuid.UUID | None
-) -> dict[str, Any]:
-    """Call admin.leaderboard_overview($1) and return its jsonb as a dict (SIM-17).
+_OMIT = object()  # sentinel: "no non-PII arg to include in the fault log"
 
-    Same fail-soft contract as fetch_scenario_analytics: no pool / dropped connection / timeout
-    / query error / unexpected NULL → MetricsUnavailable (→ 503, never 500). The except is
-    deliberately BROAD (PostgresError server-side AND InterfaceError client-side) for the same
-    reason as fetch_metrics. season_id (a uuid.UUID or None) is bound as $1 — asyncpg encodes it
-    natively, so NO `::uuid` cast is needed and it is never string-interpolated. A null param →
-    the DB resolves the latest season.
+
+async def _call_definer(
+    pool: asyncpg.Pool | None,
+    sql: str,
+    *args: Any,
+    log_name: str,
+    log_arg: Any = _OMIT,
+) -> dict[str, Any]:
+    """Shared body for the SIM-17 definer-fn calls (overview/capture/delete).
+
+    Identical fail-soft contract to fetch_scenario_analytics: None pool / dropped connection /
+    timeout / query error / unexpected NULL → MetricsUnavailable (→ 503, never 500); the except is
+    deliberately BROAD (PostgresError server-side AND InterfaceError client-side). `args` are bound
+    positionally ($1…) — never string-interpolated. `log_arg` (a NON-PII id, or _OMIT) is the only
+    value included in the fault log — NEVER pass `label` or any PII; the DSN/claims/exception
+    message are never logged.
     """
     if pool is None:
         raise MetricsUnavailable
     try:
         async with pool.acquire(timeout=5.0) as conn:  # bound acquire (≥ connect) → 503, never a hang
-            row = await conn.fetchval("select admin.leaderboard_overview($1)", season_id)
+            row = await conn.fetchval(sql, *args)
     except Exception as exc:  # BROAD: PostgresError AND InterfaceError (dropped conn) → 503, never 500
-        # season_id (uuid) is a non-PII identifier → safe to log for triage; NEVER log the DSN/claims.
-        log.error("Query leaderboard_overview gagal untuk %s (%s)", season_id, type(exc).__name__)
+        if log_arg is _OMIT:
+            log.error("Query %s gagal (%s)", log_name, type(exc).__name__)
+        else:
+            log.error("Query %s gagal untuk %s (%s)", log_name, log_arg, type(exc).__name__)
         raise MetricsUnavailable from exc
     if row is None:
         raise MetricsUnavailable
     return row
+
+
+async def fetch_leaderboard_overview(
+    pool: asyncpg.Pool | None, season_id: uuid.UUID | None
+) -> dict[str, Any]:
+    """Call admin.leaderboard_overview($1) → jsonb dict (SIM-17). A null season_id resolves to the
+    latest season. season_id (uuid|None) is bound natively ($1, no `::uuid` cast) and is a non-PII
+    id, so it's included in the fault log for triage."""
+    return await _call_definer(
+        pool, "select admin.leaderboard_overview($1)", season_id,
+        log_name="leaderboard_overview", log_arg=season_id,
+    )
 
 
 async def capture_leaderboard_snapshot(
     pool: asyncpg.Pool | None, label: str | None
 ) -> dict[str, Any]:
-    """Call admin.capture_leaderboard_snapshot($1) and return its jsonb as a dict (SIM-17).
-
-    An admin-gated WRITE through a VOLATILE definer fn. Same fail-soft contract: any fault →
-    MetricsUnavailable (→ 503). Advisory-lock contention inside the fn (a concurrent capture)
-    surfaces here as a bounded wait → fail-soft 503 on timeout, NOT a DB outage — the lock is
-    transaction-scoped and auto-releases, so a retry succeeds.
-
-    NEVER log `label` (arbitrary admin-authored text) — it is bound as $1 only, never logged or
-    string-interpolated. Attribution is logged server-side at the route (acting user_id +
-    season_number), not here.
-    """
-    if pool is None:
-        raise MetricsUnavailable
-    try:
-        async with pool.acquire(timeout=5.0) as conn:  # bound acquire (≥ connect) → 503, never a hang
-            row = await conn.fetchval("select admin.capture_leaderboard_snapshot($1)", label)
-    except Exception as exc:  # BROAD: PostgresError AND InterfaceError (dropped conn) → 503, never 500
-        # NEVER log `label`; and never the DSN/claims/exception message.
-        log.error("Query capture_leaderboard_snapshot gagal (%s)", type(exc).__name__)
-        raise MetricsUnavailable from exc
-    if row is None:
-        raise MetricsUnavailable
-    return row
+    """Call admin.capture_leaderboard_snapshot($1) → jsonb dict (SIM-17). An admin-gated WRITE via a
+    VOLATILE definer fn: advisory-lock contention surfaces as a bounded wait → fail-soft 503 on
+    timeout (the lock is xact-scoped and auto-releases, so a retry succeeds), NOT a DB outage.
+    `label` is bound as $1 and NEVER logged (no `log_arg`); attribution is logged at the route."""
+    return await _call_definer(
+        pool, "select admin.capture_leaderboard_snapshot($1)", label,
+        log_name="capture_leaderboard_snapshot",
+    )
 
 
 async def delete_leaderboard_season(
     pool: asyncpg.Pool | None, season_id: uuid.UUID
 ) -> dict[str, Any]:
-    """Call admin.delete_leaderboard_season($1) and return its jsonb as a dict (SIM-17).
-
-    An admin-gated WRITE through a VOLATILE definer fn. Same fail-soft contract: any fault →
-    MetricsUnavailable (→ 503). The fn returns `{deleted: bool, season_number}` — it does NOT
-    raise on an absent season (a raise would be masked by the broad except as a 503); the route
-    inspects `deleted` and maps false → 404. season_id (uuid) is bound as $1 (native encode, no
-    `::uuid` cast) and is OK to log for triage; NEVER log the DSN/claims.
-    """
-    if pool is None:
-        raise MetricsUnavailable
-    try:
-        async with pool.acquire(timeout=5.0) as conn:  # bound acquire (≥ connect) → 503, never a hang
-            row = await conn.fetchval("select admin.delete_leaderboard_season($1)", season_id)
-    except Exception as exc:  # BROAD: PostgresError AND InterfaceError (dropped conn) → 503, never 500
-        log.error("Query delete_leaderboard_season gagal untuk %s (%s)", season_id, type(exc).__name__)
-        raise MetricsUnavailable from exc
-    if row is None:
-        raise MetricsUnavailable
-    return row
+    """Call admin.delete_leaderboard_season($1) → jsonb dict (SIM-17). An admin-gated WRITE via a
+    VOLATILE definer fn that returns `{deleted, season_number}` and does NOT raise on an absent
+    season (a raise would be masked as a 503); the route maps `deleted == false` → 404."""
+    return await _call_definer(
+        pool, "select admin.delete_leaderboard_season($1)", season_id,
+        log_name="delete_leaderboard_season", log_arg=season_id,
+    )
