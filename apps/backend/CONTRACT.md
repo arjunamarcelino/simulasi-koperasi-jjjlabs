@@ -271,8 +271,13 @@ Status (ketiga endpoint di atas):
 | `401` | token hilang/invalid/kedaluwarsa (`WWW-Authenticate: Bearer`) | refresh + retry SEKALI → login |
 | `403` | authenticated non-admin **atau** sesi anonim (`{"detail":"forbidden"}`) | "tak berwenang"; JANGAN refresh-loop |
 | `404` | **DELETE saja** — `season_id` tak ada | refresh daftar (anggap sudah terhapus); JANGAN error keras |
-| `422` | `season_id` bukan UUID / `label` melanggar batas (dicek SEBELUM DB) | surface error |
+| `422` | `season_id` bukan UUID / `label` melanggar batas (dicek SEBELUM DB) | surface error (lihat catatan) |
 | `503` | DB tak dikonfigurasi/tak terjangkau/lambat (fail-soft) | state "layanan tidak tersedia" + retry |
+
+> Catatan `422`: klien `apps/admin` **tidak bisa** memicunya (UUID selalu terbitan server; `label`
+> dibatasi `maxLength=120` di input) sehingga klien tak punya penanganan khusus — non-2xx tak
+> terduga runtuh ke state "layanan tidak tersedia". Baris `422` mendokumentasikan wire mentah untuk
+> pemanggil non-UI (mis. agent yang mengirim UUID/label salah-bentuk).
 
 Konsumen: `apps/admin` (panel leaderboard). **Capture/delete adalah WRITE** lewat
 `SECURITY DEFINER` — `metrics_reader` kini mengeksekusi tulis/hapus (tetap TANPA privilege tabel
