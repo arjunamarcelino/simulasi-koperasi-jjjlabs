@@ -291,6 +291,7 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     this.lzStamp(606, 346, LZ.plant);
 
     // Points of interest: wall boards (mading) + a computer for the koperasi quiz.
+    this.lzStamp(120, 48, LZ.poster, false); // champions board — opens the seasonal leaderboard
     this.lzStamp(180, 48, LZ.poster, false);
     this.lzStamp(300, 48, LZ.poster, false);
     this.lzStamp(340, 48, LZ.poster, false);
@@ -333,9 +334,11 @@ export class KoperasiInteriorScene extends Phaser.Scene {
       fire: () => this.exitToVillage(),
     });
 
-    // Points of interest. Entrance posters open the knowledge carousel; the two
+    // Points of interest. Entrance posters open the knowledge carousel; the
+    // leftmost (champions) poster opens the seasonal leaderboard; the two
     // ruang-rapat wall decos flank the door — left (rapatDeco) opens the data
     // tables, right (rapatDeco2) opens the info board. Quiz + simpan-pinjam stub.
+    this.addPoi("mading", "Papan Juara", 120, 54, () => gameStore.getState().openMadingLeaderboard());
     this.addPoi("mading", "Info Koperasi", 200, 54, () => gameStore.getState().openMadingKnowledge());
     this.addPoi("mading", "Info Koperasi", 340, 54, () => gameStore.getState().openMadingKnowledge());
     this.addPoi("mading", "Papan Data", 410, 250, () => gameStore.getState().openMadingData());
