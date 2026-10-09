@@ -2,6 +2,7 @@ import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import { fetchScenarioAnalytics, type ScenarioAnalytics } from "../lib/adminApi";
 import { adminAuthStore } from "./adminAuth.store";
+import { assertNever } from "../lib/assertNever";
 
 /**
  * Per-scenario drill-down store (SIM-16). A SINGLE active slot (not a cache): `scenarioId` is the
@@ -36,14 +37,19 @@ export type ScenarioAnalyticsStoreState = {
 
 let epoch = 0;
 let currentAbort: AbortController | null = null;
-let openScenarioId: string | null = null;
 let bridged = false; // one-shot auth-loss bridge latch (reset on ready / close)
+
+/** The scenario currently loaded/shown, derived from state — no parallel module copy to keep in
+ * sync (every non-idle variant already carries scenarioId). */
+function currentScenarioId(): string | null {
+  const s = scenarioAnalyticsStore.getState().state;
+  return s.status === "idle" ? null : s.scenarioId;
+}
 
 function reset(): void {
   epoch++; // bump before abort so the in-flight result is dropped by the guard
   currentAbort?.abort();
   currentAbort = null;
-  openScenarioId = null;
   bridged = false;
   scenarioAnalyticsStore.setState({ state: { status: "idle" } });
 }
@@ -73,6 +79,8 @@ async function run(scenarioId: string): Promise<void> {
     case "notAuthorized":
       handleAuthLoss(scenarioId, myEpoch);
       break;
+    default:
+      assertNever(outcome); // a new outcome kind must be handled, not silently ignored
   }
 }
 
@@ -101,16 +109,16 @@ export const scenarioAnalyticsStore = createStore<ScenarioAnalyticsStoreState>()
   state: { status: "idle" },
 
   open: (scenarioId) => {
-    if (openScenarioId === scenarioId) {
+    if (currentScenarioId() === scenarioId) {
       reset(); // clicking the open row again collapses it
       return;
     }
-    openScenarioId = scenarioId;
-    void run(scenarioId);
+    void run(scenarioId); // run() synchronously sets loading{scenarioId} → becomes currentScenarioId()
   },
 
   retry: () => {
-    if (openScenarioId) void run(openScenarioId);
+    const id = currentScenarioId();
+    if (id) void run(id);
   },
 
   close: () => reset(),
@@ -120,7 +128,6 @@ export const scenarioAnalyticsStore = createStore<ScenarioAnalyticsStoreState>()
 export function __resetScenarioAnalyticsForTest(): void {
   epoch = 0;
   currentAbort = null;
-  openScenarioId = null;
   bridged = false;
   scenarioAnalyticsStore.setState({ state: { status: "idle" } });
 }
