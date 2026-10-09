@@ -80,6 +80,67 @@ export type ScenarioAnalytics = {
   dropoff: null;
 };
 
+// --- SIM-17 seasonal leaderboard --------------------------------------------
+// THREE separate outcome unions (not one): the overview read and the capture write share the
+// non-200 shape (no notFound — those paths have no "unknown resource" status), while DELETE adds a
+// DISTINCT `notFound` (404) that the store treats as success (the season is already gone).
+
+/** One row of the seasons list AND the header fields of the selected season. */
+export type SeasonHeader = {
+  id: string;
+  season_number: number;
+  label: string | null;
+  captured_at: string;
+  entry_count: number;
+};
+/** One standings row — NEVER carries user_id (privacy boundary enforced server-side). */
+export type LeaderboardEntry = {
+  rank: number;
+  display_name: string;
+  xp: number;
+  level: number;
+};
+export type SelectedSeason = SeasonHeader & { entries: LeaderboardEntry[] };
+export type LeaderboardOverview = {
+  seasons: SeasonHeader[]; // newest-first, capped at 50 by the contract
+  selected: SelectedSeason | null; // null only when no season exists yet
+};
+export type CaptureResult = {
+  season_id: string;
+  season_number: number;
+  captured_at: string;
+  entry_count: number;
+};
+export type DeleteResult = {
+  deleted: boolean; // false → season was absent (backend maps that to 404, handled below)
+  season_number: number | null;
+};
+
+/** GET /admin/leaderboard outcome (SIM-17). Gated on STATUS; the 200 body must pass the deep
+ * guard or it's a fault. NO notFound — a missing season surfaces as `selected: null`, not a 404. */
+export type LeaderboardOverviewOutcome =
+  | { kind: "ok"; data: LeaderboardOverview }
+  | { kind: "notAuthorized" } // 403
+  | { kind: "unauthenticated" } // 401 after one refresh
+  | { kind: "serviceUnavailable" }; // 503/500/network/timeout/malformed-200/null-client
+
+/** POST /admin/leaderboard/capture outcome (SIM-17). Same non-200 shape as the overview read —
+ * capture has no "not found" status. A 401/403 provably means NO season was committed. */
+export type CaptureOutcome =
+  | { kind: "ok"; data: CaptureResult }
+  | { kind: "notAuthorized" } // 403
+  | { kind: "unauthenticated" } // 401 after one refresh
+  | { kind: "serviceUnavailable" }; // 503/500/network/timeout/malformed-200/null-client
+
+/** DELETE /admin/leaderboard/seasons/{id} outcome (SIM-17). Adds a DISTINCT `notFound` (404):
+ * the backend maps the SQL `{deleted:false}` to 404, which the store treats as success. */
+export type DeleteOutcome =
+  | { kind: "ok"; data: DeleteResult }
+  | { kind: "notAuthorized" } // 403
+  | { kind: "unauthenticated" } // 401 after one refresh
+  | { kind: "notFound" } // 404 — season already gone; store treats as success
+  | { kind: "serviceUnavailable" }; // 503/500/network/timeout/malformed-200/null-client
+
 /** Per-request timeout: a hung/black-holed backend must not strand the UI. */
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -140,6 +201,8 @@ function isMetricsBody(x: unknown): x is AdminMetrics {
 // negatives/floats). Scores (avg) stay isNumOrNull. by_trigger is an open count map.
 const isNonNegInt = (x: unknown): x is number =>
   typeof x === "number" && Number.isInteger(x) && x >= 0;
+/** A nullable free-text field (season label). */
+const isStrOrNull = (x: unknown): x is string | null => x === null || typeof x === "string";
 function isCountMap(x: unknown): x is Record<string, number> {
   const o = rec(x);
   return o !== null && !Array.isArray(x) && Object.values(o).every(isNonNegInt);
@@ -224,14 +287,23 @@ function adminApiUrl(path: string): string | null {
 /** Non-response terminal outcomes shared by probe + metrics (both unions include them). */
 type NoResponse = { kind: "unauthenticated" } | { kind: "authUnavailable" } | { kind: "serviceUnavailable" };
 
+/** A request's method + a pre-serialized STRING body. GET passes `{}`. */
+type RequestInitLite = { method?: string; body?: string };
+
 /**
- * Authed GET against the admin-API origin. Reads the session, attaches the Bearer ONLY
- * to that origin, and on a 401 refreshes ONCE (shared owner) and resends. Returns the
- * Response to classify, or a terminal NoResponse kind. A null client → authUnavailable
- * with NO network call. The SOLE owner of the 401 refresh — callers must not refresh.
+ * Authed request against the admin-API origin. Reads the session, attaches the Bearer ONLY
+ * to that origin, and on a 401 refreshes ONCE (shared owner) and resends. Carries `init`
+ * (method + string body) so the SAME closure re-applies them on the 401 resend; returns the
+ * Response to classify, or a terminal NoResponse kind. A null client → authUnavailable with NO
+ * network call. The SOLE owner of the 401 refresh — callers must not refresh.
+ *
+ * Re-sending the body on a 401 is safe for the WRITE paths (capture/delete) ONLY because the
+ * backend gate (`_require_admin`) runs BEFORE the DB fn — a 401 therefore means no season was
+ * ever committed, so resending cannot double-write.
  */
-async function authedGet(
+async function authedRequest(
   path: string,
+  init: RequestInitLite = {},
   signal?: AbortSignal,
 ): Promise<{ kind: "response"; res: Response } | NoResponse> {
   if (!supabase) return { kind: "authUnavailable" };
@@ -240,8 +312,16 @@ async function authedGet(
 
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  const send = (token: string): Promise<Response> =>
-    fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: combined });
+  const send = (token: string): Promise<Response> => {
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (init.body !== undefined) headers["Content-Type"] = "application/json";
+    return fetch(url, {
+      method: init.method ?? "GET",
+      headers,
+      ...(init.body !== undefined ? { body: init.body } : {}),
+      signal: combined,
+    });
+  };
 
   try {
     const {
@@ -267,7 +347,7 @@ async function authedGet(
  * with NO network call (do not fall through to a tokenless fetch → 401 → wrong bounce).
  */
 export async function probeAdmin(signal?: AbortSignal): Promise<ProbeOutcome> {
-  const r = await authedGet("/admin/me", signal);
+  const r = await authedRequest("/admin/me", {}, signal);
   if (r.kind !== "response") return r;
   switch (r.res.status) {
     case 200: {
@@ -291,7 +371,7 @@ export async function probeAdmin(signal?: AbortSignal): Promise<ProbeOutcome> {
  * Unknown statuses (e.g. a 404 after a rollback) degrade to serviceUnavailable.
  */
 export async function fetchMetrics(signal?: AbortSignal): Promise<MetricsOutcome> {
-  const r = await authedGet("/admin/metrics", signal);
+  const r = await authedRequest("/admin/metrics", {}, signal);
   // A null client (authUnavailable) is unreachable once the gate is "authorized" (that state
   // requires a non-null client); collapse it into retryable serviceUnavailable rather than
   // carry a dead terminal state into the dashboard.
@@ -319,7 +399,11 @@ export async function fetchScenarioAnalytics(
   scenarioId: string,
   signal?: AbortSignal,
 ): Promise<ScenarioAnalyticsOutcome> {
-  const r = await authedGet(`/admin/scenarios/${encodeURIComponent(scenarioId)}/analytics`, signal);
+  const r = await authedRequest(
+    `/admin/scenarios/${encodeURIComponent(scenarioId)}/analytics`,
+    {},
+    signal,
+  );
   if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
   switch (r.res.status) {
     case 200: {
@@ -327,6 +411,169 @@ export async function fetchScenarioAnalytics(
       return isScenarioAnalyticsBody(body)
         ? { kind: "ok", data: body }
         : { kind: "serviceUnavailable" };
+    }
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    case 404:
+      return { kind: "notFound" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+// --- SIM-17 leaderboard: deep guards for the three 200 bodies -----------------
+// Counts (season_number/entry_count/xp/level/rank) use isNonNegInt (reject negatives/floats);
+// label is isStrOrNull. The contract caps seasons at 50 and entries at 100 — an oversized array
+// is a contract violation → treat as a fault (serviceUnavailable), never render it.
+const MAX_SEASONS = 50;
+const MAX_ENTRIES = 100;
+
+function isSeasonHeader(x: unknown): x is SeasonHeader {
+  const o = rec(x);
+  return (
+    o !== null &&
+    typeof o["id"] === "string" &&
+    isNonNegInt(o["season_number"]) &&
+    isStrOrNull(o["label"]) &&
+    typeof o["captured_at"] === "string" &&
+    isNonNegInt(o["entry_count"])
+  );
+}
+
+function isLeaderboardEntry(x: unknown): x is LeaderboardEntry {
+  const o = rec(x);
+  return (
+    o !== null &&
+    isNonNegInt(o["rank"]) &&
+    typeof o["display_name"] === "string" &&
+    isNonNegInt(o["xp"]) &&
+    isNonNegInt(o["level"])
+  );
+}
+
+/** The `selected` field: either null (no season) or a season header PLUS a validated entries[].
+ * Ranks must be unique (the contiguous-1..N invariant; a dup would also collide as a React key)
+ * and the list must not exceed the contract cap. */
+function isSelectedSeason(x: unknown): x is SelectedSeason | null {
+  if (x === null) return true;
+  const o = rec(x);
+  if (o === null) return false;
+  const entries = o["entries"]; // read before isSeasonHeader narrows `o` to SeasonHeader
+  if (!isSeasonHeader(o)) return false;
+  if (!Array.isArray(entries) || entries.length > MAX_ENTRIES || !entries.every(isLeaderboardEntry)) {
+    return false;
+  }
+  const ranks = (entries as LeaderboardEntry[]).map((e) => e.rank);
+  return new Set(ranks).size === ranks.length;
+}
+
+function isLeaderboardOverviewBody(x: unknown): x is LeaderboardOverview {
+  const o = rec(x);
+  return (
+    o !== null &&
+    Array.isArray(o["seasons"]) &&
+    o["seasons"].length <= MAX_SEASONS &&
+    o["seasons"].every(isSeasonHeader) &&
+    isSelectedSeason(o["selected"])
+  );
+}
+
+function isCaptureResult(x: unknown): x is CaptureResult {
+  const o = rec(x);
+  return (
+    o !== null &&
+    typeof o["season_id"] === "string" &&
+    isNonNegInt(o["season_number"]) &&
+    typeof o["captured_at"] === "string" &&
+    isNonNegInt(o["entry_count"])
+  );
+}
+
+function isDeleteResult(x: unknown): x is DeleteResult {
+  const o = rec(x);
+  return (
+    o !== null &&
+    typeof o["deleted"] === "boolean" &&
+    (o["season_number"] === null || isNonNegInt(o["season_number"]))
+  );
+}
+
+/**
+ * Fetch `GET /admin/leaderboard?season_id=<uuid?>` (SIM-17). Omitting `seasonId` requests the
+ * latest season. Gates on STATUS; the 200 body must pass `isLeaderboardOverviewBody` or it's a
+ * fault. There is NO 404 here — a missing season is `selected: null`, not a status.
+ */
+export async function fetchLeaderboardOverview(
+  seasonId?: string,
+  signal?: AbortSignal,
+): Promise<LeaderboardOverviewOutcome> {
+  const q = seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : "";
+  const r = await authedRequest(`/admin/leaderboard${q}`, {}, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const body: unknown = await r.res.json().catch(() => null);
+      return isLeaderboardOverviewBody(body) ? { kind: "ok", data: body } : { kind: "serviceUnavailable" };
+    }
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+/**
+ * Capture a snapshot via `POST /admin/leaderboard/capture` (SIM-17). `label` null → empty body.
+ *
+ * The 401 resend inside `authedRequest` is safe HERE ONLY because the backend gate
+ * (`_require_admin`) runs BEFORE the DB fn — a 401/403 means no season was committed, so the
+ * store can state plainly "musim tidak tersimpan". A 503, by contrast, may have committed
+ * server-side (timeout after commit) → the store refetches the overview.
+ */
+export async function captureLeaderboardSnapshot(
+  label: string | null,
+  signal?: AbortSignal,
+): Promise<CaptureOutcome> {
+  const body = JSON.stringify(label === null ? {} : { label });
+  const r = await authedRequest("/admin/leaderboard/capture", { method: "POST", body }, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const b: unknown = await r.res.json().catch(() => null);
+      return isCaptureResult(b) ? { kind: "ok", data: b } : { kind: "serviceUnavailable" };
+    }
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+/**
+ * Delete a season via `DELETE /admin/leaderboard/seasons/{id}` (SIM-17). A 404 (season already
+ * gone) is a DISTINCT `notFound` the store treats as success — folding it into serviceUnavailable
+ * would offer a pointless retry on an already-deleted season.
+ */
+export async function deleteLeaderboardSeason(
+  seasonId: string,
+  signal?: AbortSignal,
+): Promise<DeleteOutcome> {
+  const r = await authedRequest(
+    `/admin/leaderboard/seasons/${encodeURIComponent(seasonId)}`,
+    { method: "DELETE" },
+    signal,
+  );
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const b: unknown = await r.res.json().catch(() => null);
+      return isDeleteResult(b) ? { kind: "ok", data: b } : { kind: "serviceUnavailable" };
     }
     case 403:
       return { kind: "notAuthorized" };

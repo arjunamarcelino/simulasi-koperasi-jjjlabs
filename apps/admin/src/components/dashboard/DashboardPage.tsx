@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { dashboardMetricsStore, useDashboardMetrics } from "../../stores/dashboardMetrics.store";
 import { scenarioAnalyticsStore, useScenarioAnalytics } from "../../stores/scenarioAnalytics.store";
+import { leaderboardStore } from "../../stores/leaderboard.store";
 import { KpiCard } from "./KpiCard";
 import { ScenarioTable } from "./ScenarioTable";
+import { LeaderboardPanel } from "./LeaderboardPanel";
 import { count, pct, score } from "../../lib/formatMetrics";
 
 /**
@@ -20,10 +22,12 @@ export function DashboardPage({ userId }: { userId: string }) {
 
   useEffect(() => {
     dashboardMetricsStore.getState().load(userId); // fetch once per authorized userId
-    // One unmount owner: tear down both the dashboard fetch and any open drill-down panel.
+    leaderboardStore.getState().load(); // fetch the latest season once (StrictMode-safe)
+    // One unmount owner: tear down the dashboard fetch, any open drill-down panel, and the board.
     return () => {
       dashboardMetricsStore.getState().dispose();
       scenarioAnalyticsStore.getState().close();
+      leaderboardStore.getState().dispose();
     };
   }, [userId]);
 
@@ -75,6 +79,9 @@ export function DashboardPage({ userId }: { userId: string }) {
           onRowClick={(id) => scenarioAnalyticsStore.getState().open(id)}
         />
       )}
+      <section className="border-t border-brown/40 pt-6">
+        <LeaderboardPanel />
+      </section>
     </div>
   );
 }
