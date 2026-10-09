@@ -15,7 +15,7 @@ export function DistributionBars({
   avg,
 }: {
   pillarKey: string;
-  buckets: number[];
+  buckets: readonly number[];
   avg: number | null;
 }) {
   const heights = barHeightsPx(buckets, PLOT_PX);

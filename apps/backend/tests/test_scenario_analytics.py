@@ -237,3 +237,12 @@ def test_response_model_forbids_extra_keys():
 
     with pytest.raises(ValidationError):
         ScenarioAnalyticsResponse(**{**SAMPLE, "surprise": 1})
+
+
+def test_response_model_rejects_wrong_bucket_length():
+    # buckets must be EXACTLY 5 bands; a band drop/add in SQL must 500 loudly, not reach the FE.
+    from api.server import ScenarioAnalyticsResponse
+
+    bad = {**SAMPLE, "pillars": [{"key": "a", "count": 1, "avg": 10.0, "buckets": [1, 0, 0, 0]}]}
+    with pytest.raises(ValidationError):
+        ScenarioAnalyticsResponse(**bad)

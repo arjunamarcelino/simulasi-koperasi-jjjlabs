@@ -15,13 +15,13 @@ from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from livekit import api
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import auth, metrics_db
 from .auth import AuthedUser, require_role, verify_supabase_jwt
@@ -216,7 +216,9 @@ class PillarDist(BaseModel):
     key: str
     count: int
     avg: float | None
-    buckets: list[int]
+    # Selalu TEPAT 5 bucket (0–20 … 81–100). Length di-enforce di model agar regresi band SQL
+    # (4 atau 6 elemen) 500 keras, bukan lolos ke FE malformed (SIM-16 review).
+    buckets: Annotated[list[int], Field(min_length=5, max_length=5)]
 
 
 class ScenarioAnalyticsResponse(BaseModel):

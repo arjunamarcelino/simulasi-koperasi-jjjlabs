@@ -7,7 +7,7 @@ export const BUCKET_LABELS = ["0–20", "21–40", "41–60", "61–80", "81–1
 
 /** Bar pixel heights proportional to the tallest bucket, within `maxPx`. All-zero buckets →
  * all-zero heights (the caller renders an empty state instead of invisible 0px bars). Never NaN. */
-export function barHeightsPx(buckets: number[], maxPx: number): number[] {
+export function barHeightsPx(buckets: readonly number[], maxPx: number): number[] {
   const max = Math.max(0, ...buckets);
   if (max <= 0) return buckets.map(() => 0);
   return buckets.map((c) => Math.round((Math.max(0, c) / max) * maxPx));
@@ -15,7 +15,7 @@ export function barHeightsPx(buckets: number[], maxPx: number): number[] {
 
 /** One enumerated aria-label covering all 5 buckets — the "table-view twin" for N=5, so the
  * chart is fully described to assistive tech without a separate table toggle. */
-export function bucketsAriaLabel(pillarKey: string, buckets: number[]): string {
+export function bucketsAriaLabel(pillarKey: string, buckets: readonly number[]): string {
   const parts = BUCKET_LABELS.map((l, i) => `${l}: ${buckets[i] ?? 0} sesi`);
   return `Distribusi skor ${pillarKey} — ${parts.join("; ")}`;
 }

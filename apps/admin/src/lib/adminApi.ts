@@ -54,7 +54,14 @@ export type ScenarioAnalyticsOutcome =
   | { kind: "notFound" } // 404 — unknown scenario; retrying is pointless
   | { kind: "serviceUnavailable" }; // 503/500/network/timeout/malformed-200/null-client
 
-export type PillarDist = { key: string; count: number; avg: number | null; buckets: number[] };
+// buckets is always exactly 5 bands (0–20 … 81–100) — a 5-tuple carries the invariant the guard
+// enforces at runtime (length === 5) into the type system.
+export type PillarDist = {
+  key: string;
+  count: number;
+  avg: number | null;
+  buckets: readonly [number, number, number, number, number];
+};
 export type OutcomeBreakdown = {
   completed: number;
   bubar: number;
