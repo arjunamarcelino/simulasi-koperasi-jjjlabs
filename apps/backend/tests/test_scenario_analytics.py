@@ -166,6 +166,34 @@ def test_db_down_is_503_with_real_auth(client, install_jwks, token_factory):
     assert resp.json() == {"detail": "metrics_unavailable"}
 
 
+def test_non_admin_valid_scenario_never_touches_db(client, install_jwks, token_factory, monkeypatch):
+    # Symmetric twin of /admin/metrics' test_non_admin_never_touches_the_db: a forbidden caller
+    # hitting a VALID scenario must be 403'd by the gate before fetch_scenario_analytics is reached.
+    async def _boom(_pool, _scenario_id):
+        raise AssertionError("fetch_scenario_analytics reached without admin")
+
+    monkeypatch.setattr(metrics_db, "fetch_scenario_analytics", _boom)
+    install_jwks()
+    token = token_factory(sub="u", is_anonymous=False)
+    assert client.get(PATH, headers={"Authorization": f"Bearer {token}"}).status_code == 403
+
+
+# --------------------------------- CORS ---------------------------------------------
+
+
+def test_scenario_analytics_preflight_allows_get(client):
+    resp = client.options(
+        PATH,
+        headers={
+            "Origin": "http://localhost:5174",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:5174"
+
+
 # ------------------------- metrics_db unit (fail-soft breadth) ----------------------
 
 
