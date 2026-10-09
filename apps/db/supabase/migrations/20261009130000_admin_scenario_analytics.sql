@@ -14,9 +14,12 @@
 -- rubric differs; tutorial has none → pillars []).
 
 -- One-line, load-bearing: without this the per-scenario scan is a seq scan over ALL sessions
--- (cost ∝ platform-wide volume, not this scenario). Partial index excludes OPEN rows.
+-- (cost ∝ platform-wide volume, not this scenario). The partial predicate already implies
+-- `ended_at is not null`, so `scenario_id` alone fully serves the scan — no second key column.
+-- NOTE: `if not exists` guards on NAME only; if this index's columns/predicate ever change,
+-- rename it or drop-and-recreate — reusing the name silently no-ops.
 create index if not exists sessions_scenario_ended_idx
-  on public.sessions (scenario_id, ended_at)
+  on public.sessions (scenario_id)
   where ended_at is not null;
 
 create or replace function admin.scenario_analytics(p_scenario_id text)
@@ -55,6 +58,9 @@ returns jsonb language sql stable security definer set search_path = '' as $$
                            then e.scores_json else '{}'::jsonb end)
     ) kv
     where kv.num between 0 and 100
+      -- scores_json keys are CLIENT-AUTHORED (record_session trust boundary); skip overlong
+      -- garbage keys so they can't become multi-KB pillar labels in the admin UI (SIM-16 review).
+      and char_length(kv.key) <= 64
   ),
   pillar_agg as (
     select pkey,
@@ -114,7 +120,12 @@ returns jsonb language sql stable security definer set search_path = '' as $$
              ) order by pkey)
       from pillar_agg), '[]'::jsonb),
     'dropoff', null    -- event-log / step-level drop-off ships in a follow-up ticket
-  );
+  )
+  -- Unknown scenario_id (not in scenario_definition): return NO row → SQL NULL → the backend maps
+  -- a NULL fetchval to 503 (fail-soft), never a 500 from title/scenario_id being null under a
+  -- VALID_SCENARIOS↔scenario_definition drift. A VALID scenario with zero sessions still has its
+  -- scenario_definition row, so it returns a well-formed attempts:0 object.
+  where exists (select 1 from sd);
 $$;
 
 -- RLS-bypass invariant self-documenting (don't rely on "migration runs as postgres").
@@ -123,6 +134,7 @@ alter function admin.scenario_analytics(text) owner to postgres;
 -- ── grant matrix (same discipline as metrics_overview) ─────────────────────────────────
 -- `revoke ... from public` alone is NOT enough: Supabase default-privileges grant EXECUTE to
 -- anon/authenticated — revoke from them explicitly, then grant ONLY to metrics_reader.
+revoke all on schema admin from public;                               -- idempotent (also in SIM-15)
 revoke all on function admin.scenario_analytics(text) from public, anon, authenticated;
 grant usage on schema admin to metrics_reader;                        -- idempotent (also in SIM-15)
 grant execute on function admin.scenario_analytics(text) to metrics_reader;

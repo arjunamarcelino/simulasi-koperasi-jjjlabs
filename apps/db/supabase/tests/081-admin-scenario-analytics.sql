@@ -6,7 +6,7 @@
 -- The grant matrix is asserted via has_*_privilege (the real role→function execution is proven
 -- by the real-role e2e in db-tests.yml).
 begin;
-select plan(37);
+select plan(41);
 
 select tests.create_user('s_u1');
 select tests.create_user('s_u2');
@@ -36,6 +36,12 @@ insert into public.sessions (user_id, scenario_id, started_at, ended_at, trigger
 values
   (tests.get_uid('s_u1'), 'tutorial-koperasi-konsumen', now()-interval '10 min', now(), 'manual', 'good', '{}'::jsonb),
   (tests.get_uid('s_u2'), 'tutorial-koperasi-konsumen', now()-interval '10 min', now(), 'manual', 'good', '{}'::jsonb);
+-- rapat-anggota-tahunan: one session with an OVERLONG (client-authored) pillar key alongside a
+-- valid one — the >64-char key must be excluded from the distribution (SIM-16 review P2-B).
+insert into public.sessions (user_id, scenario_id, started_at, ended_at, trigger, ending_type, scores_json)
+values
+  (tests.get_uid('s_u1'), 'rapat-anggota-tahunan', now()-interval '10 min', now(), 'manual', 'good',
+   ('{"ok":80,"' || repeat('x', 70) || '":50}')::jsonb);
 -- keanggotaan-fiktif: NO sessions (valid, zero-session scenario).
 
 -- ── kredit-macet: outcome ───────────────────────────────────────────────────────────────
@@ -82,6 +88,16 @@ select is((admin.scenario_analytics('keanggotaan-fiktif') #>> '{attempts}')::int
 select is(jsonb_array_length(admin.scenario_analytics('keanggotaan-fiktif') -> 'pillars'), 0, 'zero-session pillars = []');
 select is(admin.scenario_analytics('keanggotaan-fiktif') #>> '{avg_score}', null, 'zero-session avg_score = null');
 select is(admin.scenario_analytics('keanggotaan-fiktif') #>> '{title}', 'Keanggotaan Fiktif', 'zero-session title present');
+
+-- ── overlong client-authored pillar key is capped out (SIM-16 review P2-B) ───────────────────
+select is((admin.scenario_analytics('rapat-anggota-tahunan') #>> '{attempts}')::int, 1, 'RAT attempts = 1');
+select is(jsonb_array_length(admin.scenario_analytics('rapat-anggota-tahunan') -> 'pillars'), 1,
+  'overlong (>64 char) pillar key excluded — only the valid key remains');
+select is(admin.scenario_analytics('rapat-anggota-tahunan') #>> '{pillars,0,key}', 'ok', 'remaining pillar key = ok');
+
+-- ── unknown scenario_id → SQL NULL (backend maps to 503, never a 500) ─────────────────────────
+select is(admin.scenario_analytics('zz-nonexistent-code'), null,
+  'unknown scenario_id returns NULL (exists-guard) → backend fail-soft 503, not a 500');
 
 -- ── no-crash invariant (poisoned rows above did not raise) ──────────────────────────────────
 select is(jsonb_typeof(admin.scenario_analytics('kredit-macet')), 'object', 'function returns an object (poisoned rows did NOT crash it)');
