@@ -100,3 +100,26 @@ async def fetch_metrics(pool: asyncpg.Pool | None) -> dict[str, Any]:
     if row is None:  # the fn always builds an object; a NULL would 500 the typed route → keep fail-soft
         raise MetricsUnavailable
     return row
+
+
+async def fetch_scenario_analytics(pool: asyncpg.Pool | None, scenario_id: str) -> dict[str, Any]:
+    """Call admin.scenario_analytics($1) and return its jsonb as a dict (SIM-16).
+
+    Same fail-soft contract as fetch_metrics: no pool / dropped connection / timeout / query error
+    / unexpected NULL → MetricsUnavailable (→ 503, never 500). The except is deliberately BROAD
+    (PostgresError server-side AND InterfaceError client-side) for the same reason as fetch_metrics.
+    scenario_id is passed as a bound parameter ($1) — never string-interpolated.
+    """
+    if pool is None:
+        raise MetricsUnavailable
+    try:
+        async with pool.acquire(timeout=5.0) as conn:  # bound acquire (≥ connect) → 503, never a hang
+            row = await conn.fetchval("select admin.scenario_analytics($1)", scenario_id)
+    except Exception as exc:  # BROAD: PostgresError AND InterfaceError (dropped conn) → 503, never 500
+        # scenario_id is a bounded non-PII code (VALID_SCENARIOS) → safe to log for triage; still
+        # NEVER log the DSN/claims/exception message.
+        log.error("Query scenario_analytics gagal untuk %s (%s)", scenario_id, type(exc).__name__)
+        raise MetricsUnavailable from exc
+    if row is None:
+        raise MetricsUnavailable
+    return row

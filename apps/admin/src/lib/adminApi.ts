@@ -44,6 +44,42 @@ export type AdminMetrics = {
   per_scenario: ScenarioRow[];
 };
 
+/** GET /admin/scenarios/{id}/analytics outcome (SIM-16). Like MetricsOutcome but adds a
+ * distinct `notFound` (404 unknown scenario — terminal, no retry button). Gated on STATUS;
+ * the 200 body must pass the DEEP shape guard or it's a fault. */
+export type ScenarioAnalyticsOutcome =
+  | { kind: "ok"; data: ScenarioAnalytics }
+  | { kind: "notAuthorized" } // 403
+  | { kind: "unauthenticated" } // 401 after one refresh
+  | { kind: "notFound" } // 404 — unknown scenario; retrying is pointless
+  | { kind: "serviceUnavailable" }; // 503/500/network/timeout/malformed-200/null-client
+
+// buckets is always exactly 5 bands (0–20 … 81–100) — a 5-tuple carries the invariant the guard
+// enforces at runtime (length === 5) into the type system.
+export type PillarDist = {
+  key: string;
+  count: number;
+  avg: number | null;
+  buckets: readonly [number, number, number, number, number];
+};
+export type OutcomeBreakdown = {
+  completed: number;
+  bubar: number;
+  by_trigger: Record<string, number>; // open map — a new trigger value must not break the type
+  ending_counts: { good: number; neutral: number; bad: number };
+};
+export type ScenarioAnalytics = {
+  scenario_id: string;
+  title: string;
+  generated_at: string;
+  attempts: number;
+  outcome: OutcomeBreakdown;
+  avg_score: number | null;
+  pillars: PillarDist[];
+  // Always null in Core; the event-log follow-up ticket introduces the drop-off shape then.
+  dropoff: null;
+};
+
 /** Per-request timeout: a hung/black-holed backend must not strand the UI. */
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -97,6 +133,62 @@ function isMetricsBody(x: unknown): x is AdminMetrics {
     return false;
   }
   return Array.isArray(o["per_scenario"]) && o["per_scenario"].every(isScenarioRow);
+}
+
+// --- deep guard for the scenario-analytics 200 body (SIM-16) ------------------
+// Counts use a NON-NEGATIVE-INTEGER check (isNum only checks finiteness → would wrongly accept
+// negatives/floats). Scores (avg) stay isNumOrNull. by_trigger is an open count map.
+const isNonNegInt = (x: unknown): x is number =>
+  typeof x === "number" && Number.isInteger(x) && x >= 0;
+function isCountMap(x: unknown): x is Record<string, number> {
+  const o = rec(x);
+  return o !== null && !Array.isArray(x) && Object.values(o).every(isNonNegInt);
+}
+function isEndingCounts(x: unknown): x is { good: number; neutral: number; bad: number } {
+  const o = rec(x);
+  return o !== null && isNonNegInt(o["good"]) && isNonNegInt(o["neutral"]) && isNonNegInt(o["bad"]);
+}
+function isOutcome(x: unknown): x is OutcomeBreakdown {
+  const o = rec(x);
+  return (
+    o !== null &&
+    isNonNegInt(o["completed"]) &&
+    isNonNegInt(o["bubar"]) &&
+    isCountMap(o["by_trigger"]) &&
+    isEndingCounts(o["ending_counts"])
+  );
+}
+function isPillar(x: unknown): x is PillarDist {
+  const o = rec(x);
+  return (
+    o !== null &&
+    typeof o["key"] === "string" &&
+    isNonNegInt(o["count"]) &&
+    isNumOrNull(o["avg"]) &&
+    Array.isArray(o["buckets"]) &&
+    o["buckets"].length === 5 && // fixed 5 bands; DistributionBars indexes positionally
+    o["buckets"].every(isNonNegInt)
+  );
+}
+function isScenarioAnalyticsBody(x: unknown): x is ScenarioAnalytics {
+  const o = rec(x);
+  if (
+    o === null ||
+    typeof o["scenario_id"] !== "string" ||
+    typeof o["title"] !== "string" ||
+    typeof o["generated_at"] !== "string" ||
+    !isNonNegInt(o["attempts"]) ||
+    !isOutcome(o["outcome"]) ||
+    !isNumOrNull(o["avg_score"]) ||
+    !Array.isArray(o["pillars"]) ||
+    !o["pillars"].every(isPillar) ||
+    o["dropoff"] !== null // Core: always null (the follow-up ticket defines the shape)
+  ) {
+    return false;
+  }
+  // Pillar keys must be unique — a duplicate would collide as a React key and silently drop a chart.
+  const keys = o["pillars"].map((p) => p.key);
+  return new Set(keys).size === keys.length;
 }
 
 /** Shared in-flight refresh so N concurrent 401s trigger one token rotation, not N.
@@ -213,6 +305,35 @@ export async function fetchMetrics(signal?: AbortSignal): Promise<MetricsOutcome
       return { kind: "notAuthorized" };
     case 401:
       return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+/**
+ * Fetch `GET /admin/scenarios/{id}/analytics` (SIM-16). Gates on STATUS; the 200 body must pass
+ * `isScenarioAnalyticsBody` or it's a fault (serviceUnavailable). 404 (unknown scenario) is a
+ * DISTINCT terminal `notFound` — folding it into serviceUnavailable would offer a pointless retry.
+ */
+export async function fetchScenarioAnalytics(
+  scenarioId: string,
+  signal?: AbortSignal,
+): Promise<ScenarioAnalyticsOutcome> {
+  const r = await authedGet(`/admin/scenarios/${encodeURIComponent(scenarioId)}/analytics`, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const body: unknown = await r.res.json().catch(() => null);
+      return isScenarioAnalyticsBody(body)
+        ? { kind: "ok", data: body }
+        : { kind: "serviceUnavailable" };
+    }
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    case 404:
+      return { kind: "notFound" };
     default:
       return { kind: "serviceUnavailable" };
   }

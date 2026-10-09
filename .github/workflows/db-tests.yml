@@ -59,7 +59,7 @@ jobs:
         run: supabase start
       - name: Run pgTAP tests
         run: supabase test db
-      - name: Admin metrics e2e (real metrics_reader role → admin.metrics_overview)
+      - name: Admin metrics e2e (real metrics_reader role → admin.metrics_overview + scenario_analytics)
         # Proves the least-privilege role path pgTAP can't: set the role's (null) password to a
         # local throwaway, then connect AS metrics_reader and assert it executes the function but
         # cannot read the tables. psql ships on ubuntu-latest + the local supabase DB (:54322).
