@@ -35,7 +35,7 @@ export function DistributionBars({
               </span>
               <div
                 className="w-full rounded-t"
-                style={{ height: `${heights[i]}px`, backgroundColor: `var(--chart-bucket-${i + 1})` }}
+                style={{ height: `${heights[i] ?? 0}px`, backgroundColor: `var(--chart-bucket-${i + 1})` }}
               />
             </div>
           ))}

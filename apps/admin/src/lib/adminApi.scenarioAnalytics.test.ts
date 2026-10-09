@@ -119,6 +119,7 @@ describe("fetchScenarioAnalytics", () => {
     ["by_trigger not object", { ...VALID, outcome: { ...VALID.outcome, by_trigger: [1, 2] } }],
     ["non-null dropoff (Core must be null)", { ...VALID, dropoff: { kind: "phase", stages: [], plays: 0 } }],
     ["pillars not array", { ...VALID, pillars: {} }],
+    ["duplicate pillar keys", { ...VALID, pillars: [VALID.pillars[0], { ...VALID.pillars[0] }] }],
   ];
   it.each(BAD)("200 with %s → serviceUnavailable (guard rejects)", async (_label, body) => {
     h.fetch.mockResolvedValue(resp(200, body));

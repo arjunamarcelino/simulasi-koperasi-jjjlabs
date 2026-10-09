@@ -172,18 +172,23 @@ function isPillar(x: unknown): x is PillarDist {
 }
 function isScenarioAnalyticsBody(x: unknown): x is ScenarioAnalytics {
   const o = rec(x);
-  return (
-    o !== null &&
-    typeof o["scenario_id"] === "string" &&
-    typeof o["title"] === "string" &&
-    typeof o["generated_at"] === "string" &&
-    isNonNegInt(o["attempts"]) &&
-    isOutcome(o["outcome"]) &&
-    isNumOrNull(o["avg_score"]) &&
-    Array.isArray(o["pillars"]) &&
-    o["pillars"].every(isPillar) &&
-    o["dropoff"] === null // Core: always null (the follow-up ticket defines the shape)
-  );
+  if (
+    o === null ||
+    typeof o["scenario_id"] !== "string" ||
+    typeof o["title"] !== "string" ||
+    typeof o["generated_at"] !== "string" ||
+    !isNonNegInt(o["attempts"]) ||
+    !isOutcome(o["outcome"]) ||
+    !isNumOrNull(o["avg_score"]) ||
+    !Array.isArray(o["pillars"]) ||
+    !o["pillars"].every(isPillar) ||
+    o["dropoff"] !== null // Core: always null (the follow-up ticket defines the shape)
+  ) {
+    return false;
+  }
+  // Pillar keys must be unique — a duplicate would collide as a React key and silently drop a chart.
+  const keys = o["pillars"].map((p) => p.key);
+  return new Set(keys).size === keys.length;
 }
 
 /** Shared in-flight refresh so N concurrent 401s trigger one token rotation, not N.

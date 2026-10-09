@@ -12,8 +12,11 @@ import { count, pct, score } from "../../lib/formatMetrics";
  */
 export function DashboardPage({ userId }: { userId: string }) {
   const state = useDashboardMetrics((s) => s.state);
-  const analytics = useScenarioAnalytics((s) => s.state);
-  const openScenarioId = analytics.status === "idle" ? null : analytics.scenarioId;
+  // Narrow selector: re-render only when the OPEN scenario changes, not on every panel-content
+  // transition (loading→ready→error) of the drill-down store.
+  const openScenarioId = useScenarioAnalytics((s) =>
+    s.state.status === "idle" ? null : s.state.scenarioId,
+  );
 
   useEffect(() => {
     dashboardMetricsStore.getState().load(userId); // fetch once per authorized userId
