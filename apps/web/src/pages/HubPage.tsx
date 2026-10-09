@@ -6,6 +6,7 @@ import { SceneLoadingOverlay } from "../components/hub/SceneLoadingOverlay";
 import { MadingInfoBoard } from "../components/hub/MadingInfoBoard";
 import { MadingDataBoard } from "../components/hub/MadingDataBoard";
 import { MadingKnowledgeBoard } from "../components/hub/MadingKnowledgeBoard";
+import { LeaderboardMading } from "../components/hub/LeaderboardMading";
 import { QuizBoard } from "../components/hub/QuizBoard";
 import { KasirVoucherBoard } from "../components/hub/KasirVoucherBoard";
 import { ProfileModal } from "../components/hub/ProfileModal";
@@ -41,6 +42,7 @@ export function HubPage() {
       <MadingInfoBoard />
       <MadingDataBoard />
       <MadingKnowledgeBoard />
+      <LeaderboardMading />
       {/* Conditionally mounted so local run-state resets on each open. */}
       {activeOverlay === "QUIZ" && <QuizBoard />}
       {activeOverlay === "KASIR_VOUCHER" && <KasirVoucherBoard />}

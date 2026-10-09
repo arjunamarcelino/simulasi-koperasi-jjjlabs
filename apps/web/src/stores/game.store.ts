@@ -44,6 +44,7 @@ export type OverlayKind =
   | "MADING_INFO"
   | "MADING_DATA"
   | "MADING_KNOWLEDGE"
+  | "MADING_LEADERBOARD"
   | "QUIZ"
   | "KASIR_VOUCHER"
   | "PROFILE"
@@ -186,6 +187,8 @@ export type GameState = {
   openMadingData: () => void;
   /** Open the knowledge carousel at card 0 (no-op if another overlay is open). */
   openMadingKnowledge: () => void;
+  /** Open the seasonal leaderboard mading (no-op if another overlay is open). */
+  openMadingLeaderboard: () => void;
   /** Jump to an absolute carousel slide/card; wrap math lives with the caller/content. */
   setMadingIndex: (index: number) => void;
   /** Open the quiz (no-op if another overlay is already open). */
@@ -385,6 +388,10 @@ export const gameStore = createStore<GameState>()(
     openMadingKnowledge: () => {
       if (get().activeOverlay !== "NONE") return;
       set({ activeOverlay: "MADING_KNOWLEDGE", madingIndex: 0 });
+    },
+    openMadingLeaderboard: () => {
+      if (get().activeOverlay !== "NONE") return;
+      set({ activeOverlay: "MADING_LEADERBOARD" });
     },
     setMadingIndex: (index) => set({ madingIndex: index }),
 

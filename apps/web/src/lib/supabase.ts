@@ -60,6 +60,10 @@ export type Database = {
     };
     Functions: {
       get_my_progress: { Args: Record<PropertyKey, never>; Returns: Json };
+      // Latest-season leaderboard snapshot (top 20) for the in-game mading. No-arg RPC;
+      // granted anon/authenticated. Returns rows { display_name, xp, level, rank } — never
+      // user_id. Stays `Json` (the DB produces it — validated at the repo boundary).
+      leaderboard_current: { Args: Record<PropertyKey, never>; Returns: Json };
       claim_mission: { Args: { p_mission_id: string; p_code?: string | null }; Returns: Json };
       redeem_voucher: { Args: { p_voucher_id: string }; Returns: Json };
       submit_quiz: { Args: { p_answers: { code: string; choice: number }[] }; Returns: Json };

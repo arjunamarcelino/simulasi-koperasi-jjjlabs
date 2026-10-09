@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseClaimMission,
+  parseLeaderboardCurrent,
   parseMyProgress,
   parseQuizCatalog,
   parseReconcile,
@@ -104,6 +105,30 @@ describe("parseQuizCatalog", () => {
     ]);
     expect(parseQuizCatalog("nope")).toBeNull();
     expect(parseQuizCatalog([{ code: "q1", prompt: "P", options: [1, 2] }])).toBeNull();
+  });
+});
+
+describe("parseLeaderboardCurrent", () => {
+  it("parses a valid array and strips any echoed user_id", () => {
+    expect(
+      parseLeaderboardCurrent([
+        { display_name: "Budi", xp: 120, level: 3, rank: 1, user_id: "uuid" },
+        { display_name: "Siti", xp: 80, level: 2, rank: 2 },
+      ]),
+    ).toEqual([
+      { display_name: "Budi", xp: 120, level: 3, rank: 1 },
+      { display_name: "Siti", xp: 80, level: 2, rank: 2 },
+    ]);
+  });
+  it("accepts an empty array (no season yet)", () => {
+    expect(parseLeaderboardCurrent([])).toEqual([]);
+  });
+  it("rejects malformed shapes", () => {
+    expect(parseLeaderboardCurrent("nope")).toBeNull();
+    expect(parseLeaderboardCurrent(null)).toBeNull();
+    expect(parseLeaderboardCurrent([{ display_name: "Budi", xp: 10, level: 2 }])).toBeNull(); // missing rank
+    expect(parseLeaderboardCurrent([{ display_name: 5, xp: 10, level: 2, rank: 1 }])).toBeNull(); // bad name type
+    expect(parseLeaderboardCurrent([{ display_name: "B", xp: "10", level: 2, rank: 1 }])).toBeNull(); // bad xp type
   });
 });
 
