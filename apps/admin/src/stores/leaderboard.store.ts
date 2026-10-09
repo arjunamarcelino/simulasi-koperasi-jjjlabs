@@ -55,8 +55,6 @@ export type LeaderboardStoreState = {
   capture: (label: string | null) => void;
   /** Delete a season. Blocked while any mutation is in flight. */
   remove: (seasonId: string) => void;
-  /** Dismiss the toast. */
-  dismissToast: () => void;
   /** Abort reads + reset to idle on unmount. */
   dispose: () => void;
 };
@@ -271,8 +269,6 @@ export const leaderboardStore = createStore<LeaderboardStoreState>()(() => ({
   remove: (seasonId) => {
     void runRemove(seasonId);
   },
-
-  dismissToast: () => leaderboardStore.setState({ toast: null }),
 
   dispose: () => reset(),
 }));
