@@ -7,7 +7,7 @@
 -- matrix is asserted via has_*_privilege (the real role→function execution is proven by the e2e in
 -- db-tests.yml).
 begin;
-select plan(42);
+select plan(45);
 
 -- u1 Budi 1500 (lvl6), u2 null-name 600 (lvl4), u3 100, u5 100 (tie with u3), u4 0 (excluded).
 select tests.create_user('u1', '{"name":"Budi"}');
@@ -53,6 +53,24 @@ select is(admin.leaderboard_overview(null)::text like '%user_id%', false, 'overv
 -- ── frozen: mutating source xp does NOT change an already-captured season ────────────────────
 update public.user_progress set xp = 50 where user_id = tests.get_uid('u1');
 select is((admin.leaderboard_overview(null) #>> '{selected,entries,0,xp}')::int, 1500, 'frozen: season #1 rank[0] still xp 1500 after source change');
+
+-- ── ON DELETE SET NULL: deleting a player preserves their frozen standing ────────────────────
+-- The flagship FK invariant (migration header): entry.user_id is SET NULL, NOT cascade, so a
+-- deleted player's past rank/name/xp/level survive. u2 is rank 2 ('Anggota', xp 600, level 4).
+-- Delete the auth.users row (cascades to profiles → fires SET NULL on the entry's user_id).
+delete from auth.users where id = tests.get_uid('u2');
+select is(
+  (select user_id from public.leaderboard_entries e
+     where e.season_id = (select (r->>'season_id')::uuid from cap1) and e.rank = 2),
+  null, 'SET NULL: deleting a player NULLs entry.user_id (no cascade)');
+select is(
+  (select display_name from public.leaderboard_entries e
+     where e.season_id = (select (r->>'season_id')::uuid from cap1) and e.rank = 2),
+  'Anggota', 'SET NULL: the deleted player''s frozen display_name survives');
+select is(
+  (select count(*)::int from public.leaderboard_entries e
+     where e.season_id = (select (r->>'season_id')::uuid from cap1)),
+  4, 'SET NULL: entry row count unchanged after player deletion');
 
 -- ── capture season #2 (latest switches) ─────────────────────────────────────────────────────
 create temporary table cap2 as select admin.capture_leaderboard_snapshot(null) as r;  -- null label allowed
