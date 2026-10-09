@@ -61,8 +61,6 @@ export type OutcomeBreakdown = {
   by_trigger: Record<string, number>; // open map — a new trigger value must not break the type
   ending_counts: { good: number; neutral: number; bad: number };
 };
-export type DropoffStage = { index: number; label: string; reached: number };
-export type Dropoff = { kind: "phase" | "drift"; stages: DropoffStage[]; plays: number };
 export type ScenarioAnalytics = {
   scenario_id: string;
   title: string;
@@ -71,7 +69,8 @@ export type ScenarioAnalytics = {
   outcome: OutcomeBreakdown;
   avg_score: number | null;
   pillars: PillarDist[];
-  dropoff: Dropoff | null;
+  // Always null in Core; the event-log follow-up ticket introduces the drop-off shape then.
+  dropoff: null;
 };
 
 /** Per-request timeout: a hung/black-holed backend must not strand the UI. */
@@ -164,21 +163,6 @@ function isPillar(x: unknown): x is PillarDist {
     o["buckets"].every(isNonNegInt)
   );
 }
-function isDropoffOrNull(x: unknown): x is Dropoff | null {
-  if (x === null) return true; // Core always sends null
-  const o = rec(x);
-  if (o === null || (o["kind"] !== "phase" && o["kind"] !== "drift")) return false; // literal union
-  if (!isNonNegInt(o["plays"]) || !Array.isArray(o["stages"])) return false;
-  return o["stages"].every((s) => {
-    const r = rec(s);
-    return (
-      r !== null &&
-      isNonNegInt(r["index"]) &&
-      typeof r["label"] === "string" &&
-      isNonNegInt(r["reached"])
-    );
-  });
-}
 function isScenarioAnalyticsBody(x: unknown): x is ScenarioAnalytics {
   const o = rec(x);
   return (
@@ -191,7 +175,7 @@ function isScenarioAnalyticsBody(x: unknown): x is ScenarioAnalytics {
     isNumOrNull(o["avg_score"]) &&
     Array.isArray(o["pillars"]) &&
     o["pillars"].every(isPillar) &&
-    isDropoffOrNull(o["dropoff"])
+    o["dropoff"] === null // Core: always null (the follow-up ticket defines the shape)
   );
 }
 

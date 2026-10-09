@@ -117,24 +117,12 @@ describe("fetchScenarioAnalytics", () => {
     ["buckets length 4", { ...VALID, pillars: [{ key: "a", count: 1, avg: 10, buckets: [1, 0, 0, 0] }] }],
     ["non-finite avg", { ...VALID, avg_score: Number.NaN }],
     ["by_trigger not object", { ...VALID, outcome: { ...VALID.outcome, by_trigger: [1, 2] } }],
-    ["bad dropoff kind", { ...VALID, dropoff: { kind: "x", stages: [], plays: 0 } }],
+    ["non-null dropoff (Core must be null)", { ...VALID, dropoff: { kind: "phase", stages: [], plays: 0 } }],
     ["pillars not array", { ...VALID, pillars: {} }],
   ];
   it.each(BAD)("200 with %s → serviceUnavailable (guard rejects)", async (_label, body) => {
     h.fetch.mockResolvedValue(resp(200, body));
     expect(await fetchScenarioAnalytics("kredit-macet")).toEqual({ kind: "serviceUnavailable" });
-  });
-
-  it("valid dropoff object is accepted (forward-compat for the follow-up module)", async () => {
-    const withDropoff = {
-      ...VALID,
-      dropoff: { kind: "phase", stages: [{ index: 0, label: "Buka Rapat", reached: 5 }], plays: 5 },
-    };
-    h.fetch.mockResolvedValue(resp(200, withDropoff));
-    expect(await fetchScenarioAnalytics("rapat-anggota-tahunan")).toEqual({
-      kind: "ok",
-      data: withDropoff,
-    });
   });
 
   it("null client → serviceUnavailable with NO network", async () => {

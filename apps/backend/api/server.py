@@ -219,18 +219,6 @@ class PillarDist(BaseModel):
     buckets: list[int]
 
 
-class DropoffStage(BaseModel):
-    index: int
-    label: str
-    reached: int
-
-
-class Dropoff(BaseModel):
-    kind: str
-    stages: list[DropoffStage]
-    plays: int
-
-
 class ScenarioAnalyticsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")  # kontrak beku (model luar); sub-model tidak
     scenario_id: str
@@ -240,7 +228,9 @@ class ScenarioAnalyticsResponse(BaseModel):
     outcome: OutcomeBreakdown
     avg_score: float | None
     pillars: list[PillarDist]
-    dropoff: Dropoff | None
+    # Selalu null di Core. Bentuk drop-off step-level didefinisikan saat modul event-log menyusul
+    # (tiket lanjutan) — JANGAN menebak shape-nya di sini lebih dulu (hindari drift kontrak).
+    dropoff: None
 
 
 async def get_scenario_analytics(
