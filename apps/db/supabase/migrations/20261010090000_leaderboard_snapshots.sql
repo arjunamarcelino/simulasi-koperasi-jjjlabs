@@ -17,10 +17,17 @@
 --
 -- INVARIANT: the `admin` schema must NEVER be added to PostgREST's exposed schemas — doing so
 -- would make capture/delete anon-reachable RPCs regardless of the backend gate.
+--
+-- ACCEPTED (SIM-17 review): kept as metrics_reader EXECUTE (NOT split into a dedicated writer role)
+-- for v1 — simplest, no hosted-pooler/CI/RUNBOOK churn; require_role('admin') is the control. The
+-- role name is now a slight misnomer (it executes writes too); a rename is deferred to a later
+-- migration (it touches the pooler DSN + e2e-metrics.sh + RUNBOOK).
 
 -- ── tables ─────────────────────────────────────────────────────────────────────────────
--- A season = one frozen standing. season_number is the human-friendly, gapless, monotonic key
--- (NOT captured_at) — "latest" is always max(season_number). entry_count is written in the same
+-- A season = one frozen standing. season_number is the human-friendly key used to resolve the
+-- "latest" season (always max(season_number)) — NOT captured_at. It is monotonic for NEW captures
+-- but NOT gapless once seasons are deleted: deleting a non-latest season leaves a permanent gap,
+-- and deleting the latest lets the next capture reuse its number. entry_count is written in the same
 -- transaction as the entries (from row_count) and never recomputed; entries are insert-once and
 -- immutable, so it cannot drift.
 create table public.leaderboard_seasons (
@@ -96,6 +103,11 @@ begin
   -- selects a different set than the ranks number — breaking "contiguous 1..N" at a tie boundary.
   -- The tuple is a TOTAL order (updated_at is NOT NULL; user_id is the PK), so ranks are
   -- deterministic. Tie-break semantics: least-recently-updated first, then user_id.
+  -- PERF (deferred, SIM-17 review): the existing partial index on user_progress(xp desc) covers
+  -- only the lead key, so the planner sorts the whole xp>0 set before LIMIT 100 — fine at
+  -- single-koperasi scale. GROWTH LEVER: a composite partial index
+  -- `(xp desc, updated_at asc, user_id) where xp > 0` makes capture O(100), but taxes the hot
+  -- add_rewards write path; add it only when the player base actually grows.
   insert into public.leaderboard_entries (season_id, rank, user_id, display_name, xp, level)
   select
     v_season_id,
