@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Minimal adapter smoke test, mirroring sessionsRepo.test.ts. The parser matrix lives
-// in progressRepo.contracts.test.ts; here we only assert the RepoResult mapping for the
-// leaderboard_current RPC.
+// Adapter + parser test for the mading leaderboard (the parser now lives in leaderboardRepo).
+// Exercises the RepoResult mapping AND the parser hardening (non-neg-int fields, unique ranks)
+// end-to-end via the faked rpc payload.
 
 type RpcResult = { data: unknown; error: unknown };
 
@@ -41,6 +41,30 @@ describe("leaderboardRepo.current", () => {
   it("maps a malformed row to invalid", async () => {
     const repo = await loadRepo(
       fakeSupabase({ data: [{ display_name: "Budi", xp: 10, level: 2 }], error: null }), // missing rank
+    );
+    expect((await repo.current()).status).toBe("invalid");
+  });
+
+  it("rejects a negative or non-integer field (non-neg-int, like the admin guard)", async () => {
+    const neg = await loadRepo(
+      fakeSupabase({ data: [{ display_name: "B", xp: -1, level: 2, rank: 1 }], error: null }),
+    );
+    expect((await neg.current()).status).toBe("invalid");
+    const float = await loadRepo(
+      fakeSupabase({ data: [{ display_name: "B", xp: 10, level: 2, rank: 1.5 }], error: null }),
+    );
+    expect((await float.current()).status).toBe("invalid");
+  });
+
+  it("rejects duplicate ranks (would collide as a React key)", async () => {
+    const repo = await loadRepo(
+      fakeSupabase({
+        data: [
+          { display_name: "A", xp: 20, level: 1, rank: 1 },
+          { display_name: "B", xp: 10, level: 1, rank: 1 },
+        ],
+        error: null,
+      }),
     );
     expect((await repo.current()).status).toBe("invalid");
   });

@@ -39,10 +39,6 @@ export type ReconcileResult =
 /** A quiz question as exposed by the quiz_catalog view — no answer key. */
 export type QuizCatalogQuestion = { code: string; prompt: string; options: string[] };
 
-/** One row of the in-game mading leaderboard (public.leaderboard_current). Display
- * name only — the RPC intentionally never returns `user_id`, so neither does this. */
-export type LeaderboardRow = { display_name: string; xp: number; level: number; rank: number };
-
 /** The outcome of record_session (atomic insert+finalize). The `reason` on the failure
  * arm must survive to the caller (the controller logs it); success carries nothing the
  * caller needs. */
@@ -163,24 +159,6 @@ export function parseQuizCatalog(u: unknown): QuizCatalogQuestion[] | null {
     const options = strArray(row["options"]);
     if (code === null || prompt === null || options === null) return null;
     out.push({ code, prompt, options });
-  }
-  return out;
-}
-
-export function parseLeaderboardCurrent(u: unknown): LeaderboardRow[] | null {
-  if (!Array.isArray(u)) return null;
-  const out: LeaderboardRow[] = [];
-  for (const row of u) {
-    if (!isRecord(row)) return null;
-    const display_name = str(row["display_name"]);
-    const xp = num(row["xp"]);
-    const level = num(row["level"]);
-    const rank = num(row["rank"]);
-    // Reject any row missing or mistyped on the four public columns. We never expect
-    // (nor read) `user_id` — the RPC strips it, and silently ignoring an extra key is
-    // the correct forward-compatible behavior here.
-    if (display_name === null || xp === null || level === null || rank === null) return null;
-    out.push({ display_name, xp, level, rank });
   }
   return out;
 }
