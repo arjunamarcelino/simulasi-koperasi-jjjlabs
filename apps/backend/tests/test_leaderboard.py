@@ -90,8 +90,10 @@ DELETE_ABSENT = {"deleted": False, "season_number": None}
 # --------------------------------- monkeypatch helpers ------------------------------
 
 
-def _patch_overview(monkeypatch, payload):
-    async def _fake(_pool, _season_id):
+def _patch_overview(monkeypatch, payload, holder=None):
+    async def _fake(_pool, season_id):
+        if holder is not None:
+            holder["season_id"] = season_id
         return payload
 
     monkeypatch.setattr(metrics_db, "fetch_leaderboard_overview", _fake)
@@ -164,13 +166,17 @@ def test_admin_gets_overview_200(client, install_jwks, token_factory, monkeypatc
 
 def test_admin_gets_overview_with_season_id_200(client, install_jwks, token_factory, monkeypatch):
     install_jwks()
-    _patch_overview(monkeypatch, OVERVIEW_SAMPLE)
+    holder: dict = {}
+    _patch_overview(monkeypatch, OVERVIEW_SAMPLE, holder=holder)
     resp = client.get(
         OVERVIEW_PATH,
         params={"season_id": "22222222-2222-2222-2222-222222222222"},
         headers={"Authorization": f"Bearer {_admin_token(token_factory)}"},
     )
     assert resp.status_code == 200
+    # the query param is parsed to a uuid.UUID and forwarded to the DB fn (not a raw str)
+    assert holder["season_id"] == uuid.UUID("22222222-2222-2222-2222-222222222222")
+    assert isinstance(holder["season_id"], uuid.UUID)
 
 
 def test_overview_empty_state_is_200(client, install_jwks, token_factory, monkeypatch):
@@ -344,6 +350,18 @@ def test_capture_label_too_long_is_422(client, install_jwks, token_factory, monk
     assert resp.status_code == 422
 
 
+def test_capture_empty_label_is_422(client, install_jwks, token_factory, monkeypatch):
+    # "" is rejected at the boundary (min_length=1) rather than silently coerced; omit or send null.
+    install_jwks()
+    _patch_all_boom(monkeypatch)
+    resp = client.post(
+        CAPTURE_PATH,
+        json={"label": ""},
+        headers={"Authorization": f"Bearer {_admin_token(token_factory)}"},
+    )
+    assert resp.status_code == 422
+
+
 def test_capture_unknown_body_key_is_422(client, install_jwks, token_factory, monkeypatch):
     install_jwks()
     _patch_all_boom(monkeypatch)
@@ -381,7 +399,7 @@ def test_capture_logs_attribution_without_label(client, install_jwks, token_fact
         )
     text = "\n".join(r.getMessage() for r in caplog.records)
     assert "admin-1" in text  # acting user_id attributed
-    assert "3" in text  # season_number
+    assert "musim #3" in text  # season_number (pinned, not a bare "3")
     assert secret not in text  # NEVER log the label
 
 
@@ -394,7 +412,7 @@ def test_delete_logs_attribution(client, install_jwks, token_factory, monkeypatc
         )
     text = "\n".join(r.getMessage() for r in caplog.records)
     assert "admin-1" in text
-    assert "3" in text
+    assert "musim #3" in text  # season_number (pinned, not a bare "3")
 
 
 # --------------------------------- CORS ---------------------------------------------
