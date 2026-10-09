@@ -193,6 +193,85 @@ async def admin_metrics(data: dict[str, Any] = Depends(get_metrics)) -> dict[str
     return data  # get_metrics sudah admin-gated; FastAPI memvalidasi `data` ke model
 
 
+# --- GET /admin/scenarios/{scenario_id}/analytics (SIM-16) ------------------------------
+# Drill-down per-skenario. Endpoint + model TERPISAH dari /admin/metrics (kontrak beku itu tak
+# disentuh). `outcome` pakai COUNT (bukan rate). `by_trigger` = dict TERBUKA → nilai trigger baru
+# tak pernah merusak kontrak (tak di-`extra="forbid"` satu lapis lebih dalam). `dropoff` selalu
+# null di Core (modul event-log = tiket lanjutan). extra="forbid" HANYA di model luar (seperti
+# AdminMetricsResponse; sub-model-nya pun tak menyetelnya).
+class EndingCounts(BaseModel):
+    good: int
+    neutral: int
+    bad: int
+
+
+class OutcomeBreakdown(BaseModel):
+    completed: int
+    bubar: int
+    by_trigger: dict[str, int]
+    ending_counts: EndingCounts
+
+
+class PillarDist(BaseModel):
+    key: str
+    count: int
+    avg: float | None
+    buckets: list[int]
+
+
+class DropoffStage(BaseModel):
+    index: int
+    label: str
+    reached: int
+
+
+class Dropoff(BaseModel):
+    kind: str
+    stages: list[DropoffStage]
+    plays: int
+
+
+class ScenarioAnalyticsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # kontrak beku (model luar); sub-model tidak
+    scenario_id: str
+    title: str
+    generated_at: str
+    attempts: int
+    outcome: OutcomeBreakdown
+    avg_score: float | None
+    pillars: list[PillarDist]
+    dropoff: Dropoff | None
+
+
+async def get_scenario_analytics(
+    scenario_id: str,
+    request: Request,
+    # Gerbang admin SEBAGAI dependency → DB tak tersentuh sebelum 401/403 lolos (sama get_metrics).
+    _admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    # scenario_id divalidasi SETELAH auth (non-admin → 403 dulu), SEBELUM sentuh DB. Resource di
+    # PATH → 404 (beda /token yang 422 untuk field di body). Membedakan "skenario valid 0 sesi"
+    # (200, attempts:0) dari "skenario tak dikenal" (404) — inti UX endpoint ini.
+    if scenario_id not in VALID_SCENARIOS:
+        raise HTTPException(404, "unknown_scenario")
+    try:
+        return await metrics_db.fetch_scenario_analytics(
+            request.app.state.metrics_pool, scenario_id
+        )
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+
+
+@app.get(
+    "/admin/scenarios/{scenario_id}/analytics",
+    response_model=ScenarioAnalyticsResponse,
+)
+async def scenario_analytics(
+    data: dict[str, Any] = Depends(get_scenario_analytics),
+) -> dict[str, Any]:
+    return data  # sudah admin-gated + validasi scenario_id; FastAPI memvalidasi `data` ke model
+
+
 @app.post("/token", response_model=TokenResponse)
 def create_token(
     req: TokenRequest,
