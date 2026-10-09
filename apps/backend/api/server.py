@@ -273,8 +273,10 @@ async def scenario_analytics(
 # FastAPI, BUKAN 503 menyesatkan; `UUID` di-bind native (tanpa cast `$1::uuid`).
 class CaptureRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")  # kunci asing → 422 (kontrak beku)
-    # Panjang label dibatasi 120 char (selaras CHECK di DB); overlong → 422 sebelum sentuh DB.
-    label: Annotated[str, Field(max_length=120)] | None = None
+    # Label OPSIONAL: hilangkan field atau kirim null; non-empty 1..120 char (selaras CHECK di DB).
+    # `min_length=1` menolak "" eksplisit (422) alih-alih diam-diam dikoersi; whitespace-only tetap
+    # dikoersi ke NULL oleh `nullif(btrim(...),'')` di DB. Overlong → 422 sebelum sentuh DB.
+    label: Annotated[str, Field(min_length=1, max_length=120)] | None = None
 
 
 class LeaderboardEntry(BaseModel):
@@ -316,11 +318,12 @@ class DeleteResultResponse(BaseModel):
     season_number: int | None
 
 
-async def get_leaderboard_overview(
+@app.get("/admin/leaderboard", response_model=LeaderboardOverviewResponse)
+async def leaderboard_overview(
     request: Request,
     # season_id OPSIONAL (query). Diketik UUID → salah-bentuk = 422 (boundary FastAPI) sebelum DB.
     season_id: UUID | None = None,
-    # Gerbang admin SEBAGAI dependency → DB tak tersentuh sebelum 401/403 lolos (sama get_metrics).
+    # Gerbang admin SEBAGAI dependency → DB tak tersentuh sebelum 401/403 lolos (sama capture/delete).
     _admin: AuthedUser = Depends(_require_admin),
 ) -> dict[str, Any]:
     try:
@@ -329,13 +332,6 @@ async def get_leaderboard_overview(
         )
     except MetricsUnavailable:
         raise HTTPException(503, "metrics_unavailable") from None
-
-
-@app.get("/admin/leaderboard", response_model=LeaderboardOverviewResponse)
-async def leaderboard_overview(
-    data: dict[str, Any] = Depends(get_leaderboard_overview),
-) -> dict[str, Any]:
-    return data  # sudah admin-gated; FastAPI memvalidasi `data` ke model
 
 
 @app.post("/admin/leaderboard/capture", response_model=CaptureResultResponse)
@@ -347,8 +343,9 @@ async def leaderboard_capture(
     admin: AuthedUser = Depends(_require_admin),
 ) -> dict[str, Any]:
     try:
-        # Contention advisory-lock (capture bersamaan) muncul sebagai fail-soft 503, BUKAN DB
-        # down — lock transaction-scoped auto-release, retry berhasil.
+        # Capture bersamaan serialize dengan MENUNGGU advisory-lock xact (bukan error); hanya jika
+        # command_timeout habis saat menunggu → fail-soft 503 (BUKAN DB down). Lock auto-release saat
+        # commit/rollback, jadi retry berhasil.
         result = await metrics_db.capture_leaderboard_snapshot(
             request.app.state.metrics_pool, req.label
         )
