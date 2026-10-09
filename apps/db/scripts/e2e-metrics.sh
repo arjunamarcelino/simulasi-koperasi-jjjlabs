@@ -21,10 +21,21 @@ echo "$out" | grep -q '^object$' || {
   exit 1
 }
 
+# 1b) SIM-16: the SAME role can EXECUTE admin.scenario_analytics(text) and get an object
+#     (proves the new drill-down function's grant/ownership is wired like metrics_overview).
+out2="$(psql "$DSN" -tAc "select jsonb_typeof(admin.scenario_analytics('kredit-macet'))" 2>&1)" || {
+  echo "e2e-metrics: FAIL — metrics_reader cannot execute admin.scenario_analytics(): $out2"
+  exit 1
+}
+echo "$out2" | grep -q '^object$' || {
+  echo "e2e-metrics: FAIL — scenario_analytics() did not return an object: $out2"
+  exit 1
+}
+
 # 2) Direct table reads are DENIED (least privilege: EXECUTE-only, no table grants).
 if psql "$DSN" -tAc "select 1 from public.sessions limit 1" >/dev/null 2>&1; then
   echo "e2e-metrics: FAIL — metrics_reader can read public.sessions directly (should be denied)"
   exit 1
 fi
 
-echo "e2e-metrics: PASS (metrics_reader executes the function; direct table read denied)"
+echo "e2e-metrics: PASS (metrics_reader executes metrics_overview + scenario_analytics; direct table read denied)"
