@@ -32,24 +32,33 @@ export function ScenarioTable({
           <tbody>
             {rows.map((r) => {
               const open = openScenarioId === r.scenario_id;
+              const panelId = `scenario-panel-${r.scenario_id}`;
               return (
                 <Fragment key={r.scenario_id}>
+                  {/* Native row semantics preserved (no role override) so screen readers keep
+                      per-cell/column associations. The accessible, keyboard-focusable disclosure
+                      control is the title button (aria-expanded + aria-controls); the row onClick is
+                      a mouse convenience and the button stops propagation to avoid a double-toggle. */}
                   <tr
-                    role="button"
-                    tabIndex={0}
-                    aria-expanded={open}
                     onClick={() => onRowClick(r.scenario_id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onRowClick(r.scenario_id);
-                      }
-                    }}
                     className={`cursor-pointer border-b border-brown/40 hover:bg-parchment/60 ${
                       open ? "border-l-4 border-l-forest" : ""
                     }`}
                   >
-                    <td className="py-2 pr-4 text-ink">{r.title}</td>
+                    <td className="py-2 pr-4">
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        aria-controls={open ? panelId : undefined}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRowClick(r.scenario_id);
+                        }}
+                        className="text-left font-medium text-forest hover:underline"
+                      >
+                        {r.title}
+                      </button>
+                    </td>
                     <td className="py-2 pr-4 text-ink-soft">{count(r.sessions)}</td>
                     <td className="py-2 pr-4 text-ink-soft">{pct(r.completion_rate)}</td>
                     <td className="py-2 pr-4 text-ink-soft">{score(r.avg_score)}</td>
@@ -61,7 +70,7 @@ export function ScenarioTable({
                   </tr>
                   {open && (
                     <tr>
-                      <td colSpan={5} className="p-0">
+                      <td colSpan={5} id={panelId} className="p-0">
                         <ScenarioAnalyticsPanel
                           scenarioId={r.scenario_id}
                           title={r.title}
