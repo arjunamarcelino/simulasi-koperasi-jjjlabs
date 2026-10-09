@@ -10,6 +10,15 @@
   --color-ink-soft: #5a4a38;
   --color-danger: #b23a2e;
   --font-body: ui-sans-serif, system-ui, sans-serif;
+
+  /* SIM-16 score-distribution ramp: ONE hue (forest), monotone lightness, low→high score =
+     light→dark (reinforces forest = positive elsewhere). Ordinal, not nominal — never a rainbow.
+     Validated against the cream surface via the dataviz palette validator. */
+  --chart-bucket-1: #86a895;
+  --chart-bucket-2: #508165;
+  --chart-bucket-3: #1f5d3a;
+  --chart-bucket-4: #24452c;
+  --chart-bucket-5: #282d1e;
 }
 
 body {
