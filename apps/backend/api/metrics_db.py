@@ -116,7 +116,9 @@ async def fetch_scenario_analytics(pool: asyncpg.Pool | None, scenario_id: str) 
         async with pool.acquire(timeout=5.0) as conn:  # bound acquire (≥ connect) → 503, never a hang
             row = await conn.fetchval("select admin.scenario_analytics($1)", scenario_id)
     except Exception as exc:  # BROAD: PostgresError AND InterfaceError (dropped conn) → 503, never 500
-        log.error("Query scenario_analytics gagal (%s)", type(exc).__name__)  # never log DSN/claims
+        # scenario_id is a bounded non-PII code (VALID_SCENARIOS) → safe to log for triage; still
+        # NEVER log the DSN/claims/exception message.
+        log.error("Query scenario_analytics gagal untuk %s (%s)", scenario_id, type(exc).__name__)
         raise MetricsUnavailable from exc
     if row is None:
         raise MetricsUnavailable
