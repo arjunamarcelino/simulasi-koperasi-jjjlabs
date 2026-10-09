@@ -156,6 +156,64 @@ tak selesai); `avg_score` = rata-rata dari mean-rubrik per-sesi (nilai numerik 0
 > (SQL duluan → 500 sampai model menyusul). Definisi lengkap + runbook di
 > `docs/plans/2026-10-09-feat-admin-dashboard-metrics-plan.md`.
 
+### `GET /admin/scenarios/{scenario_id}/analytics`
+Drill-down analitik per-skenario (SIM-16). **Wajib** `Authorization: Bearer <supabase-jwt>`;
+sama `require_role('admin')` (401 → 403 SEBELUM sentuh DB). `scenario_id` divalidasi terhadap
+set skenario valid (sama seperti `/token`) SETELAH auth: tak dikenal → **404** (resource di path,
+beda dari `/token` yang 422 untuk field di body). Backend memanggil `admin.scenario_analytics($1)`
+lewat pool `metrics_reader` yang sama (EXECUTE-only, fail-soft 503). Fungsi **meng-agregat langsung**
+dari `public.sessions` (tanpa tabel rollup/trigger). `attempts` = sesi ber-`ended_at` saja (akhir
+tercatat; keluar di tengah sesi TIDAK tertangkap). `avg`/`avg_score` = number ATAU `null`. `pillars`
+dihitung dari kunci numerik yang MUNCUL di `scores_json` (per-skenario beda; tutorial → `[]`).
+`buckets` selalu array panjang 5: `0–20, 21–40, 41–60, 61–80, 81–100`. `dropoff` selalu `null`
+sampai modul event-log menyusul (tiket lanjutan).
+
+Response `200`:
+```json
+{
+  "scenario_id": "kredit-macet",
+  "title": "Kredit Macet",
+  "generated_at": "2026-10-09T04:00:00Z",
+  "attempts": 42,
+  "outcome": {
+    "completed": 38,
+    "bubar": 4,
+    "by_trigger": { "manual": 30, "sinyal_level_1": 8, "force_quit_level_2": 4 },
+    "ending_counts": { "good": 20, "neutral": 15, "bad": 7 }
+  },
+  "avg_score": 61.5,
+  "pillars": [
+    { "key": "compliance", "count": 40, "avg": 58.2, "buckets": [3, 9, 12, 10, 6] }
+  ],
+  "dropoff": null
+}
+```
+Catatan: `outcome` memakai **count** (bukan pecahan). `by_trigger`/`ending_counts` adalah peta
+count — `by_trigger` dibiarkan terbuka (dict) agar nilai trigger baru tak merusak kontrak.
+`completed` = `attempts − bubar` (bubar = `force_quit_level_2`). Skenario valid tapi 0 sesi →
+`200` dengan `attempts:0`, `pillars:[]`, `avg_score:null` (BEDA dari 404 skenario tak dikenal).
+
+Status:
+
+| kode | arti | perilaku FE |
+|---|---|---|
+| `200` | analitik skenario | render panel drill-down |
+| `401` | token hilang/invalid/kedaluwarsa (`WWW-Authenticate: Bearer`) | refresh + retry SEKALI → login |
+| `403` | authenticated non-admin **atau** sesi anonim (`{"detail":"forbidden"}`) | "tak berwenang"; JANGAN refresh-loop |
+| `404` | `scenario_id` tak dikenal (dicek SETELAH auth, SEBELUM DB) | "skenario tidak ditemukan"; JANGAN retry |
+| `503` | DB metrik tak dikonfigurasi/tak terjangkau/lambat (fail-soft) | state "layanan tidak tersedia" + retry |
+| `500` | verifier JWT belum dikonfigurasi (fail-closed) | surface error |
+
+Konsumen: `apps/admin` (panel drill-down dari klik baris `ScenarioTable`).
+
+> **Sumber kebenaran bentuk ini = blok JSON di atas.** Ia dikodekan di empat tempat yang harus
+> seiring: `admin.scenario_analytics(text)` (SQL), `ScenarioAnalyticsResponse` (pydantic,
+> `extra="forbid"` di model luar), tipe `ScenarioAnalytics` (TS), dan guard
+> `isScenarioAnalyticsBody` (TS). `extra="forbid"` → tambah kunci dengan urutan **model+guard
+> dulu, SQL terakhir**. Endpoint & model TERPISAH dari `/admin/metrics` (kontrak beku itu tak
+> disentuh). Definisi lengkap + rencana di
+> `docs/plans/2026-10-09-feat-scenario-analytics-module-plan.md`.
+
 `GET /health` → `{ "status": "ok" }` (tanpa auth). CORS diizinkan untuk origin di env
 `CORS_ALLOW_ORIGINS` (comma-split; fallback ke `CORS_ALLOW_ORIGIN` lama; default dev
 `http://localhost:5173,http://localhost:5174` = game + admin), method `GET`/`POST`/
