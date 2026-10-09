@@ -310,6 +310,9 @@ async function authedRequest(
   const url = adminApiUrl(path);
   if (!url) return { kind: "serviceUnavailable" };
 
+  // One timeout for the WHOLE request including a possible 401 refresh+resend (a total-request
+  // budget, not per-attempt): a slow first attempt eats into the resend's share — intended, so a
+  // single hung call can't exceed REQUEST_TIMEOUT_MS end to end.
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const send = (token: string): Promise<Response> => {
@@ -454,8 +457,9 @@ function isLeaderboardEntry(x: unknown): x is LeaderboardEntry {
 }
 
 /** The `selected` field: either null (no season) or a season header PLUS a validated entries[].
- * Ranks must be unique (the contiguous-1..N invariant; a dup would also collide as a React key)
- * and the list must not exceed the contract cap. */
+ * This guard enforces UNIQUE ranks (a dup would collide as a React key); full 1..N contiguity is a
+ * DB-side invariant (UNIQUE(season_id,rank) + the capture's deterministic ranking), not re-checked
+ * here. The list must not exceed the contract cap. */
 function isSelectedSeason(x: unknown): x is SelectedSeason | null {
   if (x === null) return true;
   const o = rec(x);
