@@ -21,9 +21,10 @@ import { assertNever } from "../lib/assertNever";
  *     `myEpoch = epoch` at dispatch (NO ++) and gates its ENTIRE tail on `myEpoch === epoch`, so a
  *     result arriving after reset()/dispose()/a switch is dropped (the "zombie capture" that would
  *     otherwise reopen a closed panel or fire a stale toast);
- *   - ONE mutation gate (`mutating !== null`) disables capture + ALL deletes together → no
- *     double-click, no capture∥delete, no delete∥delete; cleared in a finally (epoch-guarded) and
- *     force-cleared by reset();
+ *   - ONE mutation gate blocks capture, ALL deletes, AND the season switch while a write (or its
+ *     trailing `switching` refetch) is in flight → no double-click, no capture∥delete, no
+ *     delete∥delete, and no mid-write season switch (which would ++epoch, drop the committed
+ *     capture's tail, and reopen the gate). Cleared in a finally (epoch-guarded) + by reset();
  *   - ONE shared `bridged` latch; capture/delete route 401/403 through the gate's handleAuthLoss,
  *     never a direct adminAuthStore.retry();
  *   - after capture ok, select the RETURNED season_id (correct even under a concurrent capture);
@@ -133,7 +134,9 @@ async function runOverview(seasonId: string | undefined, opts: { switching: bool
 
 async function runCapture(label: string | null): Promise<void> {
   const s0 = leaderboardStore.getState().state;
-  if (s0.status !== "ready" || s0.mutating !== null) return; // mutation gate
+  // Mutation gate: block while a write OR its trailing `switching` refetch is in flight (a
+  // post-success refetch clears `mutating` but the write isn't truly settled until it resolves).
+  if (s0.status !== "ready" || s0.mutating !== null || s0.switching) return;
   const myEpoch = epoch; // snapshot (NOT ++): a later reset/switch bumps epoch → drops this tail
   leaderboardStore.setState({ state: { ...s0, mutating: "capturing" } });
   try {
@@ -172,7 +175,8 @@ async function runCapture(label: string | null): Promise<void> {
 
 async function runRemove(seasonId: string): Promise<void> {
   const s0 = leaderboardStore.getState().state;
-  if (s0.status !== "ready" || s0.mutating !== null) return; // mutation gate
+  // Mutation gate: block while a write OR its trailing `switching` refetch is in flight.
+  if (s0.status !== "ready" || s0.mutating !== null || s0.switching) return;
   const myEpoch = epoch; // snapshot (NOT ++)
   const selectedId = s0.data.selected?.id ?? null;
   leaderboardStore.setState({ state: { ...s0, mutating: { deleting: seasonId } } });
@@ -251,6 +255,11 @@ export const leaderboardStore = createStore<LeaderboardStoreState>()(() => ({
   },
 
   select: (seasonId) => {
+    // Gate the season switch on an in-flight WRITE. A switch calls runOverview → ++epoch, which
+    // would drop a committed capture's tail AND clear `mutating`, reopening the gate for a second
+    // concurrent write. (A switch during a plain read refetch is fine — supersession handles it.)
+    const s = leaderboardStore.getState().state;
+    if (s.status === "ready" && s.mutating !== null) return;
     currentSeasonId = seasonId;
     void runOverview(seasonId, { switching: true });
   },

@@ -6,8 +6,9 @@ import { count } from "../../lib/formatMetrics";
 /**
  * Seasonal leaderboard panel (SIM-17). Owns the season <select>, the capture control (optional
  * label input), and a window.confirm-guarded delete. All read it from the single leaderboard
- * store; the ONE mutation gate (`mutating`) disables capture + the label input + delete together,
- * so a double-click or capture∥delete can't fire. The season list stays visible while `switching`.
+ * store; the ONE mutation gate (`busy` = mutating OR the trailing refetch) disables capture, the
+ * label input, delete, AND the season <select> together, so a double-click, capture∥delete, or a
+ * mid-write season switch can't fire. The season list stays visible while `switching`.
  * Collapsed (with LeaderboardTable) from the 4-component precedent to 2.
  */
 export function LeaderboardPanel() {
@@ -34,7 +35,9 @@ export function LeaderboardPanel() {
   if (state.status === "idle") return null;
 
   const { data, switching, mutating } = state;
-  const busy = mutating !== null;
+  // A write is "in flight" through its trailing refetch too — disable the write controls across the
+  // whole capture/delete → refetch unit so a flickering button can't be double-submitted.
+  const busy = mutating !== null || switching;
   const selected = data.selected;
   const deletingThis =
     selected !== null && typeof mutating === "object" && mutating?.deleting === selected.id;
@@ -70,7 +73,7 @@ export function LeaderboardPanel() {
           Musim
           <select
             value={selected?.id ?? ""}
-            disabled={data.seasons.length === 0}
+            disabled={data.seasons.length === 0 || mutating !== null}
             onChange={(e) => leaderboardStore.getState().select(e.target.value)}
             className="rounded border border-brown bg-cream px-2 py-1 text-sm text-ink"
           >

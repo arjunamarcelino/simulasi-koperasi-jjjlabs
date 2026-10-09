@@ -186,6 +186,41 @@ describe("leaderboard store — capture", () => {
     await flush();
   });
 
+  it("mutation gate blocks a season switch mid-capture (no epoch bump; capture tail survives)", async () => {
+    await ready(); // seasons ["s2","s1"]
+    let resolve!: (v: unknown) => void;
+    h.captureLeaderboardSnapshot.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    leaderboardStore.getState().capture("x");
+    leaderboardStore.getState().select("s1"); // wiggling the dropdown mid-capture must be a no-op
+    expect(h.fetchLeaderboardOverview).toHaveBeenCalledTimes(1); // the blocked select fired no refetch
+    const mid = state();
+    expect(mid.status === "ready" && mid.mutating).toBe("capturing");
+    // the capture commits → its tail SURVIVES (select did not ++epoch): selects the returned id + toast
+    h.fetchLeaderboardOverview.mockResolvedValueOnce({ kind: "ok", data: overview("s3", ["s3", "s2", "s1"]) });
+    resolve({ kind: "ok", data: CAPTURE });
+    await flush();
+    await flush();
+    const s = state();
+    expect(s.status === "ready" && s.data.selected?.id).toBe("s3");
+    expect(toast()).toEqual({ tone: "success", text: "Musim #3 tersimpan — 5 peserta" });
+  });
+
+  it("mutation gate blocks a capture during the trailing switching refetch", async () => {
+    await ready();
+    h.captureLeaderboardSnapshot.mockResolvedValue({ kind: "ok", data: CAPTURE });
+    let resolve!: (v: unknown) => void;
+    h.fetchLeaderboardOverview.mockReturnValueOnce(new Promise((r) => (resolve = r))); // refetch hangs
+    leaderboardStore.getState().capture(null);
+    await flush(); // capture ok → runOverview(switching:true) now in flight, mutating cleared
+    const mid = state();
+    expect(mid.status === "ready" && mid.switching).toBe(true);
+    expect(mid.status === "ready" && mid.mutating).toBeNull();
+    leaderboardStore.getState().capture(null); // blocked: busy includes `switching`
+    expect(h.captureLeaderboardSnapshot).toHaveBeenCalledTimes(1);
+    resolve({ kind: "ok", data: overview("s3", ["s3", "s2", "s1"]) });
+    await flush();
+  });
+
   it("ZOMBIE capture: resolves after dispose() → epoch guard drops it (stays idle, no toast)", async () => {
     await ready();
     let resolve!: (v: unknown) => void;
