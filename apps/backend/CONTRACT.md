@@ -214,10 +214,92 @@ Konsumen: `apps/admin` (panel drill-down dari klik baris `ScenarioTable`).
 > disentuh). Definisi lengkap + rencana di
 > `docs/plans/2026-10-09-feat-scenario-analytics-module-plan.md`.
 
+### `GET /admin/leaderboard?season_id=<uuid?>`
+Papan peringkat XP musiman — dasbor admin (SIM-17). **Wajib** `Authorization: Bearer
+<supabase-jwt>`; sama `require_role('admin')` (401 → 403 SEBELUM sentuh DB). `season_id`
+OPSIONAL (query) divalidasi FastAPI sebagai `UUID` → salah bentuk = **422** sebelum DB
+disentuh. Backend memanggil `admin.leaderboard_overview($1)` lewat pool `metrics_reader`
+yang SAMA (EXECUTE-only, fail-soft 503). `season_id` null/absen → musim **terbaru**
+(`max(season_number)`). `seasons` urut terbaru-dulu, DIBATASI 50. `selected` = `null` bila
+belum ada musim. Entri **TIDAK** memuat `user_id` (batas privasi).
+
+Response `200`:
+```json
+{
+  "seasons": [
+    { "id": "…uuid…", "season_number": 2, "label": "Awarding Day",
+      "captured_at": "2026-10-09T04:00:00Z", "entry_count": 42 }
+  ],
+  "selected": {
+    "id": "…uuid…", "season_number": 2, "label": "Awarding Day",
+    "captured_at": "2026-10-09T04:00:00Z", "entry_count": 42,
+    "entries": [ { "rank": 1, "display_name": "Budi", "xp": 1500, "level": 6 } ]
+  }
+}
+```
+`selected` `null` bila belum ada musim; `label` nullable; `entries` urut by `rank` (1-based,
+kontigu), maks 100.
+
+### `POST /admin/leaderboard/capture`
+Bekukan standing XP saat ini menjadi musim baru (aksi admin manual). Body `{ "label"?: string }`
+(maks 120 char; model `extra="forbid"` → kunci asing/overlong = **422**). Memanggil
+`admin.capture_leaderboard_snapshot($1)`. Ranking by `user_progress.xp desc` (hanya `xp>0`),
+limit 100, rank kontigu 1..N; `level` dibekukan via `level_from_xp`; `display_name` di-snapshot
+(null → `"Anggota"`). Basis pemain kosong/semua-0 XP → musim valid ber-`entry_count:0`.
+
+Response `200`:
+```json
+{ "season_id": "…uuid…", "season_number": 3, "captured_at": "2026-10-09T04:00:00Z", "entry_count": 42 }
+```
+
+### `DELETE /admin/leaderboard/seasons/{season_id}`
+Hapus satu musim (cascade ke entrinya). `season_id` (path) divalidasi `UUID` (422 bila salah).
+Memanggil `admin.delete_leaderboard_season($1)` yang mengembalikan `{deleted, season_number}`:
+`deleted:false` (musim tak ada) → backend memetakan ke **404** (BUKAN 503 — nilai balik, bukan
+raise, agar tak tertelan broad-except fail-soft).
+
+Response `200`:
+```json
+{ "deleted": true, "season_number": 3 }
+```
+
+Status (ketiga endpoint di atas):
+
+| kode | arti | perilaku FE |
+|---|---|---|
+| `200` | sukses | render / toast sukses |
+| `401` | token hilang/invalid/kedaluwarsa (`WWW-Authenticate: Bearer`) | refresh + retry SEKALI → login |
+| `403` | authenticated non-admin **atau** sesi anonim (`{"detail":"forbidden"}`) | "tak berwenang"; JANGAN refresh-loop |
+| `404` | **DELETE saja** — `season_id` tak ada | refresh daftar (anggap sudah terhapus); JANGAN error keras |
+| `422` | `season_id` bukan UUID / `label` melanggar batas (dicek SEBELUM DB) | surface error (lihat catatan) |
+| `503` | DB tak dikonfigurasi/tak terjangkau/lambat (fail-soft) | state "layanan tidak tersedia" + retry |
+
+> Catatan `422`: klien `apps/admin` **tidak bisa** memicunya (UUID selalu terbitan server; `label`
+> dibatasi `maxLength=120` di input) sehingga klien tak punya penanganan khusus — non-2xx tak
+> terduga runtuh ke state "layanan tidak tersedia". Baris `422` mendokumentasikan wire mentah untuk
+> pemanggil non-UI (mis. agent yang mengirim UUID/label salah-bentuk).
+
+Konsumen: `apps/admin` (panel leaderboard). **Capture/delete adalah WRITE** lewat
+`SECURITY DEFINER` — `metrics_reader` kini mengeksekusi tulis/hapus (tetap TANPA privilege tabel
+langsung); blast radius `METRICS_DB_URL` meluas (baca → tulis admin-gated).
+
+**Papan in-game ("mading")**: BUKAN lewat backend ini — game memanggil RPC Supabase
+`public.leaderboard_current()` langsung via `supabase-js` (granted `anon`/`authenticated`,
+seperti `public.leaderboard()` lama). Mengembalikan baris `{ display_name, xp, level, rank }`
+musim terbaru (top 20), **tanpa** `user_id`. Papan kosong ("Papan musim belum tersedia") bila
+belum ada musim. Board live lama `public.leaderboard()` DIBIARKAN (tak dipakai mading).
+
+> **Sumber kebenaran bentuk ini = blok JSON di atas.** Dikodekan di empat tempat yang harus
+> seiring: fungsi SQL (`admin.capture_leaderboard_snapshot`/`delete_leaderboard_season`/
+> `leaderboard_overview` + `public.leaderboard_current`), model pydantic (`extra="forbid"` di
+> model luar), tipe TS, dan guard TS. Fungsi tulis WAJIB `VOLATILE` (jangan salin `stable` dari
+> `scenario_analytics`). Definisi lengkap + rencana di
+> `docs/plans/2026-10-09-feat-seasonal-xp-leaderboard-snapshot-plan.md`.
+
 `GET /health` → `{ "status": "ok" }` (tanpa auth). CORS diizinkan untuk origin di env
 `CORS_ALLOW_ORIGINS` (comma-split; fallback ke `CORS_ALLOW_ORIGIN` lama; default dev
 `http://localhost:5173,http://localhost:5174` = game + admin), method `GET`/`POST`/
-`OPTIONS`, header `Authorization`; ini **bukan** kontrol auth — JWT-lah gerbangnya.
+`DELETE`/`OPTIONS`, header `Authorization`; ini **bukan** kontrol auth — JWT-lah gerbangnya.
 
 ---
 

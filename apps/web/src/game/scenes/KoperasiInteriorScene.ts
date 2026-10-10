@@ -290,12 +290,17 @@ export class KoperasiInteriorScene extends Phaser.Scene {
     this.stationLabel(476, 236, "RUANG RAPAT", true);
     this.lzStamp(606, 346, LZ.plant);
 
-    // Points of interest: wall boards (mading) + a computer for the koperasi quiz.
+    // Points of interest: wall boards (mading) + a computer for the koperasi quiz
+    // + a free-standing champions board (Papan Juara) in the lobby for the leaderboard.
     this.lzStamp(180, 48, LZ.poster, false);
     this.lzStamp(300, 48, LZ.poster, false);
     this.lzStamp(340, 48, LZ.poster, false);
     this.lzStamp(320, 200, LZ.computer);
     this.stationLabel(320, 150, "KUIS", true);
+    // Papan Juara: a standing board in the open lobby (clear floor approach, unlike a
+    // top-wall poster tucked behind the kasir desk) so the leaderboard is easy to find.
+    this.lzStamp(250, 198, LZ.rapatDeco, false);
+    this.stationLabel(250, 148, "JUARA", true);
 
     const spot: Record<RoomId, { x: number; y: number }> = {
       kasir: { x: 165, y: 112 },
@@ -335,12 +340,14 @@ export class KoperasiInteriorScene extends Phaser.Scene {
 
     // Points of interest. Entrance posters open the knowledge carousel; the two
     // ruang-rapat wall decos flank the door — left (rapatDeco) opens the data
-    // tables, right (rapatDeco2) opens the info board. Quiz + simpan-pinjam stub.
+    // tables, right (rapatDeco2) opens the info board; the lobby's Papan Juara
+    // board opens the seasonal leaderboard. Quiz + simpan-pinjam stub.
     this.addPoi("mading", "Info Koperasi", 200, 54, () => gameStore.getState().openMadingKnowledge());
     this.addPoi("mading", "Info Koperasi", 340, 54, () => gameStore.getState().openMadingKnowledge());
     this.addPoi("mading", "Papan Data", 410, 250, () => gameStore.getState().openMadingData());
     this.addPoi("mading", "Papan Info", 540, 246, () => gameStore.getState().openMadingInfo());
     this.addPoi("quiz", "Kuis Koperasi", 320, 150, () => gameStore.getState().openQuiz());
+    this.addPoi("mading", "Papan Juara", 250, 148, () => gameStore.getState().openMadingLeaderboard());
 
     // Customer NPC near the entrance/kasir — opens Scenario 1 (visual-novel voice
     // session) as an overlay over the live map. A different sprite than the

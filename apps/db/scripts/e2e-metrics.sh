@@ -32,10 +32,37 @@ echo "$out2" | grep -q '^object$' || {
   exit 1
 }
 
-# 2) Direct table reads are DENIED (least privilege: EXECUTE-only, no table grants).
-if psql "$DSN" -tAc "select 1 from public.sessions limit 1" >/dev/null 2>&1; then
-  echo "e2e-metrics: FAIL — metrics_reader can read public.sessions directly (should be denied)"
+# 1c) SIM-17: the SAME role can EXECUTE the leaderboard WRITE + read functions (first destructive
+#     functions in the admin schema). Capture a throwaway season, confirm overview returns an
+#     object, then delete the season to clean up the side effect.
+cap="$(psql "$DSN" -tAc "select admin.capture_leaderboard_snapshot('e2e') ->> 'season_id'" 2>&1)" || {
+  echo "e2e-metrics: FAIL — metrics_reader cannot execute admin.capture_leaderboard_snapshot(): $cap"
   exit 1
-fi
+}
+ov="$(psql "$DSN" -tAc "select jsonb_typeof(admin.leaderboard_overview(null))" 2>&1)" || {
+  echo "e2e-metrics: FAIL — metrics_reader cannot execute admin.leaderboard_overview(): $ov"
+  exit 1
+}
+echo "$ov" | grep -q '^object$' || {
+  echo "e2e-metrics: FAIL — leaderboard_overview() did not return an object: $ov"
+  exit 1
+}
+del="$(psql "$DSN" -tAc "select admin.delete_leaderboard_season('$cap'::uuid) ->> 'deleted'" 2>&1)" || {
+  echo "e2e-metrics: FAIL — metrics_reader cannot execute admin.delete_leaderboard_season(): $del"
+  exit 1
+}
+echo "$del" | grep -q '^true$' || {
+  echo "e2e-metrics: FAIL — delete_leaderboard_season() did not report deleted=true: $del"
+  exit 1
+}
 
-echo "e2e-metrics: PASS (metrics_reader executes metrics_overview + scenario_analytics; direct table read denied)"
+# 2) Direct table reads are DENIED (least privilege: EXECUTE-only, no table grants) — including
+#    the new snapshot tables, which must be reachable only through the definer functions.
+for tbl in public.sessions public.leaderboard_seasons public.leaderboard_entries; do
+  if psql "$DSN" -tAc "select 1 from $tbl limit 1" >/dev/null 2>&1; then
+    echo "e2e-metrics: FAIL — metrics_reader can read $tbl directly (should be denied)"
+    exit 1
+  fi
+done
+
+echo "e2e-metrics: PASS (metrics_reader executes metrics_overview + scenario_analytics + leaderboard capture/overview/delete; direct table reads denied)"

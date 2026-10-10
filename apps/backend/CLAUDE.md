@@ -17,11 +17,15 @@ project `uv`:
   (Azure OpenAI `gpt-5-mini`) → TTS (Azure).
 
 Jalur voice/token **tanpa database** — seluruh state sesi in-memory, hidup selama
-room LiveKit aktif (PRD §2.5, §8). **Pengecualian admin (SIM-15/SIM-16):** `GET /admin/metrics`
-(→ `admin.metrics_overview()`) dan `GET /admin/scenarios/{id}/analytics` (→ `admin.scenario_analytics()`)
-membuka pool asyncpg **fail-soft** yang SAMA ke Supabase sebagai role least-privilege
-`metrics_reader` (`api/metrics_db.py`). Pool gagal-aman: DB mati/salah-konfig/lambat → endpoint 503,
-TAK PERNAH menjatuhkan `/token` atau `/health`. Jangan bawa DB ke jalur voice/token.
+room LiveKit aktif (PRD §2.5, §8). **Pengecualian admin (SIM-15/16/17):** `GET /admin/metrics`
+(→ `admin.metrics_overview()`), `GET /admin/scenarios/{id}/analytics` (→ `admin.scenario_analytics()`),
+dan papan peringkat musiman SIM-17 — `GET /admin/leaderboard`, `POST /admin/leaderboard/capture`,
+`DELETE /admin/leaderboard/seasons/{id}` (→ `admin.leaderboard_overview/capture_leaderboard_snapshot/
+delete_leaderboard_season`) — membuka pool asyncpg **fail-soft** yang SAMA ke Supabase sebagai role
+`metrics_reader` (`api/metrics_db.py`). **SIM-17 melebarkan `metrics_reader` dari read-only ke
+baca + TULIS admin-gated** (capture/delete lewat definer fn `VOLATILE`); role tetap TANPA privilege
+tabel langsung, tapi blast radius `METRICS_DB_URL` naik. Pool gagal-aman: DB mati/salah-konfig/lambat →
+endpoint 503, TAK PERNAH menjatuhkan `/token` atau `/health`. Jangan bawa DB ke jalur voice/token.
 
 ## Menjalankan & memverifikasi
 

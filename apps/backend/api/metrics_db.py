@@ -1,11 +1,14 @@
-"""Admin metrics DB access (SIM-15).
+"""Admin DB access (SIM-15/16/17).
 
 The ONLY database path in this otherwise DB-free backend. A fail-soft asyncpg pool
-connects as the least-privilege `metrics_reader` role and calls the SECURITY DEFINER
-`admin.metrics_overview()`. "Fail-soft" is the backbone: a metrics DB that is down,
-misconfigured, OR slow must degrade `GET /admin/metrics` to 503 and must NEVER take
-down `/token` or `/health` — so pool creation is bounded and never raises out of this
-module, and the DSN/host are never logged.
+connects as the `metrics_reader` role — an admin DB role that performs **reads** (metrics
+/ scenario analytics / leaderboard overview via STABLE SECURITY DEFINER fns) AND, since
+SIM-17, **admin-gated writes** (leaderboard capture/delete via VOLATILE SECURITY DEFINER
+fns). The role still holds NO direct table privileges — every statement goes through a
+definer fn; the blast radius of `METRICS_DB_URL` widened from read-only to admin writes.
+"Fail-soft" is the backbone: a DB that is down, misconfigured, OR slow must degrade the
+`/admin/*` endpoints to 503 and must NEVER take down `/token` or `/health` — so pool
+creation is bounded and never raises out of this module, and the DSN/host are never logged.
 
 The connection string lives in `METRICS_DB_URL` (backend env only; never committed or
 logged). Through the Supabase pooler the username MUST be `metrics_reader.<project-ref>`.
@@ -16,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import uuid
 from typing import Any
 
 import asyncpg
@@ -123,3 +127,75 @@ async def fetch_scenario_analytics(pool: asyncpg.Pool | None, scenario_id: str) 
     if row is None:
         raise MetricsUnavailable
     return row
+
+
+_OMIT = object()  # sentinel: "no non-PII arg to include in the fault log"
+
+
+async def _call_definer(
+    pool: asyncpg.Pool | None,
+    sql: str,
+    *args: Any,
+    log_name: str,
+    log_arg: Any = _OMIT,
+) -> dict[str, Any]:
+    """Shared body for the SIM-17 definer-fn calls (overview/capture/delete).
+
+    Identical fail-soft contract to fetch_scenario_analytics: None pool / dropped connection /
+    timeout / query error / unexpected NULL → MetricsUnavailable (→ 503, never 500); the except is
+    deliberately BROAD (PostgresError server-side AND InterfaceError client-side). `args` are bound
+    positionally ($1…) — never string-interpolated. `log_arg` (a NON-PII id, or _OMIT) is the only
+    value included in the fault log — NEVER pass `label` or any PII; the DSN/claims/exception
+    message are never logged.
+    """
+    if pool is None:
+        raise MetricsUnavailable
+    try:
+        async with pool.acquire(timeout=5.0) as conn:  # bound acquire (≥ connect) → 503, never a hang
+            row = await conn.fetchval(sql, *args)
+    except Exception as exc:  # BROAD: PostgresError AND InterfaceError (dropped conn) → 503, never 500
+        if log_arg is _OMIT:
+            log.error("Query %s gagal (%s)", log_name, type(exc).__name__)
+        else:
+            log.error("Query %s gagal untuk %s (%s)", log_name, log_arg, type(exc).__name__)
+        raise MetricsUnavailable from exc
+    if row is None:
+        raise MetricsUnavailable
+    return row
+
+
+async def fetch_leaderboard_overview(
+    pool: asyncpg.Pool | None, season_id: uuid.UUID | None
+) -> dict[str, Any]:
+    """Call admin.leaderboard_overview($1) → jsonb dict (SIM-17). A null season_id resolves to the
+    latest season. season_id (uuid|None) is bound natively ($1, no `::uuid` cast) and is a non-PII
+    id, so it's included in the fault log for triage."""
+    return await _call_definer(
+        pool, "select admin.leaderboard_overview($1)", season_id,
+        log_name="leaderboard_overview", log_arg=season_id,
+    )
+
+
+async def capture_leaderboard_snapshot(
+    pool: asyncpg.Pool | None, label: str | None
+) -> dict[str, Any]:
+    """Call admin.capture_leaderboard_snapshot($1) → jsonb dict (SIM-17). An admin-gated WRITE via a
+    VOLATILE definer fn: advisory-lock contention surfaces as a bounded wait → fail-soft 503 on
+    timeout (the lock is xact-scoped and auto-releases, so a retry succeeds), NOT a DB outage.
+    `label` is bound as $1 and NEVER logged (no `log_arg`); attribution is logged at the route."""
+    return await _call_definer(
+        pool, "select admin.capture_leaderboard_snapshot($1)", label,
+        log_name="capture_leaderboard_snapshot",
+    )
+
+
+async def delete_leaderboard_season(
+    pool: asyncpg.Pool | None, season_id: uuid.UUID
+) -> dict[str, Any]:
+    """Call admin.delete_leaderboard_season($1) → jsonb dict (SIM-17). An admin-gated WRITE via a
+    VOLATILE definer fn that returns `{deleted, season_number}` and does NOT raise on an absent
+    season (a raise would be masked as a 503); the route maps `deleted == false` → 404."""
+    return await _call_definer(
+        pool, "select admin.delete_leaderboard_season($1)", season_id,
+        log_name="delete_leaderboard_season", log_arg=season_id,
+    )
