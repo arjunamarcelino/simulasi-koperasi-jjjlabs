@@ -11,6 +11,7 @@ Mirrors test_admin_quiz.py. Routes:
 from __future__ import annotations
 
 import asyncio
+import uuid
 from datetime import datetime
 
 import asyncpg
@@ -316,8 +317,6 @@ class _FakePool:
     def acquire(self, *, timeout=None):
         return _FakeAcquire(self._conn)
 
-
-import uuid  # noqa: E402
 
 _A_UUID = uuid.UUID(MID)
 
