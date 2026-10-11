@@ -170,7 +170,6 @@ create or replace function admin.upsert_mading_block(
 returns jsonb language plpgsql volatile security definer set search_path = '' as $$
 declare
   v_reason text;
-  v_cur    timestamptz;
   v_board  text;
 begin
   if p_sort_order is null or p_sort_order < 0 then
@@ -202,13 +201,13 @@ begin
     end;
     return admin._mading_row(p_board, p_block_key);
   else
-    -- EDIT: resolve the row, CAS on updated_at, validate against the STORED board.
-    select board, updated_at into v_board, v_cur from public.mading_block where id = p_id;
+    -- EDIT: resolve the stored board (payload is validated against it, not the client-sent board),
+    -- then ATOMIC compare-and-swap. The token is folded INTO the UPDATE predicate so two concurrent
+    -- edits on the same base token can't both win (the second matches 0 rows → stale_write), rather
+    -- than a check-then-UPDATE that would let the second clobber the first under READ COMMITTED.
+    select board into v_board from public.mading_block where id = p_id;
     if not found then
       return jsonb_build_object('ok', false, 'reason', 'not_found');
-    end if;
-    if v_cur is distinct from p_prev_updated_at then
-      return jsonb_build_object('ok', false, 'reason', 'stale_write');
     end if;
     v_reason := admin._mading_reject_reason(v_board, p_payload);
     if v_reason is not null then
@@ -216,7 +215,13 @@ begin
     end if;
     update public.mading_block
        set payload = p_payload, sort_order = p_sort_order, updated_at = now()
-     where id = p_id;
+     where id = p_id
+       and updated_at is not distinct from p_prev_updated_at;
+    if not found then
+      -- the row existed moments ago (select above), so a 0-row update means the token no longer
+      -- matches → stale (or a concurrent delete, for which "reload" is also the right outcome).
+      return jsonb_build_object('ok', false, 'reason', 'stale_write');
+    end if;
     return (select admin._mading_row(b.board, b.block_key) from public.mading_block b where b.id = p_id);
   end if;
 end;

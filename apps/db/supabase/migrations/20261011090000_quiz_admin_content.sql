@@ -76,7 +76,6 @@ create or replace function admin.upsert_quiz_question(
 )
 returns jsonb language plpgsql volatile security definer set search_path = '' as $$
 declare
-  v_cur     timestamptz;
   v_opt_len int;
 begin
   -- Defense-in-depth validation (NULL required scalars rejected BEFORE range checks, else a
@@ -110,14 +109,12 @@ begin
       return jsonb_build_object('ok', false, 'reason', 'duplicate_code', 'field', 'code');
     end if;
   else
-    -- EDIT (compare-and-swap on updated_at)
-    select q.updated_at into v_cur from public.quiz_definition q where q.code = p_code;
-    if not found then
-      return jsonb_build_object('ok', false, 'reason', 'not_found');
-    end if;
-    if v_cur is distinct from p_prev_updated_at then
-      return jsonb_build_object('ok', false, 'reason', 'stale_write');
-    end if;
+    -- EDIT — ATOMIC compare-and-swap: the token is folded INTO the UPDATE predicate so the check
+    -- and the write are one statement. Two concurrent edits carrying the same base token cannot
+    -- both win: the first bumps updated_at, the second then matches 0 rows and is reported stale
+    -- (a check-then-UPDATE with the token only in a prior SELECT would let the second clobber the
+    -- first under READ COMMITTED). The follow-up existence check only distinguishes stale from
+    -- not_found and is race-benign.
     update public.quiz_definition
        set prompt = p_prompt,
            options = p_options,
@@ -125,7 +122,14 @@ begin
            explanation = nullif(p_explanation, ''),
            sort_order = p_sort_order,
            updated_at = now()
-     where code = p_code;
+     where code = p_code
+       and updated_at is not distinct from p_prev_updated_at;
+    if not found then
+      if exists (select 1 from public.quiz_definition where code = p_code) then
+        return jsonb_build_object('ok', false, 'reason', 'stale_write');
+      end if;
+      return jsonb_build_object('ok', false, 'reason', 'not_found');
+    end if;
   end if;
 
   return jsonb_build_object(
