@@ -15,14 +15,14 @@ from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from livekit import api
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
 from . import auth, metrics_db
 from .auth import AuthedUser, require_role, verify_supabase_jwt
@@ -511,6 +511,213 @@ async def quiz_delete(
     if not result.get("ok"):
         _raise_for_quiz_reason(result)
     log.info("Quiz question deleted by %s → %s", admin.user_id, code)
+    return {"deleted": True}
+
+
+# --- Mading content management (SIM-18) -------------------------------------------------
+# Admin-gated CRUD over mading_block. Per-board payload validation is authoritative HERE in
+# Pydantic (→ 422 at the boundary); the DB admin._mading_reject_reason is the defense-in-depth
+# floor. extra="forbid" is set on EACH payload variant (not just the request wrapper) so a
+# foreign key INSIDE the chosen payload is rejected. KnowledgeCard is a discriminated union.
+class InfoPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: Annotated[str, Field(min_length=1)]
+    lines: Annotated[list[str], Field(min_length=1)]
+    accent: Literal["mustard", "forest", "orange", "parchment"]
+
+
+class DataPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: Annotated[str, Field(min_length=1)]
+    caption: str | None = None
+    headers: Annotated[list[str], Field(min_length=1)]
+    align: list[Literal["left", "right"]] | None = None
+    rows: list[list[str]]
+
+    @model_validator(mode="after")
+    def _rectangular(self) -> DataPayload:
+        n = len(self.headers)
+        if self.align is not None and len(self.align) != n:
+            raise ValueError("align length must equal headers length")
+        if any(len(r) != n for r in self.rows):
+            raise ValueError("every row length must equal headers length")
+        return self
+
+
+class StatCard(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["stat"]
+    value: str
+    label: str
+    group: str | None = None
+    sub: str | None = None
+
+
+class FactCard(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["fact"]
+    text: Annotated[str, Field(min_length=1)]
+    chip: Literal["Prinsip Koperasi", "Landasan Hukum"] | None = None
+
+
+_KnowledgeCard = Annotated[StatCard | FactCard, Field(discriminator="kind")]
+_knowledge_adapter: TypeAdapter[Any] = TypeAdapter(_KnowledgeCard)
+
+
+class IdentitasPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    nama: Annotated[str, Field(min_length=1)]
+    badanHukum: Annotated[str, Field(min_length=1)]
+    alamat: Annotated[str, Field(min_length=1)]
+    desa: Annotated[str, Field(min_length=1)]
+
+
+_BOARD_MODELS: dict[str, type[BaseModel]] = {
+    "info": InfoPayload,
+    "data": DataPayload,
+    "identitas": IdentitasPayload,
+}
+
+
+class MadingUpsertBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    board: Literal["info", "data", "knowledge", "identitas"]
+    block_key: str | None = None  # required for CREATE; ignored on EDIT (board/key immutable)
+    payload: dict[str, Any]
+    sort_order: Annotated[int, Field(ge=0)] = 0
+    prev_updated_at: str | None = None  # None → CREATE; a value → compare-and-swap EDIT
+
+    @model_validator(mode="after")
+    def _validate_payload(self) -> MadingUpsertBody:
+        # Dispatch the payload to its board model → a mis-shaped payload is a clean 422 before the RPC.
+        try:
+            if self.board == "knowledge":
+                _knowledge_adapter.validate_python(self.payload)
+            else:
+                _BOARD_MODELS[self.board].model_validate(self.payload)
+        except ValidationError as exc:
+            raise ValueError(f"invalid {self.board} payload") from exc
+        return self
+
+
+class MadingRow(BaseModel):
+    id: str
+    board: str
+    block_key: str
+    payload: dict[str, Any]
+    sort_order: int
+    updated_at: str
+
+
+class ListMadingResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # outer contract; payloads inside groups stay Any
+    ok: bool
+    groups: dict[str, Any]
+
+
+class DeleteMadingResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    deleted: bool
+
+
+# State reasons map to 404/409; everything else (unknown_board / block_key_empty /
+# sort_order_negative / payload reasons) is a validation failure → 422. Never fall through to 200.
+_MADING_REASON_STATUS: dict[str, int] = {
+    "not_found": 404,
+    "stale_write": 409,
+    "duplicate_key": 409,
+    "identitas_exists": 409,
+}
+
+
+def _raise_for_mading_reason(result: dict[str, Any]) -> None:
+    reason = result.get("reason") or "conflict"
+    raise HTTPException(_MADING_REASON_STATUS.get(reason, 422), reason)
+
+
+@app.get("/admin/mading", response_model=ListMadingResponse)
+async def mading_list(
+    request: Request,
+    _admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    try:
+        return await metrics_db.list_mading(request.app.state.metrics_pool)
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+
+
+@app.post("/admin/mading", response_model=MadingRow)
+async def mading_create(
+    req: MadingUpsertBody,
+    request: Request,
+    admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    if req.block_key is None or not req.block_key.strip():
+        raise HTTPException(422, "block_key_required")
+    try:
+        result = await metrics_db.upsert_mading_block(
+            request.app.state.metrics_pool,
+            block_id=None,
+            board=req.board,
+            block_key=req.block_key,
+            payload=req.payload,
+            sort_order=req.sort_order,
+            prev_updated_at=None,
+        )
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+    if not result.get("ok"):
+        _raise_for_mading_reason(result)
+    log.info("Mading block created by %s → %s/%s", admin.user_id, req.board, req.block_key)
+    return result["row"]
+
+
+@app.post("/admin/mading/{block_id}", response_model=MadingRow)
+async def mading_edit(
+    block_id: UUID,
+    req: MadingUpsertBody,
+    request: Request,
+    admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    # Edit REQUIRES the CAS token (the updated_at from the loaded row) — omitting it is a 422, not a
+    # silent overwrite. Parsed at the boundary so a malformed timestamp is a clean 422, not a 503.
+    if req.prev_updated_at is None:
+        raise HTTPException(422, "prev_updated_at_required")
+    try:
+        prev = datetime.fromisoformat(req.prev_updated_at)
+    except ValueError:
+        raise HTTPException(422, "prev_updated_at_invalid") from None
+    try:
+        result = await metrics_db.upsert_mading_block(
+            request.app.state.metrics_pool,
+            block_id=block_id,
+            board=req.board,
+            block_key=None,
+            payload=req.payload,
+            sort_order=req.sort_order,
+            prev_updated_at=prev,
+        )
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+    if not result.get("ok"):
+        _raise_for_mading_reason(result)
+    log.info("Mading block edited by %s → %s", admin.user_id, block_id)
+    return result["row"]
+
+
+@app.delete("/admin/mading/{block_id}", response_model=DeleteMadingResponse)
+async def mading_delete(
+    block_id: UUID,
+    request: Request,
+    admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    try:
+        result = await metrics_db.delete_mading_block(request.app.state.metrics_pool, block_id=block_id)
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+    if not result.get("ok"):
+        _raise_for_mading_reason(result)
+    log.info("Mading block deleted by %s → %s", admin.user_id, block_id)
     return {"deleted": True}
 
 

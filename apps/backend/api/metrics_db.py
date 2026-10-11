@@ -244,3 +244,39 @@ async def delete_quiz_question(pool: asyncpg.Pool | None, *, code: str) -> dict[
         pool, "select admin.delete_quiz_question($1)", code,
         log_name="delete_quiz_question", log_arg=code,
     )
+
+
+# ── SIM-18 mading content (admin-gated CRUD) ─────────────────────────────────────────────
+async def list_mading(pool: asyncpg.Pool | None) -> dict[str, Any]:
+    """Call admin.list_mading() → {ok, groups:{info,data,knowledge,identitas}} (SIM-18)."""
+    return await _call_definer(pool, "select admin.list_mading()", log_name="list_mading")
+
+
+async def upsert_mading_block(
+    pool: asyncpg.Pool | None,
+    *,
+    block_id: uuid.UUID | None,
+    board: str | None,
+    block_key: str | None,
+    payload: dict[str, Any],
+    sort_order: int,
+    prev_updated_at: datetime | None,
+) -> dict[str, Any]:
+    """Call admin.upsert_mading_block(...) → {ok, reason?/row?} (SIM-18). CREATE when block_id is
+    None (board+block_key required), else a compare-and-swap EDIT. `payload` (a Python dict) binds
+    as jsonb via the connection codec. Only the non-PII id/block_key is logged — never the payload."""
+    return await _call_definer(
+        pool,
+        "select admin.upsert_mading_block($1, $2, $3, $4, $5, $6)",
+        block_id, board, block_key, payload, sort_order, prev_updated_at,
+        log_name="upsert_mading_block",
+        log_arg=(block_id if block_id is not None else block_key),
+    )
+
+
+async def delete_mading_block(pool: asyncpg.Pool | None, *, block_id: uuid.UUID) -> dict[str, Any]:
+    """Call admin.delete_mading_block($1) → {ok, deleted, reason?} (SIM-18)."""
+    return await _call_definer(
+        pool, "select admin.delete_mading_block($1)", block_id,
+        log_name="delete_mading_block", log_arg=block_id,
+    )
