@@ -13,7 +13,7 @@ import os
 import uuid
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from livekit import api
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import auth, metrics_db
 from .auth import AuthedUser, require_role, verify_supabase_jwt
@@ -383,6 +383,135 @@ async def leaderboard_delete_season(
         result["season_number"],
     )
     return result
+
+
+# --- Quiz content management (SIM-18) ---------------------------------------------------
+# Admin-gated CRUD over public.quiz_definition via the SAME metrics_reader pool. Error contract
+# (load-bearing): metrics_db._call_definer turns any RAISE into a 503, so (a) input validation
+# lives HERE in Pydantic → clean 422 at the boundary before the RPC, and (b) the admin fns return
+# a structured {ok,reason} that we map to 404/409 — a raise would be a misleading 503. `code` is a
+# PATH resource (404 on edit/delete-absent), mirroring the scenario-analytics convention.
+class QuizQuestionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # kunci asing → 422 (kontrak beku)
+    code: Annotated[str, Field(min_length=1, max_length=64)]
+    prompt: Annotated[str, Field(min_length=1)]
+    # 2..4 options matches the 1..4 keyboard/LETTERS limit in the game's QuizBoard.
+    options: Annotated[list[str], Field(min_length=2, max_length=4)]
+    correct_index: Annotated[int, Field(ge=0)]
+    explanation: str | None = None
+    sort_order: Annotated[int, Field(ge=0)] = 0
+    # Compare-and-swap token: the `updated_at` string from GET /admin/quiz, echoed verbatim.
+    # None → CREATE; present → EDIT (the fn returns stale_write if it no longer matches).
+    prev_updated_at: str | None = None
+
+    @model_validator(mode="after")
+    def _correct_index_in_range(self) -> QuizQuestionBody:
+        # Cross-field 422 before the RPC (the DB CHECK would otherwise raise → masked as 503).
+        if self.correct_index >= len(self.options):
+            raise ValueError("correct_index out of range for options")
+        return self
+
+
+class QuizRow(BaseModel):
+    code: str
+    prompt: str
+    options: list[str]
+    correct_index: int
+    explanation: str | None
+    sort_order: int
+    updated_at: str
+
+
+class ListQuizResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # kontrak beku (model luar); sub-model (QuizRow) tidak
+    ok: bool
+    rows: list[QuizRow]
+
+
+class DeleteQuizResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    deleted: bool
+
+
+# reason → HTTP status. Validation reasons are defense-in-depth (Pydantic rejects them first);
+# the state reasons (not_found/has_completions/stale_write/duplicate_code) are the ones that
+# actually reach here. An UNKNOWN ok:false reason must NEVER fall through to 200 → default 409.
+_QUIZ_REASON_STATUS: dict[str, int] = {
+    "not_found": 404,
+    "has_completions": 409,
+    "stale_write": 409,
+    "duplicate_code": 409,
+    "empty_code": 422,
+    "empty_prompt": 422,
+    "options_not_array": 422,
+    "options_len": 422,
+    "correct_index_range": 422,
+    "sort_order_negative": 422,
+}
+
+
+def _raise_for_quiz_reason(result: dict[str, Any]) -> None:
+    reason = result.get("reason") or "conflict"
+    raise HTTPException(_QUIZ_REASON_STATUS.get(reason, 409), reason)
+
+
+@app.get("/admin/quiz", response_model=ListQuizResponse)
+async def quiz_list(
+    request: Request,
+    _admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    try:
+        return await metrics_db.list_quiz(request.app.state.metrics_pool)
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+
+
+@app.post("/admin/quiz", response_model=QuizRow)
+async def quiz_upsert(
+    req: QuizQuestionBody,
+    request: Request,
+    admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    # Parse the CAS token at the boundary → a malformed timestamp is a clean 422, not a 503.
+    prev: datetime | None = None
+    if req.prev_updated_at is not None:
+        try:
+            prev = datetime.fromisoformat(req.prev_updated_at)
+        except ValueError:
+            raise HTTPException(422, "prev_updated_at_invalid") from None
+    try:
+        result = await metrics_db.upsert_quiz_question(
+            request.app.state.metrics_pool,
+            code=req.code,
+            prompt=req.prompt,
+            options=req.options,
+            correct_index=req.correct_index,
+            explanation=req.explanation,
+            sort_order=req.sort_order,
+            prev_updated_at=prev,
+        )
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+    if not result.get("ok"):
+        _raise_for_quiz_reason(result)
+    log.info("Quiz question upserted by %s → %s", admin.user_id, req.code)
+    return result["row"]
+
+
+@app.delete("/admin/quiz/{code}", response_model=DeleteQuizResponse)
+async def quiz_delete(
+    code: str,
+    request: Request,
+    admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    try:
+        result = await metrics_db.delete_quiz_question(request.app.state.metrics_pool, code=code)
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+    if not result.get("ok"):
+        _raise_for_quiz_reason(result)
+    log.info("Quiz question deleted by %s → %s", admin.user_id, code)
+    return {"deleted": True}
 
 
 @app.post("/token", response_model=TokenResponse)

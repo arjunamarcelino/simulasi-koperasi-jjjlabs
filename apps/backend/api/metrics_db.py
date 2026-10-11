@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime
 from typing import Any
 
 import asyncpg
@@ -198,4 +199,48 @@ async def delete_leaderboard_season(
     return await _call_definer(
         pool, "select admin.delete_leaderboard_season($1)", season_id,
         log_name="delete_leaderboard_season", log_arg=season_id,
+    )
+
+
+# ── SIM-18 quiz content (admin-gated CRUD) ───────────────────────────────────────────────
+async def list_quiz(pool: asyncpg.Pool | None) -> dict[str, Any]:
+    """Call admin.list_quiz() → {ok, rows:[…]} (SIM-18). The admin read that INCLUDES the
+    hidden correct_index/explanation the game-facing quiz_catalog omits. Same fail-soft
+    contract as the other definer calls (no pool / dropped conn / timeout / NULL → 503)."""
+    return await _call_definer(pool, "select admin.list_quiz()", log_name="list_quiz")
+
+
+async def upsert_quiz_question(
+    pool: asyncpg.Pool | None,
+    *,
+    code: str,
+    prompt: str,
+    options: list[Any],
+    correct_index: int,
+    explanation: str | None,
+    sort_order: int,
+    prev_updated_at: datetime | None,
+) -> dict[str, Any]:
+    """Call admin.upsert_quiz_question(...) → {ok, reason?/row?} (SIM-18).
+
+    CREATE when prev_updated_at is None, else a compare-and-swap EDIT (the fn returns
+    reason='stale_write' on a mismatch). Keyword-only args are assembled into the positional
+    $1..$7 tuple at THIS single site so the mapping is auditable (6+ same-ish params are a
+    transposition foot-gun if bound ad hoc). `options` (a Python list) binds as jsonb via the
+    connection's jsonb codec. Only `code` (non-PII) is logged — never prompt/options/explanation."""
+    return await _call_definer(
+        pool,
+        "select admin.upsert_quiz_question($1, $2, $3, $4, $5, $6, $7)",
+        code, prompt, options, correct_index, explanation, sort_order, prev_updated_at,
+        log_name="upsert_quiz_question", log_arg=code,
+    )
+
+
+async def delete_quiz_question(pool: asyncpg.Pool | None, *, code: str) -> dict[str, Any]:
+    """Call admin.delete_quiz_question($1) → {ok, deleted, reason?} (SIM-18). Returns a
+    structured result (never raises), so a FK-blocked delete (answered question) maps to a
+    clean 409 at the route, not a misleading 503."""
+    return await _call_definer(
+        pool, "select admin.delete_quiz_question($1)", code,
+        log_name="delete_quiz_question", log_arg=code,
     )
