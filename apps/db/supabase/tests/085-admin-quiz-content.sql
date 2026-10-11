@@ -8,6 +8,11 @@
 begin;
 select plan(40);
 
+-- The test DB is seeded (seed.sql loads 20 quiz questions). Clear quiz data inside this
+-- rolled-back txn so assertions on absolute counts/ordering are hermetic.
+delete from public.quiz_completion;
+delete from public.quiz_definition;
+
 -- ── fixtures: two seeded questions; q1 has a completion (undeletable per D5) ───────────────
 insert into public.quiz_definition (code, prompt, options, correct_index, explanation, sort_order) values
   ('q1', 'Prompt 1', '["a","b","c"]'::jsonb, 2, 'because a', 0),

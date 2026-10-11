@@ -6,6 +6,10 @@
 begin;
 select plan(45);
 
+-- The test DB is seeded (seed.sql loads mading_block rows incl identitas 'default'). Clear it
+-- inside this rolled-back txn so the fixtures below don't collide and counts are hermetic.
+delete from public.mading_block;
+
 insert into public.mading_block (board, block_key, payload, sort_order) values
   ('info',      'seed-info', '{"title":"Seed","lines":["x"],"accent":"forest"}'::jsonb, 0),
   ('data',      'seed-data', '{"title":"Seed","headers":["H"],"rows":[["a"]]}'::jsonb, 0),
