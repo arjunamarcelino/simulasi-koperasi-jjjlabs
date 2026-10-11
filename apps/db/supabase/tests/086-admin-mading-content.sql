@@ -4,7 +4,7 @@
 -- stashed in a temp table. Grant matrix asserted via has_*_privilege. The error-contract invariant
 -- is proven by asserting every expected rejection is a STRUCTURED RETURN ({ok:false, reason}).
 begin;
-select plan(45);
+select plan(46);
 
 -- The test DB is seeded (seed.sql loads mading_block rows incl identitas 'default'). Clear it
 -- inside this rolled-back txn so the fixtures below don't collide and counts are hermetic.
