@@ -9,9 +9,11 @@
 -- identitas-singleton violations are CAUGHT and returned as reasons.
 --
 -- Validation: the authoritative rich validation is Pydantic at the FastAPI boundary (→ 422). The
--- DB layer is a defense-in-depth FLOOR — the table CHECK (jsonb object) + admin._mading_reject_reason
--- — so the generated SEED (which writes the table directly, bypassing Pydantic) and any future
--- direct write cannot persist a payload the learner parser would reject as `invalid`.
+-- DB layer is a defense-in-depth FLOOR — the table CHECK (jsonb object) + admin._mading_reject_reason,
+-- which is CLOSED (rejects foreign keys per board) and element-typed (every array element must be a
+-- string; align ∈ {left,right}) to match the FE closed parsers. So the generated SEED (which writes
+-- the table directly, bypassing Pydantic) and any future direct write cannot persist a payload the
+-- learner parser would reject as `invalid`.
 
 create table public.mading_block (
   id         uuid primary key default gen_random_uuid(),
@@ -52,22 +54,39 @@ begin
     return 'payload_not_object';
   end if;
 
+  -- The floor is CLOSED and element-typed to match the FE closed parsers + Pydantic extra="forbid":
+  -- reject foreign keys per board, and require every array element be a string. So a direct/seed
+  -- write cannot persist a payload the learner parser would later reject as `invalid`.
   if p_board = 'identitas' then
+    if exists (select 1 from jsonb_object_keys(p_payload) k
+                where k <> all (array['nama', 'badanHukum', 'alamat', 'desa'])) then
+      return 'foreign_key';
+    end if;
     if jsonb_typeof(p_payload -> 'nama') is distinct from 'string'
        or jsonb_typeof(p_payload -> 'badanHukum') is distinct from 'string'
        or jsonb_typeof(p_payload -> 'alamat') is distinct from 'string'
-       or jsonb_typeof(p_payload -> 'desa') is distinct from 'string' then
+       or jsonb_typeof(p_payload -> 'desa') is distinct from 'string'
+       or char_length(btrim(coalesce(p_payload ->> 'nama', ''))) = 0
+       or char_length(btrim(coalesce(p_payload ->> 'badanHukum', ''))) = 0
+       or char_length(btrim(coalesce(p_payload ->> 'alamat', ''))) = 0
+       or char_length(btrim(coalesce(p_payload ->> 'desa', ''))) = 0 then
       return 'identitas_fields';
     end if;
     return null;
 
   elsif p_board = 'info' then
+    if exists (select 1 from jsonb_object_keys(p_payload) k
+                where k <> all (array['title', 'lines', 'accent'])) then
+      return 'foreign_key';
+    end if;
     if jsonb_typeof(p_payload -> 'title') is distinct from 'string'
        or char_length(btrim(coalesce(p_payload ->> 'title', ''))) = 0 then
       return 'info_title';
     end if;
     if jsonb_typeof(p_payload -> 'lines') is distinct from 'array'
-       or jsonb_array_length(p_payload -> 'lines') = 0 then
+       or jsonb_array_length(p_payload -> 'lines') = 0
+       or exists (select 1 from jsonb_array_elements(p_payload -> 'lines') e
+                   where jsonb_typeof(e) <> 'string') then
       return 'info_lines';
     end if;
     if (p_payload ->> 'accent') is null
@@ -77,18 +96,29 @@ begin
     return null;
 
   elsif p_board = 'data' then
+    if exists (select 1 from jsonb_object_keys(p_payload) k
+                where k <> all (array['title', 'caption', 'headers', 'align', 'rows'])) then
+      return 'foreign_key';
+    end if;
     if jsonb_typeof(p_payload -> 'title') is distinct from 'string'
        or char_length(btrim(coalesce(p_payload ->> 'title', ''))) = 0 then
       return 'data_title';
     end if;
+    if (p_payload ? 'caption') and jsonb_typeof(p_payload -> 'caption') is distinct from 'string' then
+      return 'data_caption';
+    end if;
     if jsonb_typeof(p_payload -> 'headers') is distinct from 'array'
-       or jsonb_array_length(p_payload -> 'headers') = 0 then
+       or jsonb_array_length(p_payload -> 'headers') = 0
+       or exists (select 1 from jsonb_array_elements(p_payload -> 'headers') e
+                   where jsonb_typeof(e) <> 'string') then
       return 'data_headers';
     end if;
     v_headers_len := jsonb_array_length(p_payload -> 'headers');
     if (p_payload ? 'align')
        and (jsonb_typeof(p_payload -> 'align') is distinct from 'array'
-            or jsonb_array_length(p_payload -> 'align') <> v_headers_len) then
+            or jsonb_array_length(p_payload -> 'align') <> v_headers_len
+            or exists (select 1 from jsonb_array_elements_text(p_payload -> 'align') a
+                        where a not in ('left', 'right'))) then
       return 'data_align';
     end if;
     if jsonb_typeof(p_payload -> 'rows') is distinct from 'array' then
@@ -96,7 +126,8 @@ begin
     end if;
     for v_row in select value from jsonb_array_elements(p_payload -> 'rows') loop
       if jsonb_typeof(v_row) is distinct from 'array'
-         or jsonb_array_length(v_row) <> v_headers_len then
+         or jsonb_array_length(v_row) <> v_headers_len
+         or exists (select 1 from jsonb_array_elements(v_row) c where jsonb_typeof(c) <> 'string') then
         return 'data_row_shape';
       end if;
     end loop;
@@ -105,12 +136,22 @@ begin
   elsif p_board = 'knowledge' then
     v_kind := p_payload ->> 'kind';
     if v_kind = 'stat' then
+      if exists (select 1 from jsonb_object_keys(p_payload) k
+                  where k <> all (array['kind', 'value', 'label', 'group', 'sub'])) then
+        return 'foreign_key';
+      end if;
       if jsonb_typeof(p_payload -> 'value') is distinct from 'string'
-         or jsonb_typeof(p_payload -> 'label') is distinct from 'string' then
+         or jsonb_typeof(p_payload -> 'label') is distinct from 'string'
+         or ((p_payload ? 'group') and jsonb_typeof(p_payload -> 'group') is distinct from 'string')
+         or ((p_payload ? 'sub') and jsonb_typeof(p_payload -> 'sub') is distinct from 'string') then
         return 'knowledge_stat_fields';
       end if;
       return null;
     elsif v_kind = 'fact' then
+      if exists (select 1 from jsonb_object_keys(p_payload) k
+                  where k <> all (array['kind', 'text', 'chip'])) then
+        return 'foreign_key';
+      end if;
       if jsonb_typeof(p_payload -> 'text') is distinct from 'string'
          or char_length(btrim(coalesce(p_payload ->> 'text', ''))) = 0 then
         return 'knowledge_fact_text';

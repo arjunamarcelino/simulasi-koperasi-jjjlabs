@@ -4,7 +4,7 @@
 -- stashed in a temp table. Grant matrix asserted via has_*_privilege. The error-contract invariant
 -- is proven by asserting every expected rejection is a STRUCTURED RETURN ({ok:false, reason}).
 begin;
-select plan(46);
+select plan(48);
 
 -- The test DB is seeded (seed.sql loads mading_block rows incl identitas 'default'). Clear it
 -- inside this rolled-back txn so the fixtures below don't collide and counts are hermetic.
@@ -91,6 +91,11 @@ select is(admin._mading_reject_reason('identitas', '{"nama":"N","badanHukum":"B"
   'identitas missing field');
 select is(admin._mading_reject_reason('info', '["not","object"]'::jsonb), 'payload_not_object',
   'payload not an object');
+-- closed + element-typed floor (matches the FE closed parsers)
+select is(admin._mading_reject_reason('info', '{"title":"T","lines":["a"],"accent":"mustard","evil":1}'::jsonb), 'foreign_key',
+  'info foreign key rejected (closed floor)');
+select is(admin._mading_reject_reason('info', '{"title":"T","lines":[123],"accent":"mustard"}'::jsonb), 'info_lines',
+  'info non-string line element rejected');
 
 -- ── upsert: create ──────────────────────────────────────────────────────────────────────────
 create temporary table up_create as select admin.upsert_mading_block(
