@@ -753,3 +753,159 @@ export async function deleteQuizQuestion(
       return { kind: "serviceUnavailable" };
   }
 }
+
+// --- SIM-18 mading content management ---------------------------------------
+// Admin CRUD over the 4 mading boards. The admin layer treats `payload` loosely (a record) — the
+// panel builds/interprets the board-specific shape and the SERVER is the authoritative validator
+// (422 `rejected`). The learner-facing web repo re-validates with the closed parsers.
+
+export type MadingBoard = "info" | "data" | "knowledge" | "identitas";
+
+export type MadingItem = {
+  id: string;
+  block_key: string;
+  payload: Record<string, unknown>;
+  sort_order: number;
+  updated_at: string;
+};
+
+export type MadingGroups = {
+  info: MadingItem[];
+  data: MadingItem[];
+  knowledge: MadingItem[];
+  identitas: MadingItem | null;
+};
+
+/** Upsert input. `id` null → CREATE (block_key required); a value → compare-and-swap EDIT. */
+export type MadingUpsertInput = {
+  id: string | null;
+  board: MadingBoard;
+  block_key: string;
+  payload: Record<string, unknown>;
+  sort_order: number;
+  prev_updated_at: string | null;
+};
+
+export type MadingListOutcome =
+  | { kind: "ok"; data: MadingGroups }
+  | { kind: "notAuthorized" }
+  | { kind: "unauthenticated" }
+  | { kind: "serviceUnavailable" };
+
+export type MadingUpsertOutcome =
+  | { kind: "ok"; data: MadingItem & { board: MadingBoard } }
+  | { kind: "rejected"; reason: string } // 422 — server payload/input validation
+  | { kind: "conflict"; reason: "duplicate_key" | "stale_write" | "identitas_exists" } // 409
+  | { kind: "notFound" } // 404
+  | { kind: "notAuthorized" }
+  | { kind: "unauthenticated" }
+  | { kind: "serviceUnavailable" };
+
+export type MadingDeleteOutcome =
+  | { kind: "ok" }
+  | { kind: "notFound" } // 404 — already gone (store treats as success)
+  | { kind: "notAuthorized" }
+  | { kind: "unauthenticated" }
+  | { kind: "serviceUnavailable" };
+
+function isMadingItem(x: unknown): x is MadingItem {
+  const o = rec(x);
+  return (
+    o !== null &&
+    typeof o["id"] === "string" &&
+    typeof o["block_key"] === "string" &&
+    rec(o["payload"]) !== null &&
+    isNonNegInt(o["sort_order"]) &&
+    typeof o["updated_at"] === "string"
+  );
+}
+
+function isMadingGroups(x: unknown): x is MadingGroups {
+  const o = rec(x);
+  if (o === null) return false;
+  for (const k of ["info", "data", "knowledge"]) {
+    if (!Array.isArray(o[k]) || !o[k].every(isMadingItem)) return false;
+  }
+  return o["identitas"] === null || isMadingItem(o["identitas"]);
+}
+
+const MADING_CONFLICT = ["duplicate_key", "stale_write", "identitas_exists"] as const;
+
+/** Fetch `GET /admin/mading` (SIM-18) — all blocks grouped by board (incl id + CAS token). */
+export async function listMading(signal?: AbortSignal): Promise<MadingListOutcome> {
+  const r = await authedRequest("/admin/mading", {}, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const b: unknown = await r.res.json().catch(() => null);
+      const o = rec(b);
+      return o !== null && o["ok"] === true && isMadingGroups(o["groups"])
+        ? { kind: "ok", data: o["groups"] }
+        : { kind: "serviceUnavailable" };
+    }
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+/** Create (id null) or compare-and-swap edit a mading block (SIM-18). */
+export async function upsertMadingBlock(
+  input: MadingUpsertInput,
+  signal?: AbortSignal,
+): Promise<MadingUpsertOutcome> {
+  const path = input.id === null ? "/admin/mading" : `/admin/mading/${encodeURIComponent(input.id)}`;
+  const body = JSON.stringify(
+    input.id === null
+      ? { board: input.board, block_key: input.block_key, payload: input.payload, sort_order: input.sort_order }
+      : { board: input.board, payload: input.payload, sort_order: input.sort_order, prev_updated_at: input.prev_updated_at },
+  );
+  const r = await authedRequest(path, { method: "POST", body }, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const b: unknown = await r.res.json().catch(() => null);
+      const o = rec(b);
+      return isMadingItem(b) && o !== null && typeof o["board"] === "string"
+        ? { kind: "ok", data: { ...(b as MadingItem), board: o["board"] as MadingBoard } }
+        : { kind: "serviceUnavailable" };
+    }
+    case 409: {
+      const reason = await errorReason(r.res);
+      return (MADING_CONFLICT as readonly string[]).includes(reason)
+        ? { kind: "conflict", reason: reason as (typeof MADING_CONFLICT)[number] }
+        : { kind: "serviceUnavailable" };
+    }
+    case 422:
+      return { kind: "rejected", reason: await errorReason(r.res) };
+    case 404:
+      return { kind: "notFound" };
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+/** Delete via `DELETE /admin/mading/{id}` (SIM-18). */
+export async function deleteMadingBlock(id: string, signal?: AbortSignal): Promise<MadingDeleteOutcome> {
+  const r = await authedRequest(`/admin/mading/${encodeURIComponent(id)}`, { method: "DELETE" }, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200:
+      return { kind: "ok" };
+    case 404:
+      return { kind: "notFound" };
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
