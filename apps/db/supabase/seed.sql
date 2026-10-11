@@ -91,3 +91,38 @@ on conflict (code) do update set
   correct_index = excluded.correct_index,
   explanation = excluded.explanation,
   sort_order = excluded.sort_order;
+
+-- Mading (SIM-18) — info/data/knowledge boards + the identitas header; one generic table, board discriminator
+insert into public.mading_block (board, block_key, payload, sort_order) values
+  ('identitas', 'default', '{"nama":"Koperasi Desa Merah Putih Sukamaju","badanHukum":"Badan Hukum: AHU-0001234.AH.01.29.Tahun 2026","alamat":"Jl. Koperasi No. 1, Desa Sukamaju","desa":"Kec. Cibadak, Kab. Sukabumi"}'::jsonb, 0),
+  ('info', 'info-0', '{"title":"Jadwal RAT","accent":"mustard","lines":["RAT Tutup Buku 2025","Sabtu, 15 Feb 2026 · 09.00","Balai Desa Sukamaju"]}'::jsonb, 0),
+  ('info', 'info-1', '{"title":"Simpanan (Agregat)","accent":"forest","lines":["Pokok: Rp 42.500.000","Wajib: Rp 128.900.000","Sukarela: Rp 76.300.000"]}'::jsonb, 1),
+  ('info', 'info-2', '{"title":"Pinjaman (Agregat)","accent":"orange","lines":["Beredar: Rp 214.000.000","Lancar: 92%","Bermasalah: 8%"]}'::jsonb, 2),
+  ('info', 'info-3', '{"title":"Jumlah Anggota","accent":"parchment","lines":["Total: 340 anggota","Aktif: 318","Anggota baru 2026: 27"]}'::jsonb, 3),
+  ('info', 'info-4', '{"title":"Struktur Pengurus","accent":"mustard","lines":["Ketua: Budi Santoso","Sekretaris: Ani Wijaya","Bendahara: Dewi Kartika"]}'::jsonb, 4),
+  ('info', 'info-5', '{"title":"Penjualan (Agregat)","accent":"forest","lines":["Omzet 2025: Rp 1,2 M","Unit: Sembako & Simpan Pinjam","SHU: Rp 96.000.000"]}'::jsonb, 5),
+  ('info', 'info-6', '{"title":"Prinsip Koperasi","accent":"parchment","lines":["7 prinsip ICA jadi pedoman","Sukarela • Demokratis • Adil","Mandiri • Edukatif • Gotong royong"]}'::jsonb, 6),
+  ('data', 'anggota', '{"title":"Daftar Anggota","caption":"6 dari 340 anggota — data contoh","headers":["No","Nama","No. Anggota","Status"],"align":["left","left","left","left"],"rows":[["1","Budi Santoso","AGT-0001","Aktif"],["2","Ani Wijaya","AGT-0002","Aktif"],["3","Dewi Kartika","AGT-0003","Aktif"],["4","Slamet Riyadi","AGT-0004","Aktif"],["5","Siti Aminah","AGT-0005","Nonaktif"],["6","Joko Susilo","AGT-0006","Aktif"]]}'::jsonb, 0),
+  ('data', 'simpanan', '{"title":"Daftar Simpanan","caption":"data contoh","headers":["Nama","Pokok","Wajib","Sukarela"],"align":["left","right","right","right"],"rows":[["Budi Santoso","Rp 100.000","Rp 600.000","Rp 250.000"],["Ani Wijaya","Rp 100.000","Rp 600.000","Rp 1.000.000"],["Dewi Kartika","Rp 100.000","Rp 480.000","Rp 150.000"],["Slamet Riyadi","Rp 100.000","Rp 720.000","Rp 0"],["Siti Aminah","Rp 100.000","Rp 360.000","Rp 500.000"],["Joko Susilo","Rp 100.000","Rp 600.000","Rp 300.000"]]}'::jsonb, 1),
+  ('data', 'pinjaman', '{"title":"Daftar Pinjaman","caption":"data contoh","headers":["Nama","Jumlah","Tenor","Status"],"align":["left","right","left","left"],"rows":[["Budi Santoso","Rp 5.000.000","12 bln","Lancar"],["Ani Wijaya","Rp 3.000.000","6 bln","Lancar"],["Dewi Kartika","Rp 8.000.000","24 bln","Lancar"],["Slamet Riyadi","Rp 2.500.000","6 bln","Bermasalah"],["Siti Aminah","Rp 4.000.000","12 bln","Lancar"],["Joko Susilo","Rp 6.000.000","18 bln","Bermasalah"]]}'::jsonb, 2),
+  ('knowledge', 'kn-0', '{"kind":"stat","group":"Kesiapan Bisnis","value":"83.382","label":"Total Koperasi Desa/Kelurahan Merah Putih"}'::jsonb, 0),
+  ('knowledge', 'kn-1', '{"kind":"fact","text":"NIB, NPWP, dan rekening bank adalah penanda kesiapan koperasi berbisnis secara legal dan bankable."}'::jsonb, 1),
+  ('knowledge', 'kn-2', '{"kind":"stat","group":"Kesiapan Bisnis","value":"60.774","label":"Koperasi telah memiliki NIB (Nomor Induk Berusaha)"}'::jsonb, 2),
+  ('knowledge', 'kn-3', '{"kind":"fact","text":"Simpanan pokok dibayar sekali saat mendaftar, sedangkan simpanan wajib disetor rutin — keduanya membentuk modal bersama koperasi."}'::jsonb, 3),
+  ('knowledge', 'kn-4', '{"kind":"stat","group":"Modal Koperasi","value":"Rp 41,5 M","label":"Total Simpanan Pokok anggota","sub":"Rp 41.522.871.015"}'::jsonb, 4),
+  ('knowledge', 'kn-5', '{"kind":"stat","group":"Dampak Ekonomi","value":"Rp 56,6 M","label":"Nilai Transaksi sepanjang 2026","sub":"Rp 56.608.918.385"}'::jsonb, 5),
+  ('knowledge', 'kn-6', '{"kind":"fact","text":"Pelaksanaan RAT dipantau bertahap di SIMKOPDES: draft → dilaporkan → diverifikasi Dinas Koperasi."}'::jsonb, 6),
+  ('knowledge', 'kn-7', '{"kind":"stat","group":"Aktivitas RAT","value":"50.264","label":"Koperasi telah melaksanakan RAT"}'::jsonb, 7),
+  ('knowledge', 'kn-8', '{"kind":"fact","chip":"Prinsip Koperasi","text":"Prinsip ke-1 — Keanggotaan Sukarela & Terbuka: siapa pun boleh bergabung atau keluar tanpa paksaan maupun diskriminasi."}'::jsonb, 8),
+  ('knowledge', 'kn-9', '{"kind":"fact","chip":"Prinsip Koperasi","text":"Prinsip ke-2 — Pengendalian Demokratis: anggota mengatur koperasi bersama; berlaku satu anggota satu suara."}'::jsonb, 9),
+  ('knowledge', 'kn-10', '{"kind":"fact","chip":"Prinsip Koperasi","text":"Prinsip ke-3 — Partisipasi Ekonomi Anggota: anggota menyetor modal secara adil dan berbagi SHU sesuai jasanya."}'::jsonb, 10),
+  ('knowledge', 'kn-11', '{"kind":"fact","chip":"Prinsip Koperasi","text":"Prinsip ke-4 — Otonomi & Kemandirian: koperasi berdiri sendiri, dikendalikan anggotanya, tanpa tunduk pada pihak luar."}'::jsonb, 11),
+  ('knowledge', 'kn-12', '{"kind":"fact","chip":"Prinsip Koperasi","text":"Prinsip ke-5 — Pendidikan, Pelatihan & Informasi: koperasi membekali anggota dan pengurus dengan ilmu agar koperasi maju."}'::jsonb, 12),
+  ('knowledge', 'kn-13', '{"kind":"fact","chip":"Prinsip Koperasi","text":"Prinsip ke-6 — Kerja Sama antar Koperasi: koperasi saling menguatkan gerakan dari tingkat lokal hingga global."}'::jsonb, 13),
+  ('knowledge', 'kn-14', '{"kind":"fact","chip":"Prinsip Koperasi","text":"Prinsip ke-7 — Kepedulian terhadap Komunitas: koperasi ikut membangun masyarakat sekitarnya secara berkelanjutan."}'::jsonb, 14),
+  ('knowledge', 'kn-15', '{"kind":"fact","chip":"Landasan Hukum","text":"Di Indonesia, koperasi berpijak pada asas kekeluargaan (UUD 1945 Pasal 33) dan diatur UU No. 25 Tahun 1992 tentang Perkoperasian."}'::jsonb, 15),
+  ('knowledge', 'kn-16', '{"kind":"fact","text":"Kongres Koperasi pertama digelar di Tasikmalaya, 12 Juli 1947 — tanggal itu kini diperingati sebagai Hari Koperasi Nasional."}'::jsonb, 16),
+  ('knowledge', 'kn-17', '{"kind":"fact","text":"Dalam penjelasan UU No. 25/1992, koperasi ditegaskan sebagai “soko guru perekonomian nasional” — cita-cita yang diperjuangkan Bung Hatta."}'::jsonb, 17)
+on conflict (board, block_key) do update set
+  payload = excluded.payload,
+  sort_order = excluded.sort_order;
