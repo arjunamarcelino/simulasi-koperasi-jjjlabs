@@ -1,20 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { MADING_KNOWLEDGE_CARDS, type KnowledgeCard } from "./mading-knowledge";
-import { MADING_INFO_NOTES } from "./mading-info";
+import mading from "@simkop/catalog/data/mading.json";
 import { KOPERASI_FACTS } from "./koperasi-facts";
 
 /**
- * Content invariants for the micro-learning boards (SIM-10). Pure value-level
- * assertions over static arrays (node env) — only invariants that protect an accuracy
- * claim or catch a silent runtime bug TypeScript cannot. Shape/union/accent validity
- * and the `chip` label spelling are already guaranteed by the compiler, so they are
- * not re-tested here.
+ * Content-accuracy invariants for the micro-learning mading (SIM-10/SIM-18). The mading content
+ * now lives in the shared catalog (packages/catalog/data/mading.json), which bootstraps the DB —
+ * so these assertions guard the SEED (the source of truth), not the retired FE constants. Only
+ * invariants that protect an accuracy claim TypeScript can't; shape validity is covered by the
+ * mading.types parser tests + the DB floor.
  */
 
-const isFact = (c: KnowledgeCard): c is Extract<KnowledgeCard, { kind: "fact" }> =>
-  c.kind === "fact";
+type KnowledgeCard =
+  | { kind: "stat"; value: string; label: string; group?: string; sub?: string }
+  | { kind: "fact"; text: string; chip?: string };
+type Note = { title: string; lines: string[]; accent: string };
 
-const facts = MADING_KNOWLEDGE_CARDS.filter(isFact);
+const knowledge = mading.knowledge as KnowledgeCard[];
+const info = mading.info as Note[];
+
+const facts = knowledge.filter((c): c is Extract<KnowledgeCard, { kind: "fact" }> => c.kind === "fact");
 const principles = facts.filter((c) => c.chip === "Prinsip Koperasi");
 
 describe("mading-knowledge — principles series", () => {
@@ -37,8 +41,8 @@ describe("mading-knowledge — principles series", () => {
 });
 
 describe("mading-info — notes", () => {
-  it("keeps note titles unique (they are used as React keys)", () => {
-    const titles = MADING_INFO_NOTES.map((n) => n.title);
+  it("keeps note titles unique", () => {
+    const titles = info.map((n) => n.title);
     expect(new Set(titles).size).toBe(titles.length);
   });
 });

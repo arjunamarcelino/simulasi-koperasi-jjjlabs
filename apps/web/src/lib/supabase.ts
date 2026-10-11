@@ -57,6 +57,12 @@ export type Database = {
         Row: { code: string; prompt: string; options: Json; sort_order: number };
         Relationships: [];
       };
+      // In-game mading content (SIM-18). Admin-authored, served live to all players. Payload is
+      // board-specific jsonb — validated at the repo boundary (madingRepo + mading.types parsers).
+      mading_catalog: {
+        Row: { board: string; block_key: string; payload: Json; sort_order: number };
+        Relationships: [];
+      };
     };
     Functions: {
       get_my_progress: { Args: Record<PropertyKey, never>; Returns: Json };

@@ -76,6 +76,20 @@ describe("parseKnowledge", () => {
   });
 });
 
+describe("text-only handling (stored-XSS defense)", () => {
+  // Admin-authored content is served to every learner. Markup is accepted as a plain STRING
+  // (content, not structure) — the boards render it as text (React escapes it; no HTML sink), so
+  // a <script> payload is inert. This pins that the parser treats it as data, never structure.
+  it("keeps markup as a literal string value", () => {
+    const evil = '<script>alert(1)</script>';
+    const note = parseNote({ title: evil, lines: [evil], accent: "mustard" });
+    expect(note).not.toBeNull();
+    expect(note!.title).toBe(evil); // stored verbatim as text, not interpreted as HTML
+    const fact = parseKnowledge({ kind: "fact", text: evil });
+    expect(fact).toEqual({ kind: "fact", text: evil });
+  });
+});
+
 describe("parseIdentitas", () => {
   it("accepts the four fields", () => {
     const ok = { nama: "N", badanHukum: "B", alamat: "A", desa: "D" };

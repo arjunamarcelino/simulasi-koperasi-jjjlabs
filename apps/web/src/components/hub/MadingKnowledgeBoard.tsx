@@ -1,45 +1,76 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGameStore, gameStore } from "../../stores/game.store";
-import { MADING_KNOWLEDGE_CARDS, KNOWLEDGE_SOURCE } from "../../content/mading-knowledge";
+import { madingRepo, type Keyed, type RepoResult } from "../../lib/madingRepo";
+import type { KnowledgeCard } from "../../lib/mading.types";
 import { ModalShell } from "../common/ModalShell";
 import { GameButton } from "../common/GameButton";
 
-const LEN = MADING_KNOWLEDGE_CARDS.length;
-const wrap = (i: number) => ((i % LEN) + LEN) % LEN;
+/** Attribution shown under the board. Non-managed constant (rarely changes; not admin-editable). */
+const KNOWLEDGE_SOURCE =
+  "Sumber: Dashboard SIMKOPDES (2026), Kementerian Koperasi RI — simkopdes.go.id/pers/dashboard";
 
-/** The koperasi "Papan Pengetahuan": a carousel of stat + fact cards (entrance posters). */
+const wrap = (i: number, len: number) => (len ? ((i % len) + len) % len : 0);
+
+function fallbackMessage(result: RepoResult<unknown> | null): string | null {
+  if (result === null) return "Memuat papan…";
+  if (result.status === "degraded") return "Papan ini butuh koneksi internet.";
+  if (result.status === "rpcError" || result.status === "invalid") return "Gagal memuat papan.";
+  return null;
+}
+
+/** The koperasi "Papan Pengetahuan": a carousel of stat + fact cards (live from DB). */
 export function MadingKnowledgeBoard() {
   const active = useGameStore((s) => s.activeOverlay === "MADING_KNOWLEDGE");
   const index = useGameStore((s) => s.madingIndex);
+  const [result, setResult] = useState<RepoResult<Keyed<KnowledgeCard>[]> | null>(null);
+  const reqId = useRef(0);
 
-  // Arrow-key nav — reads the live index at fire-time so the once-attached
-  // listener never goes stale (same pattern as MadingDataBoard).
   useEffect(() => {
     if (!active) return;
+    const myReq = ++reqId.current;
+    setResult(null);
+    void madingRepo.knowledge().then((r) => {
+      if (myReq === reqId.current) setResult(r);
+    });
+  }, [active]);
+
+  const len = result?.status === "ok" ? result.data.length : 0;
+
+  useEffect(() => {
+    if (!active || len === 0) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-      // Ignore auto-repeat from a held arrow key: otherwise key-repeat (~30ms) restarts
-      // the entrance fade faster than it can finish (strobe) and backlogs the polite
-      // live region. One discrete press = one card.
-      if (e.repeat) return;
+      if (e.repeat) return; // ignore auto-repeat so a held key doesn't strobe the fade
       e.preventDefault();
       e.stopPropagation();
       const cur = gameStore.getState().madingIndex;
-      gameStore.getState().setMadingIndex(wrap(cur + (e.key === "ArrowRight" ? 1 : -1)));
+      gameStore.getState().setMadingIndex(wrap(cur + (e.key === "ArrowRight" ? 1 : -1), len));
     };
-    // NOTE: capture-phase listener on `document`, so it swallows Arrow keys page-wide
-    // while the overlay is open. Safe only because this modal holds no arrow-consuming
-    // controls (text input, select, scrollable region). If one is ever added here,
-    // scope this listener to the carousel container instead (tracked in SIM-44).
     document.addEventListener("keydown", onKeyDown, { capture: true });
     return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [active]);
+  }, [active, len]);
 
   if (!active) return null;
-
   const close = () => gameStore.getState().clearSelection();
-  const go = (i: number) => gameStore.getState().setMadingIndex(wrap(i));
-  const card = MADING_KNOWLEDGE_CARDS[index]!;
+  const go = (i: number) => gameStore.getState().setMadingIndex(wrap(i, len));
+  const msg = fallbackMessage(result);
+
+  if (msg !== null || len === 0) {
+    return (
+      <ModalShell titleId="mading-knowledge-title" onClose={close} panelClassName="w-full max-w-lg">
+        <h2 id="mading-knowledge-title" className="mb-4 text-center font-display text-sm text-forest md:text-base">
+          Pengetahuan Koperasi
+        </h2>
+        <p className="py-8 text-center font-body text-xl text-ink-soft">
+          {msg ?? "Belum ada kartu di papan ini."}
+        </p>
+      </ModalShell>
+    );
+  }
+
+  const cards = (result as Extract<RepoResult<Keyed<KnowledgeCard>[]>, { status: "ok" }>).data;
+  const idx = wrap(index, len);
+  const card = cards[idx]!.payload;
 
   return (
     <ModalShell titleId="mading-knowledge-title" onClose={close} panelClassName="w-full max-w-lg">
@@ -47,25 +78,17 @@ export function MadingKnowledgeBoard() {
         Pengetahuan Koperasi
       </h2>
 
-      {/* Visual-only position indicator for sighted users. The card body below is the
-          live region that announces position + content to assistive tech, so this is
-          aria-hidden to avoid a double reading. APG endorses an "X dari N" counter at
-          high card counts, where a dot-per-card row alone becomes hard to read. */}
       <p aria-hidden="true" className="mb-3 text-center font-display text-[10px] text-ink-soft">
-        {`Kartu ${index + 1} dari ${LEN}`}
+        {`Kartu ${idx + 1} dari ${len}`}
       </p>
 
-      {/* Card body — the keyed remount drives the entrance fade and doubles as the
-          polite live region, so each change announces position + content together
-          (aria-atomic). Fixed height keeps the modal from pumping as cards of different
-          lengths scroll by; the fade is disabled under prefers-reduced-motion. */}
       <div
-        key={index}
+        key={idx}
         aria-live="polite"
         aria-atomic="true"
         className="flex h-60 animate-[fadeIn_120ms_ease-out] items-center justify-center overflow-y-auto border-3 border-border bg-cream px-5 py-6 text-center motion-reduce:animate-none"
       >
-        <span className="sr-only">{`Kartu ${index + 1} dari ${LEN}.`}</span>
+        <span className="sr-only">{`Kartu ${idx + 1} dari ${len}.`}</span>
         {card.kind === "stat" ? (
           <div>
             {card.group && (
@@ -73,12 +96,8 @@ export function MadingKnowledgeBoard() {
                 {card.group}
               </span>
             )}
-            <p className="font-display text-2xl leading-tight text-forest md:text-3xl">
-              {card.value}
-            </p>
-            <p className="mx-auto mt-3 max-w-xs font-body text-xl leading-snug text-ink md:text-2xl">
-              {card.label}
-            </p>
+            <p className="font-display text-2xl leading-tight text-forest md:text-3xl">{card.value}</p>
+            <p className="mx-auto mt-3 max-w-xs font-body text-xl leading-snug text-ink md:text-2xl">{card.label}</p>
             {card.sub && <p className="mt-1 font-body text-lg text-ink-soft">{card.sub}</p>}
           </div>
         ) : (
@@ -86,52 +105,35 @@ export function MadingKnowledgeBoard() {
             <span className="pixel-panel -rotate-1 mb-4 inline-block bg-mustard px-3 py-1 font-display text-[10px] text-ink !shadow-none">
               {card.chip ?? "Tahukah Kamu?"}
             </span>
-            <p className="mx-auto max-w-sm font-body text-xl leading-snug text-ink-soft md:text-2xl">
-              {card.text}
-            </p>
+            <p className="mx-auto max-w-sm font-body text-xl leading-snug text-ink-soft md:text-2xl">{card.text}</p>
           </div>
         )}
       </div>
 
-      {/* Nav: arrows flanking dot indicators (loop — always enabled). */}
       <div className="mt-5 flex items-center justify-center gap-4">
-        <GameButton
-          variant="ghost"
-          className="!px-4 !py-3 font-display text-lg"
-          aria-label="Kartu sebelumnya"
-          onClick={() => go(index - 1)}
-        >
+        <GameButton variant="ghost" className="!px-4 !py-3 font-display text-lg" aria-label="Kartu sebelumnya" onClick={() => go(idx - 1)}>
           ‹
         </GameButton>
-
         <div className="flex flex-wrap items-center justify-center gap-2" role="group" aria-label="Pilih kartu">
-          {MADING_KNOWLEDGE_CARDS.map((_, i) => (
+          {cards.map((c, i) => (
             <button
-              key={i}
+              key={c.block_key}
               type="button"
               aria-label={`Ke kartu ${i + 1}`}
-              aria-current={i === index ? "true" : undefined}
+              aria-current={i === idx ? "true" : undefined}
               onClick={() => go(i)}
               className={`h-3 w-3 border-2 border-border transition-colors duration-75 focus-visible:outline-none focus-visible:pixel-focus ${
-                i === index ? "bg-mustard" : "bg-cream hover:bg-parchment"
+                i === idx ? "bg-mustard" : "bg-cream hover:bg-parchment"
               }`}
             />
           ))}
         </div>
-
-        <GameButton
-          variant="ghost"
-          className="!px-4 !py-3 font-display text-lg"
-          aria-label="Kartu berikutnya"
-          onClick={() => go(index + 1)}
-        >
+        <GameButton variant="ghost" className="!px-4 !py-3 font-display text-lg" aria-label="Kartu berikutnya" onClick={() => go(idx + 1)}>
           ›
         </GameButton>
       </div>
 
-      <p className="mt-4 text-center font-body text-[11px] leading-snug text-ink-soft/70">
-        {KNOWLEDGE_SOURCE}
-      </p>
+      <p className="mt-4 text-center font-body text-[11px] leading-snug text-ink-soft/70">{KNOWLEDGE_SOURCE}</p>
     </ModalShell>
   );
 }
