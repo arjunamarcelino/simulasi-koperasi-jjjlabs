@@ -181,6 +181,15 @@ def test_to_invalid_is_422(client, install_jwks, token_factory):
     assert resp.json() == {"detail": "to_invalid"}
 
 
+@pytest.mark.parametrize("raw", ["20261012", "2026-W40-1"])  # looser ISO forms date.fromisoformat accepts
+def test_non_strict_iso_date_forms_rejected(raw, client, install_jwks, token_factory):
+    # Strict YYYY-MM-DD only (CONTRACT); basic/ISO-week forms → 422, not a silently-accepted date.
+    install_jwks()
+    resp = client.get(f"{PATH}?from={raw}", headers=_admin_headers(token_factory))
+    assert resp.status_code == 422
+    assert resp.json() == {"detail": "from_invalid"}
+
+
 def test_auth_precedes_validation(client, install_jwks):
     # No token + a malformed date → 401 (gate first), NOT 422. (FastAPI resolves the auth dependency
     # and propagates its HTTPException before validating this operation's own query params.)

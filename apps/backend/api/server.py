@@ -811,15 +811,16 @@ def _build_sessions_csv(rows: list[dict[str, Any]]) -> bytes:
 
 
 def _parse_date_param(raw: str | None, field: str) -> date | None:
-    """Parse an optional ?from/?to query param as a date-only ISO-8601 value (rejects any time
-    component). A str param + manual parse yields a clean contract-shaped 422 {"detail":"<field>_invalid"}
-    consistent with the SIM-18 prev_updated_at convention — NOT a validation-ordering fix (FastAPI
-    resolves the admin dependency and raises its 401/403 before validating this operation's own params
-    regardless of typing)."""
+    """Parse an optional ?from/?to query param as a strict YYYY-MM-DD date — the format CONTRACT.md
+    documents. `strptime("%Y-%m-%d")` rejects time components AND the looser ISO forms
+    `date.fromisoformat` would silently accept (basic `20261012`, ISO week `2026-W40-1`). A str param +
+    manual parse yields a clean contract-shaped 422 {"detail":"<field>_invalid"} consistent with the
+    SIM-18 prev_updated_at convention — NOT a validation-ordering fix (FastAPI resolves the admin
+    dependency and raises its 401/403 before validating this operation's own params regardless of typing)."""
     if raw is None:
         return None
     try:
-        return date.fromisoformat(raw)
+        return datetime.strptime(raw, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(422, f"{field}_invalid") from None
 
