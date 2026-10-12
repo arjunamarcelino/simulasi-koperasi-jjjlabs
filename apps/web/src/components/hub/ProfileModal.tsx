@@ -9,12 +9,12 @@ import type { SessionRecord } from "../../lib/sessionsRepo.contracts";
 import { ModalShell } from "../common/ModalShell";
 import { GameButton } from "../common/GameButton";
 import { BadgeIcon } from "./BadgeIcon";
+import { SessionHistoryTab } from "./SessionHistoryTab";
 
 // The koperasi name is admin-editable live via the mading identitas board (SIM-18); here in the
 // profile it is an incidental label, so a static fallback is kept rather than adding an async fetch
 // to this modal. The authoritative, live-editable surface is the Papan Info board.
 const KOPERASI_NAMA = "Koperasi Desa Merah Putih Sukamaju";
-import { SessionHistoryTab } from "./SessionHistoryTab";
 
 type ProfileTab = "profil" | "badge" | "riwayat";
 const TAB_LABELS: Record<ProfileTab, string> = { profil: "Profil", badge: "Badge", riwayat: "Riwayat" };
