@@ -92,14 +92,6 @@ def test_admin_gets_csv_200(client, install_jwks, token_factory, monkeypatch):
     assert rows[2][8] == ""  # null avg_score → empty cell
 
 
-def test_header_row_exact(client, install_jwks, token_factory, monkeypatch):
-    install_jwks()
-    _patch_fetch(monkeypatch, [])
-    resp = client.get(PATH, headers=_admin_headers(token_factory))
-    assert resp.status_code == 200
-    assert resp.content.decode("utf-8-sig").splitlines()[0] == ",".join(_CSV_HEADER)
-
-
 def test_empty_export_is_header_only(client, install_jwks, token_factory, monkeypatch):
     install_jwks()
     _patch_fetch(monkeypatch, [])
@@ -330,14 +322,14 @@ def test_fetch_session_export_none_pool_raises_unavailable():
         asyncio.run(metrics_db.fetch_session_export(None, None, None))
 
 
-def test_fetch_session_export_interface_error_maps_to_unavailable():
-    pool = _FakePool(_FakeConn(exc=asyncpg.InterfaceError("connection was closed")))
-    with pytest.raises(MetricsUnavailable):
-        asyncio.run(metrics_db.fetch_session_export(pool, None, None))
-
-
-def test_fetch_session_export_postgres_error_maps_to_unavailable():
-    pool = _FakePool(_FakeConn(exc=asyncpg.PostgresError("boom")))
+@pytest.mark.parametrize(
+    "exc",
+    [asyncpg.InterfaceError("connection was closed"), asyncpg.PostgresError("boom")],
+)
+def test_fetch_session_export_db_fault_maps_to_unavailable(exc):
+    # Broad-except breadth (client InterfaceError + server PostgresError) in one case; the shared
+    # _call_definer owns this mapping, so this wrapper only needs to confirm it routes into it.
+    pool = _FakePool(_FakeConn(exc=exc))
     with pytest.raises(MetricsUnavailable):
         asyncio.run(metrics_db.fetch_session_export(pool, None, None))
 
