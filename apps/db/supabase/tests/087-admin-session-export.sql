@@ -6,7 +6,7 @@
 -- shape, NOT re-derived from the SQL, so a formula bug can't write a self-confirming test. The grant
 -- matrix is asserted via has_*_privilege (the real role→function execution is proven by the db e2e).
 begin;
-select plan(30);
+select plan(34);
 
 select tests.create_user('se_u1');
 select tests.create_user('se_u2');
@@ -97,6 +97,26 @@ select is(jsonb_array_length(admin.session_results_export('2026-03-09', null)), 
 select is(jsonb_array_length(admin.session_results_export('2026-03-05', '2026-03-03')), 0, 'from > to → 0 rows (unsatisfiable range)');
 select is(jsonb_array_length(admin.session_results_export('2099-01-01', null)), 0, 'future from → 0 rows');
 select is(jsonb_array_length(admin.session_results_export('2026-03-02', '2026-03-02')), 1, 'equal from=to=03-02 → 1 row (that whole UTC day)');
+
+-- ── posture: index + function security properties pinned (review P3-5) ──────────────────────
+select ok(
+  exists(select 1 from pg_indexes
+         where schemaname = 'public' and tablename = 'sessions'
+           and indexname = 'sessions_ended_started_idx'),
+  'partial index sessions_ended_started_idx exists');
+select ok(
+  (select p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'admin' and p.proname = 'session_results_export'),
+  'session_results_export is SECURITY DEFINER');
+select ok(
+  (select p.provolatile = 's' from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'admin' and p.proname = 'session_results_export'),
+  'session_results_export is STABLE');
+select ok(
+  (select pg_catalog.pg_get_userbyid(p.proowner) = 'postgres'
+   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'admin' and p.proname = 'session_results_export'),
+  'session_results_export is owned by postgres');
 
 select * from finish();
 rollback;
