@@ -47,6 +47,9 @@ returns jsonb language sql stable security definer set search_path = '' as $$
         -- as metrics_overview()/scenario_analytics() so the per-session number matches the dashboard
         -- formula. OUTER object-guard is REQUIRED: jsonb_each() RAISES on a top-level non-object
         -- (array/scalar/JSON 'null') — one poisoned row would otherwise 503 the whole export.
+        -- round(…,1) keeps numeric scale 1, so the jsonb number carries a decimal and the CSV renders
+        -- e.g. 85.0 / 50.0 (never a scale-less 85) — pinned by pgTAP 087. A future refactor that drops
+        -- the scale would silently change CSV output.
         'avg_score', round((
           select avg(num)
           from (

@@ -6,7 +6,7 @@
 -- shape, NOT re-derived from the SQL, so a formula bug can't write a self-confirming test. The grant
 -- matrix is asserted via has_*_privilege (the real role→function execution is proven by the db e2e).
 begin;
-select plan(29);
+select plan(30);
 
 select tests.create_user('se_u1');
 select tests.create_user('se_u2');
@@ -74,6 +74,9 @@ select is((admin.session_results_export(null, null) -> 3 ->> 'avg_score')::numer
 select is((admin.session_results_export(null, null) -> 4 ->> 'avg_score')::numeric, 100.0, 'idx4 avg_score = 100.0 (-5 and 150 out-of-range dropped)');
 select is( admin.session_results_export(null, null) -> 5 ->> 'avg_score', null, 'idx5 avg_score null (top-level array)');
 select is( admin.session_results_export(null, null) -> 6 ->> 'avg_score', null, 'idx6 avg_score null (JSON null)');
+-- decimal-scale contract (review P3-3): an integer-valued mean must still render "50.0", not "50",
+-- so the CSV output is stable. round(…,1) preserves jsonb numeric scale 1.
+select is(admin.session_results_export(null, null) -> 1 ->> 'avg_score', '50.0', 'idx1 avg_score renders "50.0" (decimal scale preserved)');
 
 -- ── D7: ordering started_at asc; COMING_SOON session sorts last ───────────────────────────────
 select is(admin.session_results_export(null, null) -> 0 ->> 'started_at', '2026-03-01T10:00:00Z', 'idx0 started_at earliest (ascending order)');
