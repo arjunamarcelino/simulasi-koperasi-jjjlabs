@@ -296,6 +296,45 @@ belum ada musim. Board live lama `public.leaderboard()` DIBIARKAN (tak dipakai m
 > `scenario_analytics`). Definisi lengkap + rencana di
 > `docs/plans/2026-10-09-feat-seasonal-xp-leaderboard-snapshot-plan.md`.
 
+### `GET /admin/reports/sessions.csv?from=<date?>&to=<date?>`
+Ekspor CSV hasil sesi untuk pelaporan offline (SIM-19). **Wajib** `Authorization: Bearer
+<supabase-jwt>`; sama `require_role('admin')` (401 → 403 SEBELUM sentuh DB). **Respons non-JSON
+pertama di backend**: unduhan `text/csv; charset=utf-8` ter-buffer (header `Content-Disposition:
+attachment; filename="koperasi-sessions-YYYYMMDD.csv"`, tanggal UTC) — BUKAN body JSON. Backend
+memanggil `admin.session_results_export($1,$2)` lewat pool `metrics_reader` yang SAMA (EXECUTE-only,
+fail-soft 503). **Satu baris per sesi SELESAI** (`ended_at` terisi; sesi terbuka dikecualikan),
+**tanpa PII** (tanpa `user_id`/`display_name`).
+
+Query `from`/`to` OPSIONAL (tanggal `YYYY-MM-DD`), memfilter `started_at`, di-anchor UTC, **kedua
+hari inklusif** (half-open `[from, to+1hari)`); keduanya absen → semua sesi selesai. Tanggal
+salah-bentuk / ada komponen waktu → **422** `{"detail":"from_invalid"|"to_invalid"}` SEBELUM DB.
+`from > to` → **200** CSV hanya-header (rentang kosong, bukan error).
+
+Kolom (urutan tetap, nama header identik):
+```
+session_id,scenario_id,scenario_title,started_at,ended_at,duration_seconds,trigger,ending_type,avg_score
+```
+`started_at`/`ended_at` ISO-8601 UTC (`…Z`); `duration_seconds` integer ≥ 0; `avg_score` = mean
+rubrik per-sesi (numerik 0–100, object-guarded, `round(…,1)`, SAMA seperti `/admin/metrics`) — sel
+kosong bila null. CSV RFC-4180 (CRLF, quoting), UTF-8 **dengan BOM** (Excel merender teks Indonesia
+benar), dan sel teks admin-authored (`scenario_id`, `scenario_title`) disterilkan dari injeksi
+formula (prefix `'`).
+
+Status:
+
+| kode | arti | perilaku klien |
+|---|---|---|
+| `200` | file CSV | unduh / simpan |
+| `401` | token hilang/invalid/kedaluwarsa (`WWW-Authenticate: Bearer`) | refresh + retry SEKALI → login |
+| `403` | authenticated non-admin **atau** sesi anonim (`{"detail":"forbidden"}`) | "tak berwenang"; JANGAN refresh-loop |
+| `422` | `from`/`to` salah-bentuk (dicek SETELAH auth, SEBELUM DB) | surface error |
+| `503` | DB metrik tak dikonfigurasi/tak terjangkau/lambat (fail-soft) | state "layanan tidak tersedia" + retry (body JSON, BUKAN csv) |
+| `500` | verifier JWT belum dikonfigurasi (fail-closed) | surface error |
+
+Konsumen: admin (unduh langsung lewat URL / tombol di `apps/admin` — tombol FE adalah tiket
+terpisah; bila membaca nama file dari JS perlu `Access-Control-Expose-Headers: Content-Disposition`).
+Definisi lengkap + rencana di `docs/plans/2026-10-12-feat-admin-session-results-csv-export-plan.md`.
+
 `GET /health` → `{ "status": "ok" }` (tanpa auth). CORS diizinkan untuk origin di env
 `CORS_ALLOW_ORIGINS` (comma-split; fallback ke `CORS_ALLOW_ORIGIN` lama; default dev
 `http://localhost:5173,http://localhost:5174` = game + admin), method `GET`/`POST`/

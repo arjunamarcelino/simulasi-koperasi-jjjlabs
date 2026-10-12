@@ -17,7 +17,7 @@ project `uv`:
   (Azure OpenAI `gpt-5-mini`) → TTS (Azure).
 
 Jalur voice/token **tanpa database** — seluruh state sesi in-memory, hidup selama
-room LiveKit aktif (PRD §2.5, §8). **Pengecualian admin (SIM-15/16/17/18):** `GET /admin/metrics`
+room LiveKit aktif (PRD §2.5, §8). **Pengecualian admin (SIM-15/16/17/18/19):** `GET /admin/metrics`
 (→ `admin.metrics_overview()`), `GET /admin/scenarios/{id}/analytics` (→ `admin.scenario_analytics()`),
 papan peringkat musiman SIM-17 — `GET /admin/leaderboard`, `POST /admin/leaderboard/capture`,
 `DELETE /admin/leaderboard/seasons/{id}` (→ `admin.leaderboard_overview/capture_leaderboard_snapshot/
@@ -25,7 +25,9 @@ delete_leaderboard_season`), dan **manajemen konten SIM-18** — kuis (`GET /adm
 `POST /admin/quiz` create, `POST /admin/quiz/{code}` edit, `DELETE /admin/quiz/{code}`) + mading
 (`GET /admin/mading`, `POST /admin/mading` create, `POST /admin/mading/{id}` edit,
 `DELETE /admin/mading/{id}`) lewat definer fn `admin.list_quiz/upsert_quiz_question/…` &
-`admin.list_mading/upsert_mading_block/…` — semuanya membuka pool asyncpg **fail-soft** yang SAMA ke
+`admin.list_mading/upsert_mading_block/…`, dan **ekspor laporan SIM-19** — `GET /admin/reports/sessions.csv`
+(→ `admin.session_results_export()`; respons `text/csv` non-JSON pertama, baris sesi selesai tanpa PII)
+— semuanya membuka pool asyncpg **fail-soft** yang SAMA ke
 Supabase sebagai role `metrics_reader` (`api/metrics_db.py`). **SIM-17/18 melebarkan `metrics_reader`
 dari read-only ke baca + TULIS admin-gated** (capture/delete + quiz/mading upsert/delete lewat definer
 fn `VOLATILE`); role tetap TANPA privilege tabel langsung, tapi blast radius `METRICS_DB_URL` naik.
