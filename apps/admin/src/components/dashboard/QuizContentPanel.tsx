@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { quizContentStore, useQuizContent } from "../../stores/quizContent.store";
 import type { QuizQuestion, QuizUpsertInput } from "../../lib/adminApi";
+import { ContentPanelShell, PanelFallback } from "./ContentPanelShell";
 
 /**
  * Quiz content management panel (SIM-18). Lists questions and owns the add/edit FORM as
@@ -66,23 +67,16 @@ export function QuizContentPanel() {
   const toast = useQuizContent((s) => s.toast);
   const [form, setForm] = useState<FormState | null>(null);
 
-  if (state.status === "loading" || state.status === "authLost") {
-    return <p className="text-ink-soft">Memuat kuis…</p>;
-  }
-  if (state.status === "error") {
+  if (state.status !== "ready") {
     return (
-      <div className="flex flex-col items-start gap-3">
-        <p className="text-ink-soft">Tidak dapat memuat kuis saat ini.</p>
-        <button
-          onClick={() => quizContentStore.getState().retry()}
-          className="rounded bg-forest px-4 py-2 font-semibold text-cream"
-        >
-          Coba lagi
-        </button>
-      </div>
+      <PanelFallback
+        status={state.status}
+        loadingText="Memuat kuis…"
+        errorText="Tidak dapat memuat kuis saat ini."
+        onRetry={() => quizContentStore.getState().retry()}
+      />
     );
   }
-  if (state.status === "idle") return null;
 
   const { rows, refreshing, mutating } = state;
   const busy = mutating !== null || refreshing;
@@ -112,31 +106,20 @@ export function QuizContentPanel() {
     if (committed) setForm(null); // keep the draft open on failure
   };
 
+  const addButton =
+    form === null ? (
+      <button
+        type="button"
+        onClick={onAdd}
+        disabled={busy}
+        className="rounded bg-forest px-3 py-1.5 text-sm font-semibold text-cream disabled:opacity-50"
+      >
+        Tambah pertanyaan
+      </button>
+    ) : undefined;
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold text-forest">Manajemen kuis</h2>
-        {form === null && (
-          <button
-            type="button"
-            onClick={onAdd}
-            disabled={busy}
-            className="rounded bg-forest px-3 py-1.5 text-sm font-semibold text-cream disabled:opacity-50"
-          >
-            Tambah pertanyaan
-          </button>
-        )}
-      </div>
-
-      {toast && (
-        <p
-          className={`text-sm ${toast.tone === "success" ? "text-forest" : "text-red-700"}`}
-          role="status"
-        >
-          {toast.text}
-        </p>
-      )}
-
+    <ContentPanelShell title="Manajemen kuis" toast={toast} headerRight={addButton}>
       {form !== null && (
         <QuizForm
           form={form}
@@ -200,7 +183,7 @@ export function QuizContentPanel() {
           </table>
         )}
       </div>
-    </div>
+    </ContentPanelShell>
   );
 }
 

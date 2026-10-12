@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { madingContentStore, useMadingContent } from "../../stores/madingContent.store";
 import type { MadingBoard, MadingItem, MadingUpsertInput } from "../../lib/adminApi";
+import { ContentPanelShell, PanelFallback } from "./ContentPanelShell";
 
 /**
  * Mading content management panel (SIM-18). Four boards (info notes / data tables / knowledge
@@ -177,23 +178,16 @@ export function MadingContentPanel() {
   const [board, setBoard] = useState<MadingBoard>("info");
   const [form, setForm] = useState<FormState | null>(null);
 
-  if (state.status === "loading" || state.status === "authLost") {
-    return <p className="text-ink-soft">Memuat mading…</p>;
-  }
-  if (state.status === "error") {
+  if (state.status !== "ready") {
     return (
-      <div className="flex flex-col items-start gap-3">
-        <p className="text-ink-soft">Tidak dapat memuat mading saat ini.</p>
-        <button
-          onClick={() => madingContentStore.getState().retry()}
-          className="rounded bg-forest px-4 py-2 font-semibold text-cream"
-        >
-          Coba lagi
-        </button>
-      </div>
+      <PanelFallback
+        status={state.status}
+        loadingText="Memuat mading…"
+        errorText="Tidak dapat memuat mading saat ini."
+        onRetry={() => madingContentStore.getState().retry()}
+      />
     );
   }
-  if (state.status === "idle") return null;
 
   const { groups, refreshing, mutating } = state;
   const busy = mutating !== null || refreshing;
@@ -231,36 +225,29 @@ export function MadingContentPanel() {
 
   const identitasExists = board === "identitas" && groups.identitas !== null;
 
+  const boardTabs = (
+    <div className="flex flex-wrap gap-1">
+      {BOARDS.map((b) => (
+        <button
+          key={b.key}
+          type="button"
+          onClick={() => {
+            setBoard(b.key);
+            setForm(null);
+          }}
+          disabled={busy}
+          className={`rounded px-2 py-1 text-xs font-semibold disabled:opacity-50 ${
+            board === b.key ? "bg-forest text-cream" : "border border-brown text-ink-soft"
+          }`}
+        >
+          {b.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-forest">Manajemen mading</h2>
-        <div className="flex flex-wrap gap-1">
-          {BOARDS.map((b) => (
-            <button
-              key={b.key}
-              type="button"
-              onClick={() => {
-                setBoard(b.key);
-                setForm(null);
-              }}
-              disabled={busy}
-              className={`rounded px-2 py-1 text-xs font-semibold disabled:opacity-50 ${
-                board === b.key ? "bg-forest text-cream" : "border border-brown text-ink-soft"
-              }`}
-            >
-              {b.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {toast && (
-        <p className={`text-sm ${toast.tone === "success" ? "text-forest" : "text-red-700"}`} role="status">
-          {toast.text}
-        </p>
-      )}
-
+    <ContentPanelShell title="Manajemen mading" toast={toast} headerRight={boardTabs}>
       {form === null && !(board === "identitas" && identitasExists) && (
         <button
           type="button"
@@ -326,7 +313,7 @@ export function MadingContentPanel() {
           </table>
         )}
       </div>
-    </div>
+    </ContentPanelShell>
   );
 }
 
