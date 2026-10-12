@@ -1,20 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { madingRepo, type Keyed, type RepoResult } from "../../lib/madingRepo";
+import { fallbackMessage, wrapIndex } from "../../lib/madingBoard";
 import type { MadingSlide } from "../../lib/mading.types";
 import { ModalShell } from "../common/ModalShell";
 import { GameButton } from "../common/GameButton";
 
 const GOOD_STATUS = new Set(["Aktif", "Lancar"]);
 const BAD_STATUS = new Set(["Nonaktif", "Bermasalah"]);
-const wrap = (i: number, len: number) => (len ? ((i % len) + len) % len : 0);
-
-function fallbackMessage(result: RepoResult<unknown> | null): string | null {
-  if (result === null) return "Memuat papan…";
-  if (result.status === "degraded") return "Papan ini butuh koneksi internet.";
-  if (result.status === "rpcError" || result.status === "invalid") return "Gagal memuat papan.";
-  return null;
-}
 
 /** The koperasi "Papan Data": a carousel of admin-authored tables (live from DB). */
 export function MadingDataBoard() {
@@ -39,10 +32,11 @@ export function MadingDataBoard() {
     if (!active || len === 0) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (e.repeat) return; // ignore auto-repeat so a held key doesn't strobe the table fade
       e.preventDefault();
       e.stopPropagation();
       const cur = gameStore.getState().madingIndex;
-      gameStore.getState().setMadingIndex(wrap(cur + (e.key === "ArrowRight" ? 1 : -1), len));
+      gameStore.getState().setMadingIndex(wrapIndex(cur + (e.key === "ArrowRight" ? 1 : -1), len));
     };
     document.addEventListener("keydown", onKeyDown, { capture: true });
     return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
@@ -50,7 +44,7 @@ export function MadingDataBoard() {
 
   if (!active) return null;
   const close = () => gameStore.getState().clearSelection();
-  const go = (i: number) => gameStore.getState().setMadingIndex(wrap(i, len));
+  const go = (i: number) => gameStore.getState().setMadingIndex(wrapIndex(i, len));
   const msg = fallbackMessage(result);
 
   if (msg !== null || len === 0) {
@@ -67,7 +61,7 @@ export function MadingDataBoard() {
   }
 
   const slides = (result as Extract<RepoResult<Keyed<MadingSlide>[]>, { status: "ok" }>).data;
-  const idx = wrap(index, len);
+  const idx = wrapIndex(index, len);
   const entry = slides[idx]!;
   const slide = entry.payload;
 

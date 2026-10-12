@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { madingRepo, type Keyed, type RepoResult } from "../../lib/madingRepo";
+import { fallbackMessage } from "../../lib/madingBoard";
 import type { KoperasiIdentitas, MadingNote, NoteAccent } from "../../lib/mading.types";
 import { ModalShell } from "../common/ModalShell";
 
@@ -16,14 +17,6 @@ const NOTE_ACCENT: Record<NoteAccent, { box: string; title: string; pin: string 
   parchment: { box: "bg-parchment text-ink", title: "text-forest", pin: "bg-orange" },
 };
 const ROTATIONS = ["-rotate-2", "rotate-1", "-rotate-1", "rotate-2", "-rotate-1", "rotate-1"];
-
-/** Loading/degraded/error message for a board read, or null when `ok`. */
-function fallbackMessage(result: RepoResult<unknown> | null): string | null {
-  if (result === null) return "Memuat papan…";
-  if (result.status === "degraded") return "Papan ini butuh koneksi internet.";
-  if (result.status === "rpcError" || result.status === "invalid") return "Gagal memuat papan.";
-  return null;
-}
 
 /** The koperasi "Papan Info Penting": identity header + a corkboard of sticky notes (live from DB). */
 export function MadingInfoBoard() {

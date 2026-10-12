@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { madingRepo, type Keyed, type RepoResult } from "../../lib/madingRepo";
+import { fallbackMessage, wrapIndex } from "../../lib/madingBoard";
 import type { KnowledgeCard } from "../../lib/mading.types";
 import { ModalShell } from "../common/ModalShell";
 import { GameButton } from "../common/GameButton";
@@ -8,15 +9,6 @@ import { GameButton } from "../common/GameButton";
 /** Attribution shown under the board. Non-managed constant (rarely changes; not admin-editable). */
 const KNOWLEDGE_SOURCE =
   "Sumber: Dashboard SIMKOPDES (2026), Kementerian Koperasi RI — simkopdes.go.id/pers/dashboard";
-
-const wrap = (i: number, len: number) => (len ? ((i % len) + len) % len : 0);
-
-function fallbackMessage(result: RepoResult<unknown> | null): string | null {
-  if (result === null) return "Memuat papan…";
-  if (result.status === "degraded") return "Papan ini butuh koneksi internet.";
-  if (result.status === "rpcError" || result.status === "invalid") return "Gagal memuat papan.";
-  return null;
-}
 
 /** The koperasi "Papan Pengetahuan": a carousel of stat + fact cards (live from DB). */
 export function MadingKnowledgeBoard() {
@@ -44,7 +36,7 @@ export function MadingKnowledgeBoard() {
       e.preventDefault();
       e.stopPropagation();
       const cur = gameStore.getState().madingIndex;
-      gameStore.getState().setMadingIndex(wrap(cur + (e.key === "ArrowRight" ? 1 : -1), len));
+      gameStore.getState().setMadingIndex(wrapIndex(cur + (e.key === "ArrowRight" ? 1 : -1), len));
     };
     document.addEventListener("keydown", onKeyDown, { capture: true });
     return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
@@ -52,7 +44,7 @@ export function MadingKnowledgeBoard() {
 
   if (!active) return null;
   const close = () => gameStore.getState().clearSelection();
-  const go = (i: number) => gameStore.getState().setMadingIndex(wrap(i, len));
+  const go = (i: number) => gameStore.getState().setMadingIndex(wrapIndex(i, len));
   const msg = fallbackMessage(result);
 
   if (msg !== null || len === 0) {
@@ -69,7 +61,7 @@ export function MadingKnowledgeBoard() {
   }
 
   const cards = (result as Extract<RepoResult<Keyed<KnowledgeCard>[]>, { status: "ok" }>).data;
-  const idx = wrap(index, len);
+  const idx = wrapIndex(index, len);
   const card = cards[idx]!.payload;
 
   return (
