@@ -665,11 +665,18 @@ function isQuizQuestion(x: unknown): x is QuizQuestion {
   return opts.length >= 2 && opts.length <= 4 && (o["correct_index"] as number) < opts.length;
 }
 
-/** Read a FastAPI error body's `{detail}` reason string (empty when absent/malformed). */
+/** Read a FastAPI error body's reason. Our hand-raised HTTPExceptions carry `detail` as a string
+ * (the machine reason code, e.g. "duplicate_code"); FastAPI's native 422 carries `detail` as a list
+ * of `{loc,msg,type}` — surface the first `msg` so a boundary-validation `rejected` isn't blank. */
 async function errorReason(res: Response): Promise<string> {
   const b: unknown = await res.json().catch(() => null);
-  const o = rec(b);
-  return o !== null && typeof o["detail"] === "string" ? o["detail"] : "";
+  const detail = rec(b)?.["detail"];
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msg = rec(detail[0])?.["msg"];
+    return typeof msg === "string" ? msg : "validation_error";
+  }
+  return "";
 }
 
 /** Fetch `GET /admin/quiz` (SIM-18). Returns the full rows (incl the hidden answer key) for editing. */
@@ -759,7 +766,8 @@ export async function deleteQuizQuestion(
 // panel builds/interprets the board-specific shape and the SERVER is the authoritative validator
 // (422 `rejected`). The learner-facing web repo re-validates with the closed parsers.
 
-export type MadingBoard = "info" | "data" | "knowledge" | "identitas";
+export const MADING_BOARDS = ["info", "data", "knowledge", "identitas"] as const;
+export type MadingBoard = (typeof MADING_BOARDS)[number];
 
 export type MadingItem = {
   id: string;
@@ -815,6 +823,7 @@ function isMadingItem(x: unknown): x is MadingItem {
     typeof o["id"] === "string" &&
     typeof o["block_key"] === "string" &&
     rec(o["payload"]) !== null &&
+    !Array.isArray(o["payload"]) && // rec() admits arrays (typeof [] === "object"); payload must be an object
     isNonNegInt(o["sort_order"]) &&
     typeof o["updated_at"] === "string"
   );
@@ -868,9 +877,11 @@ export async function upsertMadingBlock(
   switch (r.res.status) {
     case 200: {
       const b: unknown = await r.res.json().catch(() => null);
-      const o = rec(b);
-      return isMadingItem(b) && o !== null && typeof o["board"] === "string"
-        ? { kind: "ok", data: { ...(b as MadingItem), board: o["board"] as MadingBoard } }
+      const board = rec(b)?.["board"];
+      // Validate `board` against the literal set before narrowing (don't blind-cast an unvalidated
+      // string to MadingBoard) — same discipline as the conflict-reason guards below.
+      return isMadingItem(b) && typeof board === "string" && (MADING_BOARDS as readonly string[]).includes(board)
+        ? { kind: "ok", data: { ...b, board: board as MadingBoard } }
         : { kind: "serviceUnavailable" };
     }
     case 409: {
