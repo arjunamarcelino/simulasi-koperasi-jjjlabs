@@ -72,6 +72,10 @@ def _decode(body: bytes) -> list[list[str]]:
     return list(csv.reader(io.StringIO(body.decode("utf-8-sig"))))
 
 
+# Column index by header name — keeps assertions robust to column-order changes.
+COL = {name: i for i, name in enumerate(_CSV_HEADER)}
+
+
 # --------------------------------- happy path (route) -------------------------------
 
 
@@ -86,10 +90,10 @@ def test_admin_gets_csv_200(client, install_jwks, token_factory, monkeypatch):
     rows = _decode(resp.content)
     assert rows[0] == _CSV_HEADER
     assert len(rows) == 1 + len(SAMPLE_ROWS)
-    assert rows[1][0] == "11111111-1111-1111-1111-111111111111"
-    assert rows[1][5] == "125"  # duration_seconds
-    assert rows[1][8] == "85.0"  # avg_score
-    assert rows[2][8] == ""  # null avg_score → empty cell
+    assert rows[1][COL["session_id"]] == "11111111-1111-1111-1111-111111111111"
+    assert rows[1][COL["duration_seconds"]] == "125"
+    assert rows[1][COL["avg_score"]] == "85.0"
+    assert rows[2][COL["avg_score"]] == ""  # null avg_score → empty cell
 
 
 def test_empty_export_is_header_only(client, install_jwks, token_factory, monkeypatch):
@@ -239,7 +243,7 @@ def test_csv_builder_header_and_crlf():
     assert b"\r\n" in body  # RFC-4180 line terminator
     rows = _decode(body)
     assert rows[0] == _CSV_HEADER
-    assert rows[1][5] == "125" and rows[1][8] == "85.0"
+    assert rows[1][COL["duration_seconds"]] == "125" and rows[1][COL["avg_score"]] == "85.0"
 
 
 def test_csv_builder_avg_rendering():
@@ -248,14 +252,14 @@ def test_csv_builder_avg_rendering():
         {**SAMPLE_ROWS[0], "avg_score": 46.4},
         {**SAMPLE_ROWS[0], "avg_score": None},
     ]))
-    assert [r[8] for r in rows[1:]] == ["100.0", "46.4", ""]
+    assert [r[COL["avg_score"]] for r in rows[1:]] == ["100.0", "46.4", ""]
 
 
 def test_csv_builder_rfc4180_quoting():
     # Comma + embedded quote + newline must survive a round-trip (quoted, inner quotes doubled).
     tricky = 'A, "B"\nC'
     rows = _decode(_build_sessions_csv([{**SAMPLE_ROWS[0], "scenario_title": tricky}]))
-    assert rows[1][2] == tricky
+    assert rows[1][COL["scenario_title"]] == tricky
 
 
 def test_csv_builder_sanitizes_both_free_text_cells():
@@ -264,8 +268,8 @@ def test_csv_builder_sanitizes_both_free_text_cells():
         "scenario_id": "=evil()",
         "scenario_title": "@cmd",
     }]))
-    assert rows[1][1] == "'=evil()"  # scenario_id (security M1)
-    assert rows[1][2] == "'@cmd"     # scenario_title
+    assert rows[1][COL["scenario_id"]] == "'=evil()"
+    assert rows[1][COL["scenario_title"]] == "'@cmd"
 
 
 def test_csv_builder_utf8_bom_and_non_ascii():
