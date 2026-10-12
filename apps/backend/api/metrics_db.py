@@ -139,7 +139,7 @@ async def _call_definer(
     *args: Any,
     log_name: str,
     log_arg: Any = _OMIT,
-) -> dict[str, Any]:
+) -> Any:
     """Shared body for the SIM-17 definer-fn calls (overview/capture/delete).
 
     Identical fail-soft contract to fetch_scenario_analytics: None pool / dropped connection /
@@ -296,7 +296,7 @@ async def fetch_session_export(
     `date` (or NULL) — never string-interpolated; both non-PII, so included in the fault log for triage.
     Escape hatch for when a large export outgrows the pool's 4s command_timeout: a per-call
     conn.fetchval(..., timeout=<n>) override (would require parameterizing _call_definer)."""
-    return await _call_definer(  # type: ignore[return-value]  # jsonb array → list[dict], not dict
+    return await _call_definer(
         pool, "select admin.session_results_export($1, $2)", p_from, p_to,
         log_name="session_results_export",
     )
