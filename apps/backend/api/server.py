@@ -7,19 +7,21 @@ baru dengan membawa `scenario_id` di job metadata (PRD §5).
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import logging
 import os
 import uuid
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from livekit import api
 from pydantic import (
@@ -758,6 +760,98 @@ async def mading_delete(
         _raise_for_mading_reason(result)
     log.info("Mading block deleted by %s → %s", admin.user_id, block_id)
     return {"deleted": True}
+
+
+# --- Reporting / export (SIM-19) --------------------------------------------------------
+# GET /admin/reports/sessions.csv — the FIRST non-JSON response in the backend: a buffered text/csv
+# download of COMPLETED sessions (no PII), optional ?from/?to date range on started_at. Data via
+# admin.session_results_export($1,$2) through the SAME fail-soft metrics_reader pool (EXECUTE-only).
+# All timestamp/number formatting is done IN SQL; Python only quotes, sanitizes, and concatenates.
+_CSV_HEADER = [
+    "session_id", "scenario_id", "scenario_title", "started_at", "ended_at",
+    "duration_seconds", "trigger", "ending_type", "avg_score",
+]
+# CSV formula/DDE injection triggers (OWASP): a cell BEGINNING with one of these can execute in
+# Excel/Sheets. Python's csv module does NOT guard this — we prefix a literal apostrophe ourselves.
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value: object) -> str:
+    """Neutralize CSV formula injection on admin-authored free-text cells (scenario_id + title).
+
+    Both come from scenario_definition.code/title (unconstrained text, editable via SIM-18 content
+    mgmt), so both are untrusted here. UUID/ISO-timestamp/enum/number cells can't lead with a trigger
+    char, so they're left alone by the callers. `s[:1]` (slice) is empty-string-safe (no IndexError)."""
+    if value is None:
+        return ""
+    s = str(value)
+    return "'" + s if s[:1] in _CSV_FORMULA_PREFIXES else s
+
+
+def _build_sessions_csv(rows: list[dict[str, Any]]) -> bytes:
+    """Render export rows to RFC-4180 CSV bytes (CRLF, minimal quoting, UTF-8 **with BOM** so Excel
+    renders Indonesian titles correctly). io.StringIO does no newline translation → no newline="" needed."""
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\r\n", quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(_CSV_HEADER)
+    for r in rows:
+        writer.writerow([
+            r["session_id"],
+            _csv_safe(r["scenario_id"]),
+            _csv_safe(r["scenario_title"]),
+            r["started_at"],
+            r["ended_at"],
+            r["duration_seconds"],
+            r["trigger"],
+            r["ending_type"],
+            # null avg → empty cell; else the SQL round(…,1) value as an explicit string ("85.0").
+            "" if r["avg_score"] is None else str(r["avg_score"]),
+        ])
+    return buf.getvalue().encode("utf-8-sig")
+
+
+def _parse_date_param(raw: str | None, field: str) -> date | None:
+    """Parse an optional ?from/?to query param as a date-only ISO-8601 value (rejects any time
+    component). A str param + manual parse yields a clean contract-shaped 422 {"detail":"<field>_invalid"}
+    consistent with the SIM-18 prev_updated_at convention — NOT a validation-ordering fix (FastAPI
+    resolves the admin dependency and raises its 401/403 before validating this operation's own params
+    regardless of typing)."""
+    if raw is None:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        raise HTTPException(422, f"{field}_invalid") from None
+
+
+@app.get(
+    "/admin/reports/sessions.csv",
+    responses={200: {"content": {"text/csv": {}}}},  # honest OpenAPI for the file download
+    response_class=Response,
+)
+async def export_sessions_csv(
+    request: Request,
+    date_from: str | None = Query(None, alias="from"),
+    date_to: str | None = Query(None, alias="to"),
+    # Admin gate as a dependency → DB untouched before 401/403 lolos (same as the other admin routes).
+    _admin: AuthedUser = Depends(_require_admin),
+) -> Response:
+    # Parse AFTER the gate; malformed date → 422 before any DB call. from > to needs no special case:
+    # the half-open SQL predicate yields 0 rows → a 200 header-only CSV.
+    p_from = _parse_date_param(date_from, "from")
+    p_to = _parse_date_param(date_to, "to")
+    try:
+        rows = await metrics_db.fetch_session_export(request.app.state.metrics_pool, p_from, p_to)
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+    body = _build_sessions_csv(rows)
+    # Static ASCII prefix + UTC date, zero user input → no Content-Disposition header-injection surface.
+    filename = f"koperasi-sessions-{datetime.now(UTC):%Y%m%d}.csv"
+    return Response(
+        content=body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/token", response_model=TokenResponse)

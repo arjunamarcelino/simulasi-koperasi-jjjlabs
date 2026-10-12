@@ -20,7 +20,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import asyncpg
@@ -279,4 +279,24 @@ async def delete_mading_block(pool: asyncpg.Pool | None, *, block_id: uuid.UUID)
     return await _call_definer(
         pool, "select admin.delete_mading_block($1)", block_id,
         log_name="delete_mading_block", log_arg=block_id,
+    )
+
+
+# ── SIM-19 reporting / CSV export (admin-gated read) ─────────────────────────────────────
+async def fetch_session_export(
+    pool: asyncpg.Pool | None, p_from: date | None, p_to: date | None
+) -> list[dict[str, Any]]:
+    """Call admin.session_results_export($1, $2) → list of per-session row dicts (SIM-19).
+
+    Reuses the shared fail-soft contract (_call_definer): no pool / dropped connection / timeout /
+    query error → MetricsUnavailable (→ 503, never 500). The SQL fn returns coalesce(jsonb_agg(...),
+    '[]'), so the result is NEVER SQL NULL — the `row is None → MetricsUnavailable` guard never
+    misfires on an EMPTY export, which is a valid [] (a 200 header-only CSV). The decoded jsonb array
+    IS a list[dict] via the connection's jsonb codec. p_from/p_to are bound positionally ($1/$2) as
+    `date` (or NULL) — never string-interpolated; both non-PII, so included in the fault log for triage.
+    Escape hatch for when a large export outgrows the pool's 4s command_timeout: a per-call
+    conn.fetchval(..., timeout=<n>) override (would require parameterizing _call_definer)."""
+    return await _call_definer(  # type: ignore[return-value]  # jsonb array → list[dict], not dict
+        pool, "select admin.session_results_export($1, $2)", p_from, p_to,
+        log_name="session_results_export",
     )
