@@ -400,22 +400,26 @@ async def leaderboard_delete_season(
 # PATH resource (404 on edit/delete-absent), mirroring the scenario-analytics convention.
 class QuizQuestionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")  # kunci asing → 422 (kontrak beku)
-    code: Annotated[str, Field(min_length=1, max_length=64)]
+    # `code` carries the natural key on CREATE (POST /admin/quiz); on EDIT it comes from the path
+    # (POST /admin/quiz/{code}) and the body value is ignored — hence optional here.
+    code: Annotated[str, Field(min_length=1, max_length=64)] | None = None
     prompt: Annotated[str, Field(min_length=1)]
-    # 2..4 options matches the 1..4 keyboard/LETTERS limit in the game's QuizBoard.
-    options: Annotated[list[str], Field(min_length=2, max_length=4)]
+    # 2..4 options matches the 1..4 keyboard/LETTERS limit in the game's QuizBoard; each option is
+    # non-empty (no blank choices).
+    options: Annotated[list[Annotated[str, Field(min_length=1)]], Field(min_length=2, max_length=4)]
     correct_index: Annotated[int, Field(ge=0)]
     explanation: str | None = None
     sort_order: Annotated[int, Field(ge=0)] = 0
-    # Compare-and-swap token: the `updated_at` string from GET /admin/quiz, echoed verbatim.
-    # None → CREATE; present → EDIT (the fn returns stale_write if it no longer matches).
+    # Compare-and-swap token: the `updated_at` string from GET /admin/quiz, echoed verbatim on EDIT.
     prev_updated_at: str | None = None
 
     @model_validator(mode="after")
-    def _correct_index_in_range(self) -> QuizQuestionBody:
+    def _validate(self) -> QuizQuestionBody:
         # Cross-field 422 before the RPC (the DB CHECK would otherwise raise → masked as 503).
         if self.correct_index >= len(self.options):
             raise ValueError("correct_index out of range for options")
+        if len(set(self.options)) != len(self.options):
+            raise ValueError("options must be unique")
         return self
 
 
@@ -440,26 +444,20 @@ class DeleteQuizResponse(BaseModel):
     deleted: bool
 
 
-# reason → HTTP status. Validation reasons are defense-in-depth (Pydantic rejects them first);
-# the state reasons (not_found/has_completions/stale_write/duplicate_code) are the ones that
-# actually reach here. An UNKNOWN ok:false reason must NEVER fall through to 200 → default 409.
+# reason → HTTP status. Only the STATE reasons are enumerated (404/409); validation reasons are
+# defense-in-depth (Pydantic rejects them first) and fall through to the 422 default — the same
+# convention as _MADING_REASON_STATUS. An UNKNOWN ok:false reason must NEVER reach a 200.
 _QUIZ_REASON_STATUS: dict[str, int] = {
     "not_found": 404,
     "has_completions": 409,
     "stale_write": 409,
     "duplicate_code": 409,
-    "empty_code": 422,
-    "empty_prompt": 422,
-    "options_not_array": 422,
-    "options_len": 422,
-    "correct_index_range": 422,
-    "sort_order_negative": 422,
 }
 
 
 def _raise_for_quiz_reason(result: dict[str, Any]) -> None:
     reason = result.get("reason") or "conflict"
-    raise HTTPException(_QUIZ_REASON_STATUS.get(reason, 409), reason)
+    raise HTTPException(_QUIZ_REASON_STATUS.get(reason, 422), reason)
 
 
 @app.get("/admin/quiz", response_model=ListQuizResponse)
@@ -474,22 +472,52 @@ async def quiz_list(
 
 
 @app.post("/admin/quiz", response_model=QuizRow)
-async def quiz_upsert(
+async def quiz_create(
     req: QuizQuestionBody,
     request: Request,
     admin: AuthedUser = Depends(_require_admin),
 ) -> dict[str, Any]:
-    # Parse the CAS token at the boundary → a malformed timestamp is a clean 422, not a 503.
-    prev: datetime | None = None
-    if req.prev_updated_at is not None:
-        try:
-            prev = datetime.fromisoformat(req.prev_updated_at)
-        except ValueError:
-            raise HTTPException(422, "prev_updated_at_invalid") from None
+    # CREATE: `code` is the client-supplied natural key (addressing matches mading's create route).
+    if req.code is None or not req.code.strip():
+        raise HTTPException(422, "code_required")
     try:
         result = await metrics_db.upsert_quiz_question(
             request.app.state.metrics_pool,
             code=req.code,
+            prompt=req.prompt,
+            options=req.options,
+            correct_index=req.correct_index,
+            explanation=req.explanation,
+            sort_order=req.sort_order,
+            prev_updated_at=None,
+        )
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+    if not result.get("ok"):
+        _raise_for_quiz_reason(result)
+    log.info("Quiz question created by %s → %s", admin.user_id, req.code)
+    return result["row"]
+
+
+@app.post("/admin/quiz/{code}", response_model=QuizRow)
+async def quiz_edit(
+    code: str,
+    req: QuizQuestionBody,
+    request: Request,
+    admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    # EDIT: `code` from the path (body code ignored); the CAS token is required (omitting it is a
+    # 422, not a silent create/overwrite). Parse at the boundary → malformed timestamp = clean 422.
+    if req.prev_updated_at is None:
+        raise HTTPException(422, "prev_updated_at_required")
+    try:
+        prev = datetime.fromisoformat(req.prev_updated_at)
+    except ValueError:
+        raise HTTPException(422, "prev_updated_at_invalid") from None
+    try:
+        result = await metrics_db.upsert_quiz_question(
+            request.app.state.metrics_pool,
+            code=code,
             prompt=req.prompt,
             options=req.options,
             correct_index=req.correct_index,
@@ -501,7 +529,7 @@ async def quiz_upsert(
         raise HTTPException(503, "metrics_unavailable") from None
     if not result.get("ok"):
         _raise_for_quiz_reason(result)
-    log.info("Quiz question upserted by %s → %s", admin.user_id, req.code)
+    log.info("Quiz question edited by %s → %s", admin.user_id, code)
     return result["row"]
 
 
@@ -568,7 +596,7 @@ class FactCard(BaseModel):
 
 
 _KnowledgeCard = Annotated[StatCard | FactCard, Field(discriminator="kind")]
-_knowledge_adapter: TypeAdapter[Any] = TypeAdapter(_KnowledgeCard)
+_knowledge_adapter: TypeAdapter[StatCard | FactCard] = TypeAdapter(_KnowledgeCard)
 
 
 class IdentitasPayload(BaseModel):
@@ -695,6 +723,10 @@ async def mading_edit(
     except ValueError:
         raise HTTPException(422, "prev_updated_at_invalid") from None
     try:
+        # `board` here is ADVISORY on edit: it selects the Pydantic payload validator at the
+        # boundary (best-effort pre-check), but the DB fn authoritatively re-validates the payload
+        # against the STORED board (board is immutable on edit). A client sending a mismatched board
+        # therefore gets a clean payload-reason 422 from the DB floor, never a wrong-shape write.
         result = await metrics_db.upsert_mading_block(
             request.app.state.metrics_pool,
             block_id=block_id,

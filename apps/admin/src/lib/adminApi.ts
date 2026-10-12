@@ -701,13 +701,36 @@ export async function listQuiz(signal?: AbortSignal): Promise<QuizListOutcome> {
   }
 }
 
-/** Create or compare-and-swap edit via `POST /admin/quiz` (SIM-18). The 401-resend is safe because
- * the backend gate precedes the DB fn; a 503 is ambiguous (may have committed) → the store refetches. */
+/** Create (POST /admin/quiz) or compare-and-swap edit (POST /admin/quiz/{code}) — SIM-18. The
+ * create/edit split mirrors mading: `prev_updated_at === null` is a CREATE (code in the body),
+ * otherwise an EDIT (code in the path). The 401-resend is safe because the backend gate precedes
+ * the DB fn; a 503 is ambiguous (may have committed) → the store refetches. */
 export async function upsertQuizQuestion(
   input: QuizUpsertInput,
   signal?: AbortSignal,
 ): Promise<QuizUpsertOutcome> {
-  const r = await authedRequest("/admin/quiz", { method: "POST", body: JSON.stringify(input) }, signal);
+  const path =
+    input.prev_updated_at === null ? "/admin/quiz" : `/admin/quiz/${encodeURIComponent(input.code)}`;
+  const body = JSON.stringify(
+    input.prev_updated_at === null
+      ? {
+          code: input.code,
+          prompt: input.prompt,
+          options: input.options,
+          correct_index: input.correct_index,
+          explanation: input.explanation,
+          sort_order: input.sort_order,
+        }
+      : {
+          prompt: input.prompt,
+          options: input.options,
+          correct_index: input.correct_index,
+          explanation: input.explanation,
+          sort_order: input.sort_order,
+          prev_updated_at: input.prev_updated_at,
+        },
+  );
+  const r = await authedRequest(path, { method: "POST", body }, signal);
   if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
   switch (r.res.status) {
     case 200: {

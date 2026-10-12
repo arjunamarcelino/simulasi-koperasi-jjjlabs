@@ -32,7 +32,8 @@ def _admin_token(token_factory) -> str:
 
 
 LIST_PATH = "/admin/quiz"
-UPSERT_PATH = "/admin/quiz"
+CREATE_PATH = "/admin/quiz"
+EDIT_PATH = "/admin/quiz/q1"  # POST /admin/quiz/{code} — edit addresses by path
 DELETE_PATH = "/admin/quiz/q1"
 
 TS = "2026-10-11T09:00:00.000000Z"
@@ -56,6 +57,11 @@ ROW_SAMPLE = {
 VALID_BODY = {
     "code": "q3", "prompt": "P3", "options": ["a", "b", "c"],
     "correct_index": 1, "explanation": "e3", "sort_order": 5,
+}
+# Edit body: no code (it's in the path), CAS token required.
+EDIT_BODY = {
+    "prompt": "P3", "options": ["a", "b", "c"], "correct_index": 1,
+    "explanation": "e3", "sort_order": 5, "prev_updated_at": TS,
 }
 
 
@@ -100,14 +106,16 @@ def _call(client, route, headers=None):
     headers = headers or {}
     if route == "list":
         return client.get(LIST_PATH, headers=headers)
-    if route == "upsert":
-        return client.post(UPSERT_PATH, headers=headers, json=VALID_BODY)
+    if route == "create":
+        return client.post(CREATE_PATH, headers=headers, json=VALID_BODY)
+    if route == "edit":
+        return client.post(EDIT_PATH, headers=headers, json=EDIT_BODY)
     if route == "delete":
         return client.delete(DELETE_PATH, headers=headers)
     raise AssertionError(f"unknown route {route!r}")
 
 
-ROUTES = ["list", "upsert", "delete"]
+ROUTES = ["list", "create", "edit", "delete"]
 
 
 # --------------------------------- happy path ---------------------------------------
@@ -130,7 +138,7 @@ def test_admin_creates_question_200(client, install_jwks, token_factory, monkeyp
     holder: dict = {}
     _patch_upsert(monkeypatch, ROW_SAMPLE, holder=holder)
     resp = client.post(
-        UPSERT_PATH, json=VALID_BODY,
+        CREATE_PATH, json=VALID_BODY,
         headers={"Authorization": f"Bearer {_admin_token(token_factory)}"},
     )
     assert resp.status_code == 200
@@ -145,9 +153,11 @@ def test_edit_parses_cas_token_to_datetime(client, install_jwks, token_factory, 
     holder: dict = {}
     _patch_upsert(monkeypatch, ROW_SAMPLE, holder=holder)
     client.post(
-        UPSERT_PATH, json={**VALID_BODY, "prev_updated_at": TS},
+        EDIT_PATH, json=EDIT_BODY,
         headers={"Authorization": f"Bearer {_admin_token(token_factory)}"},
     )
+    # code comes from the path on edit; the CAS token is parsed to an aware datetime at the boundary
+    assert holder["code"] == "q1"
     # the CAS token is parsed to an aware datetime at the boundary (not forwarded as a raw str)
     assert isinstance(holder["prev_updated_at"], datetime)
     assert holder["prev_updated_at"].utcoffset() is not None
@@ -243,17 +253,37 @@ def test_upsert_invalid_body_is_422(client, install_jwks, token_factory, monkeyp
     install_jwks()
     _patch_all_boom(monkeypatch)  # 422 must precede any DB contact
     resp = client.post(
-        UPSERT_PATH, json=body,
+        CREATE_PATH, json=body,
         headers={"Authorization": f"Bearer {_admin_token(token_factory)}"},
     )
     assert resp.status_code == 422
 
 
-def test_upsert_malformed_cas_token_is_422(client, install_jwks, token_factory, monkeypatch):
+def test_create_missing_code_is_422(client, install_jwks, token_factory, monkeypatch):
+    install_jwks()
+    _patch_all_boom(monkeypatch)
+    resp = client.post(
+        CREATE_PATH, json={k: v for k, v in VALID_BODY.items() if k != "code"},  # no code on create
+        headers={"Authorization": f"Bearer {_admin_token(token_factory)}"},
+    )
+    assert resp.status_code == 422
+
+
+def test_edit_malformed_cas_token_is_422(client, install_jwks, token_factory, monkeypatch):
     install_jwks()
     _patch_all_boom(monkeypatch)  # the bad timestamp is rejected before the RPC
     resp = client.post(
-        UPSERT_PATH, json={**VALID_BODY, "prev_updated_at": "not-a-timestamp"},
+        EDIT_PATH, json={**EDIT_BODY, "prev_updated_at": "not-a-timestamp"},
+        headers={"Authorization": f"Bearer {_admin_token(token_factory)}"},
+    )
+    assert resp.status_code == 422
+
+
+def test_edit_missing_cas_token_is_422(client, install_jwks, token_factory, monkeypatch):
+    install_jwks()
+    _patch_all_boom(monkeypatch)  # omitting the CAS token on edit is a 422, not a silent create
+    resp = client.post(
+        EDIT_PATH, json={k: v for k, v in EDIT_BODY.items() if k != "prev_updated_at"},
         headers={"Authorization": f"Bearer {_admin_token(token_factory)}"},
     )
     assert resp.status_code == 422
@@ -270,14 +300,14 @@ def test_upsert_malformed_cas_token_is_422(client, install_jwks, token_factory, 
         ("not_found", 404),
         ("options_len", 422),            # defense-in-depth reason from SQL
         ("correct_index_range", 422),
-        ("totally_unknown", 409),        # unmapped ok:false defaults to 409, NEVER 200
+        ("totally_unknown", 422),        # unmapped ok:false defaults to 422, NEVER 200 (mirrors mading)
     ],
 )
 def test_upsert_reason_maps_to_status(client, install_jwks, token_factory, monkeypatch, reason, status):
     install_jwks()
     _patch_upsert(monkeypatch, {"ok": False, "reason": reason})
     resp = client.post(
-        UPSERT_PATH, json=VALID_BODY,
+        CREATE_PATH, json=VALID_BODY,
         headers={"Authorization": f"Bearer {_admin_token(token_factory)}"},
     )
     assert resp.status_code == status
@@ -307,7 +337,7 @@ def test_upsert_logs_attribution_without_content(client, install_jwks, token_fac
     secret_prompt = "RAHASIA-PROMPT-xyz"
     with caplog.at_level(logging.INFO, logger="koperasi.token"):
         client.post(
-            UPSERT_PATH, json={**VALID_BODY, "prompt": secret_prompt},
+            CREATE_PATH, json={**VALID_BODY, "prompt": secret_prompt},
             headers={"Authorization": f"Bearer {_admin_token(token_factory)}"},
         )
     text = "\n".join(r.getMessage() for r in caplog.records)
