@@ -122,7 +122,7 @@ function formFromItem(board: MadingBoard, it: MadingItem): FormState {
 /** Build the board-specific payload (omitting optional keys that are empty). */
 function buildPayload(f: FormState): Payload {
   if (f.board === "info") {
-    return { title: f.title.trim(), lines: f.lines.map((l) => l), accent: f.accent };
+    return { title: f.title.trim(), lines: f.lines.map((l) => l.trim()), accent: f.accent };
   }
   if (f.board === "data") {
     const p: Payload = { title: f.title.trim(), headers: f.headers, align: f.align, rows: f.rows };
@@ -131,7 +131,7 @@ function buildPayload(f: FormState): Payload {
   }
   if (f.board === "knowledge") {
     if (f.kind === "stat") {
-      const p: Payload = { kind: "stat", value: f.value, label: f.label };
+      const p: Payload = { kind: "stat", value: f.value.trim(), label: f.label.trim() };
       if (f.group.trim() !== "") p["group"] = f.group.trim();
       if (f.sub.trim() !== "") p["sub"] = f.sub.trim();
       return p;
@@ -161,6 +161,7 @@ function isComplete(f: FormState): boolean {
       n > 0 &&
       f.headers.every((h) => h.trim() !== "") &&
       f.align.length === n &&
+      f.align.every((a) => a === "left" || a === "right") &&
       f.rows.every((r) => r.length === n)
     );
   }
@@ -272,7 +273,7 @@ export function MadingContentPanel() {
       )}
 
       {form !== null && (
-        <MadingForm form={form} setForm={setForm} busy={busy} saving={!!saving} onSave={onSave} onCancel={() => setForm(null)} />
+        <MadingForm form={form} setForm={setForm} busy={busy} saving={saving} onSave={onSave} onCancel={() => setForm(null)} />
       )}
 
       <div className={`overflow-x-auto ${refreshing ? "opacity-60" : ""}`}>

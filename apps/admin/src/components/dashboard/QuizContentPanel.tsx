@@ -142,7 +142,7 @@ export function QuizContentPanel() {
           form={form}
           setForm={setForm}
           busy={busy}
-          saving={!!saving}
+          saving={saving}
           onSave={onSave}
           onCancel={onCancel}
         />
