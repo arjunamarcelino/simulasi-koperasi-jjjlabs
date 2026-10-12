@@ -7,8 +7,10 @@ import {
   type MadingGroups,
   type MadingUpsertInput,
 } from "../lib/adminApi";
-import { adminAuthStore } from "./adminAuth.store";
+import { bridgeAuthLoss, type Toast } from "./adminCrud";
 import { assertNever } from "../lib/assertNever";
+
+export type { Toast };
 
 /**
  * Mading content store (SIM-18). Same read machine + mutation discipline as quizContent.store
@@ -23,8 +25,6 @@ export type MadingUiState =
   | { status: "ready"; groups: MadingGroups; refreshing: boolean; mutating: MadingMutating }
   | { status: "error" }
   | { status: "authLost" };
-
-export type Toast = { tone: "success" | "error"; text: string };
 
 export type MadingContentStoreState = {
   state: MadingUiState;
@@ -179,19 +179,15 @@ async function runRemove(id: string): Promise<void> {
 }
 
 function handleAuthLoss(myEpoch: number): void {
-  if (bridged) {
-    madingContentStore.setState({ state: { status: "error" } });
-    return;
-  }
-  bridged = true;
-  madingContentStore.setState({ state: { status: "authLost" } });
-  void (async () => {
-    await adminAuthStore.getState().retry();
-    if (myEpoch !== epoch) return;
-    if (adminAuthStore.getState().gate.status === "authorized") {
-      madingContentStore.setState({ state: { status: "error" } });
-    }
-  })();
+  bridgeAuthLoss({
+    isBridged: () => bridged,
+    setBridged: (v) => {
+      bridged = v;
+    },
+    isCurrent: () => myEpoch === epoch,
+    toAuthLost: () => madingContentStore.setState({ state: { status: "authLost" } }),
+    toError: () => madingContentStore.setState({ state: { status: "error" } }),
+  });
 }
 
 export const madingContentStore = createStore<MadingContentStoreState>()(() => ({

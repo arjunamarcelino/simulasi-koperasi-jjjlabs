@@ -7,8 +7,10 @@ import {
   type QuizQuestion,
   type QuizUpsertInput,
 } from "../lib/adminApi";
-import { adminAuthStore } from "./adminAuth.store";
+import { bridgeAuthLoss, type Toast } from "./adminCrud";
 import { assertNever } from "../lib/assertNever";
+
+export type { Toast };
 
 /**
  * Quiz content store (SIM-18). A read machine mirroring leaderboard.store (epoch supersession on
@@ -34,8 +36,6 @@ export type QuizUiState =
   | { status: "ready"; rows: QuizQuestion[]; refreshing: boolean; mutating: QuizMutating }
   | { status: "error" } // retryable (serviceUnavailable)
   | { status: "authLost" }; // passive; gate re-probe drives the transition
-
-export type Toast = { tone: "success" | "error"; text: string };
 
 export type QuizContentStoreState = {
   state: QuizUiState;
@@ -203,19 +203,15 @@ async function runRemove(code: string): Promise<void> {
 /** At most ONE gate re-probe per auth-loss (shared latch). A second loss falls to a manual-retry
  * error — same discipline as the other stores. We NEVER write the gate directly. */
 function handleAuthLoss(myEpoch: number): void {
-  if (bridged) {
-    quizContentStore.setState({ state: { status: "error" } });
-    return;
-  }
-  bridged = true;
-  quizContentStore.setState({ state: { status: "authLost" } });
-  void (async () => {
-    await adminAuthStore.getState().retry();
-    if (myEpoch !== epoch) return;
-    if (adminAuthStore.getState().gate.status === "authorized") {
-      quizContentStore.setState({ state: { status: "error" } });
-    }
-  })();
+  bridgeAuthLoss({
+    isBridged: () => bridged,
+    setBridged: (v) => {
+      bridged = v;
+    },
+    isCurrent: () => myEpoch === epoch,
+    toAuthLost: () => quizContentStore.setState({ state: { status: "authLost" } }),
+    toError: () => quizContentStore.setState({ state: { status: "error" } }),
+  });
 }
 
 export const quizContentStore = createStore<QuizContentStoreState>()(() => ({
