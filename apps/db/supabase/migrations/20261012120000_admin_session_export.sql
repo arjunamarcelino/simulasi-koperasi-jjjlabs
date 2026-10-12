@@ -63,7 +63,7 @@ returns jsonb language sql stable security definer set search_path = '' as $$
   )
   from public.sessions s
   -- INNER join is safe: sessions.scenario_id is NOT NULL with an FK to scenario_definition(code) and
-  -- no ON DELETE action (RESTRICT), so every session has exactly one definition — it can never drop a
+  -- no ON DELETE action (NO ACTION, the default), so every session has exactly one definition — it can never drop a
   -- row. Title only; deliberately NOT status-filtered, so completed sessions for a COMING_SOON/renamed
   -- scenario still export.
   join public.scenario_definition sd on sd.code = s.scenario_id
