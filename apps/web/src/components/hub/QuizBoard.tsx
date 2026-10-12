@@ -150,19 +150,30 @@ export function QuizBoard() {
   const answered = selected !== null;
   const isLast = index === picked.length - 1;
 
+  // In-flight guard: a held Enter fires key-repeat (~30ms) faster than the listener's deferred
+  // cleanup, so a second submit could land in the pre-commit window (double submit_quiz; a late
+  // transient failure would flip an already-painted summary back to error). Synchronous ref, so it
+  // blocks re-entry before any state commits.
+  const submittingRef = useRef(false);
   const submitRun = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setPhase("grading");
-    const answers = picked.map((q, i) => ({ code: q.code, choice: choices[i] ?? 0 }));
-    const outcome = await gameStore.getState().submitQuiz(answers);
-    if (!mounted.current) return;
-    if (outcome.ok) {
-      setResults(outcome.results);
-      setAwarded(outcome.awarded);
-      setPhase("summary");
-    } else {
-      setErrorKind(outcome.reason === "degraded" ? "offline" : "retryable");
-      retryRef.current = () => void submitRun();
-      setPhase("error");
+    try {
+      const answers = picked.map((q, i) => ({ code: q.code, choice: choices[i] ?? 0 }));
+      const outcome = await gameStore.getState().submitQuiz(answers);
+      if (!mounted.current) return;
+      if (outcome.ok) {
+        setResults(outcome.results);
+        setAwarded(outcome.awarded);
+        setPhase("summary");
+      } else {
+        setErrorKind(outcome.reason === "degraded" ? "offline" : "retryable");
+        retryRef.current = () => void submitRun();
+        setPhase("error");
+      }
+    } finally {
+      submittingRef.current = false;
     }
   };
 
@@ -194,6 +205,7 @@ export function QuizBoard() {
   useEffect(() => {
     if (phase !== "playing") return;
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return; // ignore auto-repeat: a held Enter must not advance/submit twice
       if (e.key >= "1" && e.key <= "4") {
         e.preventDefault();
         e.stopPropagation();
