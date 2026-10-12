@@ -80,8 +80,8 @@ select is(admin.session_results_export(null, null) -> 0 ->> 'started_at', '2026-
 select is(admin.session_results_export(null, null) -> 7 ->> 'scenario_id', 'test-se-cs', 'idx7 is the last session by started_at');
 
 -- ── D8: duration (incl. zero) + ISO-8601 UTC render ───────────────────────────────────────────
-select is((admin.session_results_export(null, null) -> 0 ->> 'duration_seconds')::bigint, 125, 'idx0 duration_seconds = 125');
-select is((admin.session_results_export(null, null) -> 1 ->> 'duration_seconds')::bigint, 0, 'idx1 duration_seconds = 0 (zero-duration session)');
+select is(admin.session_results_export(null, null) -> 0 ->> 'duration_seconds', '125', 'idx0 duration_seconds = 125');
+select is(admin.session_results_export(null, null) -> 1 ->> 'duration_seconds', '0', 'idx1 duration_seconds = 0 (zero-duration session)');
 select is(admin.session_results_export(null, null) -> 0 ->> 'started_at' like '%Z', true, 'started_at is an ISO-8601 UTC string (ends with Z)');
 
 -- ── D9: historical/COMING_SOON scenario still exports with its title (not status-filtered) ─────
