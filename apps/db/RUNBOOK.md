@@ -111,7 +111,8 @@ project outlives the hackathon. Cascade if you do run it: `auth.users` → `prof
 ## 10. Admin metrics role (SIM-15; widened in SIM-17)
 The `20261009120000_admin_metrics.sql` migration creates `metrics_reader` with a **null password** (it
 cannot authenticate until a password is set out-of-band — keeps secrets out of git). The FastAPI backend
-connects as this role to call `admin.metrics_overview()` (and, since SIM-16, `admin.scenario_analytics()`).
+connects as this role to call `admin.metrics_overview()` (and, since SIM-16, `admin.scenario_analytics()`;
+since SIM-19, the read-only `admin.session_results_export()` CSV export).
 
 > **SIM-17 note:** `metrics_reader` now ALSO `EXECUTE`s the seasonal-leaderboard functions, including the
 > `VOLATILE` **writes** `admin.capture_leaderboard_snapshot` and `admin.delete_leaderboard_season` — so

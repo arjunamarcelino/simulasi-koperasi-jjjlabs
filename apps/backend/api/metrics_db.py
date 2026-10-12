@@ -20,7 +20,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import asyncpg
@@ -139,7 +139,7 @@ async def _call_definer(
     *args: Any,
     log_name: str,
     log_arg: Any = _OMIT,
-) -> dict[str, Any]:
+) -> Any:
     """Shared body for the SIM-17 definer-fn calls (overview/capture/delete).
 
     Identical fail-soft contract to fetch_scenario_analytics: None pool / dropped connection /
@@ -279,4 +279,23 @@ async def delete_mading_block(pool: asyncpg.Pool | None, *, block_id: uuid.UUID)
     return await _call_definer(
         pool, "select admin.delete_mading_block($1)", block_id,
         log_name="delete_mading_block", log_arg=block_id,
+    )
+
+
+# ── SIM-19 reporting / CSV export (admin-gated read) ─────────────────────────────────────
+async def fetch_session_export(
+    pool: asyncpg.Pool | None, p_from: date | None, p_to: date | None
+) -> list[dict[str, Any]]:
+    """Call admin.session_results_export($1, $2) → list of per-session row dicts (SIM-19).
+
+    Reuses the shared fail-soft contract (_call_definer): no pool / dropped connection / timeout /
+    query error → MetricsUnavailable (→ 503, never 500). The SQL fn returns coalesce(jsonb_agg(...),
+    '[]'), so the result is NEVER SQL NULL — the `row is None → MetricsUnavailable` guard never
+    misfires on an EMPTY export, which is a valid [] (a 200 header-only CSV). The decoded jsonb array
+    IS a list[dict] via the connection's jsonb codec. p_from/p_to are bound positionally ($1/$2) as
+    `date` (or NULL) — never string-interpolated; both non-PII, so included in the fault log for triage.
+    Future (large exports): a per-call timeout override on this path — see review P2-2."""
+    return await _call_definer(
+        pool, "select admin.session_results_export($1, $2)", p_from, p_to,
+        log_name="session_results_export",
     )

@@ -261,6 +261,22 @@ Live admin CRUD over educational content — no deploy to edit a quiz question o
 - Both tables are seeded one-way from `@simkop/catalog` (`quiz.json` / `mading.json`); the DB is
   authoritative at runtime. `metrics_reader` widened again to EXECUTE these quiz/mading writes.
 
+### Admin reporting / CSV export (SIM-19)
+Offline reporting over the same admin read path — **no new tables**, one more `SECURITY DEFINER`
+read fn: `admin.session_results_export(p_from date, p_to date)`. Returns a `jsonb` **array of
+per-session result rows** (not an aggregate) — one object per **completed** session (`ended_at is
+not null`; OPEN rows excluded), **no row-level PII** (no `user_id`/`display_name`; `session_id` is an
+opaque UUID). Optional `from`/`to` filter `started_at`, UTC-anchored, half-open `[from, to+1 day)`
+(both days inclusive; `from > to` → 0 rows). `avg_score` reuses the exact object-guarded, numeric,
+in-range (0–100), `round(…,1)` per-session formula as `metrics_overview()`/`scenario_analytics()`.
+`coalesce(jsonb_agg(…), '[]')` keeps the result non-NULL so the backend's fail-soft guard treats an
+empty export as a valid `[]` (a 200 header-only CSV), not a 503. Grant matrix unchanged in kind:
+`EXECUTE` to `metrics_reader` only (revoked from public/anon/authenticated), owner `postgres`. A
+partial index `sessions_ended_started_idx on public.sessions(started_at) where ended_at is not null`
+serves the date-range scan (inserts don't touch it — rows enter only on the finalize UPDATE). The
+CSV assembly (RFC-4180, UTF-8 BOM, formula-injection sanitization) lives in the backend, not the DB.
+`metrics_reader` gains this read-only EXECUTE; no new role, no write, no blast-radius change.
+
 > **On the reallife codes:** `redeem_code` is a *soft* gate — printed at the KDMP and typed
 > by the player. It is **not** a cryptographic secret. As of SIM-9 the codes live server-side
 > only (`apps/db/seed-codes.json` → `redeem_code`) and no longer ship in the client bundle;
