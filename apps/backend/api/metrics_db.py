@@ -294,8 +294,7 @@ async def fetch_session_export(
     misfires on an EMPTY export, which is a valid [] (a 200 header-only CSV). The decoded jsonb array
     IS a list[dict] via the connection's jsonb codec. p_from/p_to are bound positionally ($1/$2) as
     `date` (or NULL) — never string-interpolated; both non-PII, so included in the fault log for triage.
-    Escape hatch for when a large export outgrows the pool's 4s command_timeout: a per-call
-    conn.fetchval(..., timeout=<n>) override (would require parameterizing _call_definer)."""
+    Future (large exports): a per-call timeout override on this path — see review P2-2."""
     return await _call_definer(
         pool, "select admin.session_results_export($1, $2)", p_from, p_to,
         log_name="session_results_export",
