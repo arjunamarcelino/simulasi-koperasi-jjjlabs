@@ -15,7 +15,9 @@
 -- the table directly, bypassing Pydantic) and any future direct write cannot persist a payload the
 -- learner parser would reject as `invalid`.
 
-create table public.mading_block (
+-- `if not exists` / `or replace` throughout so a partial-apply or manual re-run is safe (matches
+-- the sibling quiz migration's idempotent style).
+create table if not exists public.mading_block (
   id         uuid primary key default gen_random_uuid(),
   board      text not null check (board in ('info','data','knowledge','identitas')),
   block_key  text not null check (char_length(btrim(block_key)) > 0),
@@ -25,10 +27,10 @@ create table public.mading_block (
   unique (board, block_key)
 );
 -- identitas is a single header row (one per koperasi) — enforce it structurally, not by convention.
-create unique index mading_block_identitas_singleton
+create unique index if not exists mading_block_identitas_singleton
   on public.mading_block (board) where board = 'identitas';
 -- Hot learner read path: filter by board, order by sort_order.
-create index mading_block_board_sort_idx on public.mading_block (board, sort_order);
+create index if not exists mading_block_board_sort_idx on public.mading_block (board, sort_order);
 
 -- RLS on + revoke (incl public — the SIM-5 default-privilege trap): the base table is reachable
 -- only through the fns/view below.
@@ -37,7 +39,7 @@ revoke all on table public.mading_block from anon, authenticated, public;
 
 -- Learner read: a plain owner-privileged view (no hidden fields → a view, not a definer fn), granted
 -- SELECT-only to anon/authenticated. NEVER grant INSERT/UPDATE/DELETE on it.
-create view public.mading_catalog as
+create or replace view public.mading_catalog as
   select board, block_key, payload, sort_order from public.mading_block;
 grant select on public.mading_catalog to anon, authenticated;
 
@@ -198,6 +200,25 @@ returns jsonb language sql stable security definer set search_path = '' as $$
   );
 $$;
 
+-- Small helper: build the {ok:true, row:{...}} envelope for a block identified by (board, block_key).
+-- Defined before its caller (admin.upsert_mading_block) for readability.
+create or replace function admin._mading_row(p_board text, p_block_key text)
+returns jsonb language sql stable security definer set search_path = '' as $$
+  select jsonb_build_object(
+    'ok', true,
+    'row', jsonb_build_object(
+      'id', b.id,
+      'board', b.board,
+      'block_key', b.block_key,
+      'payload', b.payload,
+      'sort_order', b.sort_order,
+      'updated_at', to_char(b.updated_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+    )
+  )
+  from public.mading_block b
+  where b.board = p_board and b.block_key = p_block_key;
+$$;
+
 -- ── admin upsert: create (p_id null) or compare-and-swap edit. board/block_key are set at CREATE
 -- and immutable on EDIT (block_key is the stable seed key). (VOLATILE — it WRITES) ───────────────
 create or replace function admin.upsert_mading_block(
@@ -266,24 +287,6 @@ begin
     return (select admin._mading_row(b.board, b.block_key) from public.mading_block b where b.id = p_id);
   end if;
 end;
-$$;
-
--- Small helper: build the {ok:true, row:{...}} envelope for a block identified by (board, block_key).
-create or replace function admin._mading_row(p_board text, p_block_key text)
-returns jsonb language sql stable security definer set search_path = '' as $$
-  select jsonb_build_object(
-    'ok', true,
-    'row', jsonb_build_object(
-      'id', b.id,
-      'board', b.board,
-      'block_key', b.block_key,
-      'payload', b.payload,
-      'sort_order', b.sort_order,
-      'updated_at', to_char(b.updated_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
-    )
-  )
-  from public.mading_block b
-  where b.board = p_board and b.block_key = p_block_key;
 $$;
 
 -- ── admin delete: no learner-facing FK references mading_block, so no soft-block. Empty board OK. ──

@@ -140,6 +140,10 @@ const parts = [
     ["prompt", "options", "correct_index", "explanation", "sort_order"],
   ),
   "",
+  // NOTE: the quiz + mading conflict-update sets deliberately OMIT updated_at, so a re-seed reverts
+  // payload/sort_order to catalog values WITHOUT bumping the CAS token. A standalone `psql -f seed.sql`
+  // against a live DB therefore leaves an admin's loaded token validating against reverted content
+  // (benign: the next save re-overwrites). Seeding is init-only (apps/db/RUNBOOK.md); don't reseed live.
   block(
     "Mading (SIM-18) — info/data/knowledge boards + the identitas header; one generic table, board discriminator",
     "mading_block",
