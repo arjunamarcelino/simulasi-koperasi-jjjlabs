@@ -19,6 +19,7 @@ import missions from "@simkop/catalog/data/missions.json" with { type: "json" };
 import vouchers from "@simkop/catalog/data/vouchers.json" with { type: "json" };
 import badges from "@simkop/catalog/data/badges.json" with { type: "json" };
 import quiz from "@simkop/catalog/data/quiz.json" with { type: "json" };
+import mading from "@simkop/catalog/data/mading.json" with { type: "json" };
 
 // Reallife unlock codes are server-only: they live here, NOT in the client-bundled catalog
 // (@simkop/catalog ships to apps/web). We merge them into the seed by mission id below.
@@ -35,15 +36,28 @@ const n = (v) => (v === null || v === undefined ? "NULL" : String(v));
 /** jsonb literal from a JS value, or NULL. */
 const j = (v) => (v === null || v === undefined ? "NULL" : `'${JSON.stringify(v).replace(/'/g, "''")}'::jsonb`);
 
-function block(title, table, cols, rows, rowToVals, conflictUpdate) {
+function block(title, table, cols, rows, rowToVals, conflictUpdate, conflictTarget = "code") {
   const values = rows.map((r, i) => `  (${rowToVals(r, i + 1).join(", ")})`);
   return [
     `-- ${title}`,
     `insert into public.${table} (${cols.join(", ")}) values`,
     values.join(",\n"),
-    `on conflict (code) do update set`,
+    `on conflict (${conflictTarget}) do update set`,
     conflictUpdate.map((c) => `  ${c} = excluded.${c}`).join(",\n") + ";",
   ].join("\n");
+}
+
+// Flatten the heterogeneous mading catalog into one mading_block row-set. block_key is the stable
+// seed key per board (the data slide's own id; an index key for the list boards; 'default' for the
+// singleton identitas). sort_order resets per board. The data slide's `id` becomes block_key and is
+// stripped from the stored payload (the learner read supplies block_key separately).
+function madingRows(m) {
+  const rows = [];
+  rows.push({ board: "identitas", block_key: "default", payload: m.identitas, sort_order: 0 });
+  m.info.forEach((p, i) => rows.push({ board: "info", block_key: `info-${i}`, payload: p, sort_order: i }));
+  m.data.forEach(({ id, ...payload }, i) => rows.push({ board: "data", block_key: id, payload, sort_order: i }));
+  m.knowledge.forEach((p, i) => rows.push({ board: "knowledge", block_key: `kn-${i}`, payload: p, sort_order: i }));
+  return rows;
 }
 
 // Validate the mission ⇄ code join bidirectionally so a missing, orphan, stale, mis-keyed,
@@ -124,6 +138,20 @@ const parts = [
     quiz,
     (r, i) => [s(r.id), s(r.prompt), j(r.options), n(r.correctIndex), s(r.explanation ?? null), n(i)],
     ["prompt", "options", "correct_index", "explanation", "sort_order"],
+  ),
+  "",
+  // NOTE: the quiz + mading conflict-update sets deliberately OMIT updated_at, so a re-seed reverts
+  // payload/sort_order to catalog values WITHOUT bumping the CAS token. A standalone `psql -f seed.sql`
+  // against a live DB therefore leaves an admin's loaded token validating against reverted content
+  // (benign: the next save re-overwrites). Seeding is init-only (apps/db/RUNBOOK.md); don't reseed live.
+  block(
+    "Mading (SIM-18) — info/data/knowledge boards + the identitas header; one generic table, board discriminator",
+    "mading_block",
+    ["board", "block_key", "payload", "sort_order"],
+    madingRows(mading),
+    (r) => [s(r.board), s(r.block_key), j(r.payload), n(r.sort_order)],
+    ["payload", "sort_order"],
+    "board, block_key",
   ),
   "",
 ];

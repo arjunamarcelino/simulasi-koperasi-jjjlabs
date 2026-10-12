@@ -589,3 +589,357 @@ export async function deleteLeaderboardSeason(
       return { kind: "serviceUnavailable" };
   }
 }
+
+// --- SIM-18 quiz content management ------------------------------------------
+// Admin CRUD over quiz_definition. Unlike the leaderboard unions, the WRITE adds terminal
+// `rejected` (422 input validation) and `conflict` (409 duplicate_code/stale_write) members, and
+// delete adds `blocked` (409 has_completions). A 409 body carrying an UNKNOWN reason is a fault
+// (serviceUnavailable), never a silently-generic conflict — the reason literal is validated.
+
+/** A full admin quiz row — INCLUDES correct_index/explanation that the game's quiz_catalog hides. */
+export type QuizQuestion = {
+  code: string;
+  prompt: string;
+  options: string[];
+  correct_index: number;
+  explanation: string | null;
+  sort_order: number;
+  updated_at: string;
+};
+
+/** Upsert input. `prev_updated_at` null → CREATE; a value → compare-and-swap EDIT (echo the
+ * `updated_at` from the loaded row verbatim). */
+export type QuizUpsertInput = {
+  code: string;
+  prompt: string;
+  options: string[];
+  correct_index: number;
+  explanation: string | null;
+  sort_order: number;
+  prev_updated_at: string | null;
+};
+
+export type QuizListOutcome =
+  | { kind: "ok"; data: QuizQuestion[] }
+  | { kind: "notAuthorized" } // 403
+  | { kind: "unauthenticated" } // 401 after one refresh
+  | { kind: "serviceUnavailable" }; // 503/500/network/timeout/malformed-200/null-client
+
+export type QuizUpsertOutcome =
+  | { kind: "ok"; data: QuizQuestion }
+  | { kind: "rejected"; reason: string } // 422 — server-side validation (defense-in-depth)
+  | { kind: "conflict"; reason: "duplicate_code" | "stale_write" } // 409
+  | { kind: "notFound" } // 404 — editing a code that no longer exists
+  | { kind: "notAuthorized" } // 403
+  | { kind: "unauthenticated" } // 401 after one refresh
+  | { kind: "serviceUnavailable" };
+
+export type QuizDeleteOutcome =
+  | { kind: "ok" }
+  | { kind: "blocked"; reason: "has_completions" } // 409 — answered question, undeletable
+  | { kind: "notFound" } // 404 — already gone (treated as success by the store)
+  | { kind: "notAuthorized" } // 403
+  | { kind: "unauthenticated" } // 401 after one refresh
+  | { kind: "serviceUnavailable" };
+
+const isStrArray = (x: unknown): x is string[] =>
+  Array.isArray(x) && x.every((s) => typeof s === "string");
+
+/** Deep, CLOSED guard for an admin quiz row: enforces the 2..4 options cap and that correct_index
+ * is a valid index — a malformed 200 is a fault, never rendered as a broken answer key. */
+function isQuizQuestion(x: unknown): x is QuizQuestion {
+  const o = rec(x);
+  if (
+    o === null ||
+    typeof o["code"] !== "string" ||
+    typeof o["prompt"] !== "string" ||
+    !isStrArray(o["options"]) ||
+    !isNonNegInt(o["correct_index"]) ||
+    !isStrOrNull(o["explanation"]) ||
+    !isNonNegInt(o["sort_order"]) ||
+    typeof o["updated_at"] !== "string"
+  ) {
+    return false;
+  }
+  const opts = o["options"] as string[];
+  return opts.length >= 2 && opts.length <= 4 && (o["correct_index"] as number) < opts.length;
+}
+
+/** Read a FastAPI error body's reason. Our hand-raised HTTPExceptions carry `detail` as a string
+ * (the machine reason code, e.g. "duplicate_code"); FastAPI's native 422 carries `detail` as a list
+ * of `{loc,msg,type}` — surface the first `msg` so a boundary-validation `rejected` isn't blank. */
+async function errorReason(res: Response): Promise<string> {
+  const b: unknown = await res.json().catch(() => null);
+  const detail = rec(b)?.["detail"];
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msg = rec(detail[0])?.["msg"];
+    return typeof msg === "string" ? msg : "validation_error";
+  }
+  return "";
+}
+
+/** Fetch `GET /admin/quiz` (SIM-18). Returns the full rows (incl the hidden answer key) for editing. */
+export async function listQuiz(signal?: AbortSignal): Promise<QuizListOutcome> {
+  const r = await authedRequest("/admin/quiz", {}, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const b: unknown = await r.res.json().catch(() => null);
+      const o = rec(b);
+      if (o === null || o["ok"] !== true || !Array.isArray(o["rows"]) || !o["rows"].every(isQuizQuestion)) {
+        return { kind: "serviceUnavailable" }; // malformed 200 → fault
+      }
+      return { kind: "ok", data: o["rows"] as QuizQuestion[] };
+    }
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+/** Create (POST /admin/quiz) or compare-and-swap edit (POST /admin/quiz/{code}) — SIM-18. The
+ * create/edit split mirrors mading: `prev_updated_at === null` is a CREATE (code in the body),
+ * otherwise an EDIT (code in the path). The 401-resend is safe because the backend gate precedes
+ * the DB fn; a 503 is ambiguous (may have committed) → the store refetches. */
+export async function upsertQuizQuestion(
+  input: QuizUpsertInput,
+  signal?: AbortSignal,
+): Promise<QuizUpsertOutcome> {
+  const path =
+    input.prev_updated_at === null ? "/admin/quiz" : `/admin/quiz/${encodeURIComponent(input.code)}`;
+  const body = JSON.stringify(
+    input.prev_updated_at === null
+      ? {
+          code: input.code,
+          prompt: input.prompt,
+          options: input.options,
+          correct_index: input.correct_index,
+          explanation: input.explanation,
+          sort_order: input.sort_order,
+        }
+      : {
+          prompt: input.prompt,
+          options: input.options,
+          correct_index: input.correct_index,
+          explanation: input.explanation,
+          sort_order: input.sort_order,
+          prev_updated_at: input.prev_updated_at,
+        },
+  );
+  const r = await authedRequest(path, { method: "POST", body }, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const b: unknown = await r.res.json().catch(() => null);
+      return isQuizQuestion(b) ? { kind: "ok", data: b } : { kind: "serviceUnavailable" };
+    }
+    case 409: {
+      const reason = await errorReason(r.res);
+      return reason === "duplicate_code" || reason === "stale_write"
+        ? { kind: "conflict", reason }
+        : { kind: "serviceUnavailable" }; // unknown 409 reason = fault
+    }
+    case 422:
+      return { kind: "rejected", reason: await errorReason(r.res) };
+    case 404:
+      return { kind: "notFound" };
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+/** Delete via `DELETE /admin/quiz/{code}` (SIM-18). 409 has_completions is a distinct `blocked`
+ * (answered questions are undeletable); 404 is `notFound` (already gone). */
+export async function deleteQuizQuestion(
+  code: string,
+  signal?: AbortSignal,
+): Promise<QuizDeleteOutcome> {
+  const r = await authedRequest(`/admin/quiz/${encodeURIComponent(code)}`, { method: "DELETE" }, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200:
+      return { kind: "ok" };
+    case 409: {
+      const reason = await errorReason(r.res);
+      return reason === "has_completions"
+        ? { kind: "blocked", reason }
+        : { kind: "serviceUnavailable" };
+    }
+    case 404:
+      return { kind: "notFound" };
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+// --- SIM-18 mading content management ---------------------------------------
+// Admin CRUD over the 4 mading boards. The admin layer treats `payload` loosely (a record) — the
+// panel builds/interprets the board-specific shape and the SERVER is the authoritative validator
+// (422 `rejected`). The learner-facing web repo re-validates with the closed parsers.
+
+export const MADING_BOARDS = ["info", "data", "knowledge", "identitas"] as const;
+export type MadingBoard = (typeof MADING_BOARDS)[number];
+
+export type MadingItem = {
+  id: string;
+  block_key: string;
+  payload: Record<string, unknown>;
+  sort_order: number;
+  updated_at: string;
+};
+
+export type MadingGroups = {
+  info: MadingItem[];
+  data: MadingItem[];
+  knowledge: MadingItem[];
+  identitas: MadingItem | null;
+};
+
+/** Upsert input. `id` null → CREATE (block_key required); a value → compare-and-swap EDIT. */
+export type MadingUpsertInput = {
+  id: string | null;
+  board: MadingBoard;
+  block_key: string;
+  payload: Record<string, unknown>;
+  sort_order: number;
+  prev_updated_at: string | null;
+};
+
+export type MadingListOutcome =
+  | { kind: "ok"; data: MadingGroups }
+  | { kind: "notAuthorized" }
+  | { kind: "unauthenticated" }
+  | { kind: "serviceUnavailable" };
+
+export type MadingUpsertOutcome =
+  | { kind: "ok"; data: MadingItem & { board: MadingBoard } }
+  | { kind: "rejected"; reason: string } // 422 — server payload/input validation
+  | { kind: "conflict"; reason: "duplicate_key" | "stale_write" | "identitas_exists" } // 409
+  | { kind: "notFound" } // 404
+  | { kind: "notAuthorized" }
+  | { kind: "unauthenticated" }
+  | { kind: "serviceUnavailable" };
+
+export type MadingDeleteOutcome =
+  | { kind: "ok" }
+  | { kind: "notFound" } // 404 — already gone (store treats as success)
+  | { kind: "notAuthorized" }
+  | { kind: "unauthenticated" }
+  | { kind: "serviceUnavailable" };
+
+function isMadingItem(x: unknown): x is MadingItem {
+  const o = rec(x);
+  return (
+    o !== null &&
+    typeof o["id"] === "string" &&
+    typeof o["block_key"] === "string" &&
+    rec(o["payload"]) !== null &&
+    !Array.isArray(o["payload"]) && // rec() admits arrays (typeof [] === "object"); payload must be an object
+    isNonNegInt(o["sort_order"]) &&
+    typeof o["updated_at"] === "string"
+  );
+}
+
+function isMadingGroups(x: unknown): x is MadingGroups {
+  const o = rec(x);
+  if (o === null) return false;
+  for (const k of ["info", "data", "knowledge"]) {
+    if (!Array.isArray(o[k]) || !o[k].every(isMadingItem)) return false;
+  }
+  return o["identitas"] === null || isMadingItem(o["identitas"]);
+}
+
+const MADING_CONFLICT = ["duplicate_key", "stale_write", "identitas_exists"] as const;
+
+/** Fetch `GET /admin/mading` (SIM-18) — all blocks grouped by board (incl id + CAS token). */
+export async function listMading(signal?: AbortSignal): Promise<MadingListOutcome> {
+  const r = await authedRequest("/admin/mading", {}, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const b: unknown = await r.res.json().catch(() => null);
+      const o = rec(b);
+      return o !== null && o["ok"] === true && isMadingGroups(o["groups"])
+        ? { kind: "ok", data: o["groups"] }
+        : { kind: "serviceUnavailable" };
+    }
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+/** Create (id null) or compare-and-swap edit a mading block (SIM-18). */
+export async function upsertMadingBlock(
+  input: MadingUpsertInput,
+  signal?: AbortSignal,
+): Promise<MadingUpsertOutcome> {
+  const path = input.id === null ? "/admin/mading" : `/admin/mading/${encodeURIComponent(input.id)}`;
+  const body = JSON.stringify(
+    input.id === null
+      ? { board: input.board, block_key: input.block_key, payload: input.payload, sort_order: input.sort_order }
+      : { board: input.board, payload: input.payload, sort_order: input.sort_order, prev_updated_at: input.prev_updated_at },
+  );
+  const r = await authedRequest(path, { method: "POST", body }, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const b: unknown = await r.res.json().catch(() => null);
+      const board = rec(b)?.["board"];
+      // Validate `board` against the literal set before narrowing (don't blind-cast an unvalidated
+      // string to MadingBoard) — same discipline as the conflict-reason guards below.
+      return isMadingItem(b) && typeof board === "string" && (MADING_BOARDS as readonly string[]).includes(board)
+        ? { kind: "ok", data: { ...b, board: board as MadingBoard } }
+        : { kind: "serviceUnavailable" };
+    }
+    case 409: {
+      const reason = await errorReason(r.res);
+      return (MADING_CONFLICT as readonly string[]).includes(reason)
+        ? { kind: "conflict", reason: reason as (typeof MADING_CONFLICT)[number] }
+        : { kind: "serviceUnavailable" };
+    }
+    case 422:
+      return { kind: "rejected", reason: await errorReason(r.res) };
+    case 404:
+      return { kind: "notFound" };
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+/** Delete via `DELETE /admin/mading/{id}` (SIM-18). */
+export async function deleteMadingBlock(id: string, signal?: AbortSignal): Promise<MadingDeleteOutcome> {
+  const r = await authedRequest(`/admin/mading/${encodeURIComponent(id)}`, { method: "DELETE" }, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200:
+      return { kind: "ok" };
+    case 404:
+      return { kind: "notFound" };
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}

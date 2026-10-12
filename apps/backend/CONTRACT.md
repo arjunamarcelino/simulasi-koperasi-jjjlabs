@@ -421,6 +421,37 @@ Ketiganya memicu AI Auditor yang sama; yang beda hanya pemicu & bentuk pengirima
 
 ---
 
+## 7b. Manajemen konten admin — kuis & mading (SIM-18)
+
+CRUD admin-gated di atas pool `metrics_reader` yang SAMA. **Wajib** `Authorization: Bearer <supabase-jwt>`
+admin (401→403 SEBELUM sentuh DB, seperti endpoint admin lain). **Kontrak error (load-bearing):**
+`_call_definer` memetakan RAISE apa pun → **503**, maka validasi input menghasilkan **422 di boundary
+Pydantic** (sebelum RPC) dan hasil not-found/konflik adalah **RETURN `{ok,reason}` terstruktur** dari
+fungsi SQL (bukan RAISE) yang route petakan ke status. `reason` tak dikenal → default **422** (kuis &
+mading sama); JANGAN pernah jatuh ke 200. Konten di-render **teks-saja** di game (mitigasi XSS; tanpa
+HTML sink).
+
+**Kuis** (`quiz_definition`; answer key tetap tersembunyi — baca admin lewat `admin.list_quiz`, bukan
+view `quiz_catalog`):
+- `GET /admin/quiz` → `{ok, rows:[{code,prompt,options,correct_index,explanation,sort_order,updated_at}]}`.
+- `POST /admin/quiz` — CREATE (`code` di body). Opsi 2–4, non-kosong, unik; `0≤correct_index<len(options)`.
+- `POST /admin/quiz/{code}` — EDIT. **Wajib** `prev_updated_at` (token CAS dari `updated_at`); mismatch → 409 `stale_write`.
+- `DELETE /admin/quiz/{code}` — soft-block 409 `has_completions` bila sudah pernah dijawab; 404 `not_found`.
+
+**Mading** (satu tabel `mading_block(board,payload jsonb)`; `board ∈ info|data|knowledge|identitas`;
+dibaca pemain lewat view `public.mading_catalog`):
+- `GET /admin/mading` → `{ok, groups:{info:[…],data:[…],knowledge:[…],identitas:…|null}}`.
+- `POST /admin/mading` — CREATE (`board`+`block_key`+`payload` di body). Payload divalidasi per-board
+  (Pydantic discriminated: info note / data table / knowledge stat|fact / identitas).
+- `POST /admin/mading/{id}` — EDIT. **Wajib** `prev_updated_at` (CAS); `board` di body bersifat *advisory*
+  (DB validasi payload terhadap board TERSIMPAN; board immutable saat edit).
+- `DELETE /admin/mading/{id}` — 404 `not_found`; papan boleh kosong.
+
+CAS atomic: token dilipat ke dalam `WHERE updated_at is not distinct from …` (bukan check-then-update),
+sehingga dua edit bersamaan tak bisa sama-sama menang. Konsumen: `apps/admin` (panel kuis + mading);
+game membaca `mading_catalog`/`quiz_catalog` live via `supabase-js`. Seed bootstrap satu-arah dari
+`@simkop/catalog` (DB otoritatif saat runtime).
+
 ## 8. Catatan integrasi untuk FE game
 
 - **Tunggu agent join** sebelum mengizinkan RPC / input. Sapaan NPC pertama =

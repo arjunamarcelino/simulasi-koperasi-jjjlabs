@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { LEVELS } from "@simkop/catalog";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { useAuth, authStore, MAX_NAME } from "../../stores/auth.store";
-import { KOPERASI_IDENTITAS } from "../../content/mading-info";
 import { BADGES, isEarned, buildBadgeContext } from "../../content/badges";
 import { sessionsRepo } from "../../lib/sessionsRepo";
 import { goodEndingScenarioIds } from "../../lib/sessionHistory";
@@ -11,6 +10,11 @@ import { ModalShell } from "../common/ModalShell";
 import { GameButton } from "../common/GameButton";
 import { BadgeIcon } from "./BadgeIcon";
 import { SessionHistoryTab } from "./SessionHistoryTab";
+
+// The koperasi name is admin-editable live via the mading identitas board (SIM-18); here in the
+// profile it is an incidental label, so a static fallback is kept rather than adding an async fetch
+// to this modal. The authoritative, live-editable surface is the Papan Info board.
+const KOPERASI_NAMA = "Koperasi Desa Merah Putih Sukamaju";
 
 type ProfileTab = "profil" | "badge" | "riwayat";
 const TAB_LABELS: Record<ProfileTab, string> = { profil: "Profil", badge: "Badge", riwayat: "Riwayat" };
@@ -263,7 +267,7 @@ export function ProfileModal() {
       </div>
 
       <div className="flex items-center justify-between border-t-2 border-line pt-4 font-body text-lg">
-        <span className="min-w-0 truncate text-right text-ink">{KOPERASI_IDENTITAS.nama}</span>
+        <span className="min-w-0 truncate text-right text-ink">{KOPERASI_NAMA}</span>
       </div>
       <p className="mt-1 text-right font-body text-base text-ink-soft">
         {voucherCount} voucher ditukar

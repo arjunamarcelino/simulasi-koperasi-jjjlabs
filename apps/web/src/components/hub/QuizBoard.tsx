@@ -11,9 +11,61 @@ const QUIZ_PICK = 10;
 
 type Phase = "loading" | "playing" | "grading" | "summary" | "error";
 
-// The catalog is static, owner-independent data; cache it across overlay opens so a
-// re-open draws a fresh run without another round-trip.
-let cachedQuizPool: QuizCatalogQuestion[] | null = null;
+// Admins edit the quiz catalog live (SIM-18), so the board must reflect edits on the NEXT open —
+// no module-level pool cache. A fetch-generation counter makes only the LATEST open/retry write
+// state: each loadRun bumps it, and a resolving fetch that is no longer the latest is dropped
+// (prevents a slow earlier fetch from painting a stale draw over a newer one).
+let quizFetchGen = 0;
+
+/** Pure error/empty content (no ModalShell) so the branch matrix is unit-testable in the node
+ * test env. `empty` and `offline` are terminal (no retry — reopening refetches); only a transient
+ * `retryable` load/grade error offers "Coba Lagi". */
+export function QuizErrorContent({
+  errorKind,
+  onRetry,
+  onClose,
+}: {
+  errorKind: "offline" | "retryable" | "empty";
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      <div className="border-3 border-border bg-cream px-6 py-6 text-center">
+        {errorKind === "offline" ? (
+          <>
+            <p className="font-body text-xl text-ink">Kuis butuh koneksi internet.</p>
+            <p className="mt-2 font-body text-lg text-ink-soft">
+              Sambungkan koneksi lalu buka kuis kembali.
+            </p>
+          </>
+        ) : errorKind === "empty" ? (
+          <>
+            <p className="font-body text-xl text-ink">Belum ada soal kuis.</p>
+            <p className="mt-2 font-body text-lg text-ink-soft">
+              Soal akan muncul setelah admin menambahkannya.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="font-body text-xl text-ink">Gagal memuat kuis.</p>
+            <p className="mt-2 font-body text-lg text-ink-soft">Coba lagi sebentar.</p>
+          </>
+        )}
+      </div>
+      <div className="mt-6 flex justify-center gap-4">
+        {errorKind === "retryable" && (
+          <GameButton variant="primary" onClick={onRetry}>
+            Coba Lagi
+          </GameButton>
+        )}
+        <GameButton variant="ghost" onClick={onClose}>
+          Tutup
+        </GameButton>
+      </div>
+    </>
+  );
+}
 
 /** Unbiased Fisher–Yates draw of up to n questions. */
 function draw(pool: QuizCatalogQuestion[], n: number): QuizCatalogQuestion[] {
@@ -41,7 +93,7 @@ export function QuizBoard() {
   const [awarded, setAwarded] = useState<Totals | null>(null);
   // "offline" = no server (answer key is server-only, can't grade); "retryable" = a
   // transient load/grade error that a "Coba lagi" can retry.
-  const [errorKind, setErrorKind] = useState<"offline" | "retryable">("retryable");
+  const [errorKind, setErrorKind] = useState<"offline" | "retryable" | "empty">("retryable");
   const retryRef = useRef<() => void>(() => {});
   const mounted = useRef(true);
   useEffect(() => {
@@ -63,18 +115,23 @@ export function QuizBoard() {
     setPhase("playing");
   };
 
-  // Load the catalog (module-cached so re-opens don't refetch), then draw a run.
+  // Fetch the catalog fresh on every open (admins edit it live), then draw a run. The
+  // generation guard drops a superseded fetch; the state write stays AFTER the guard so a
+  // dropped straggler can never paint a stale draw.
   const loadRun = async () => {
+    const myGen = ++quizFetchGen;
     setPhase("loading");
-    if (cachedQuizPool) {
-      startPlaying(cachedQuizPool);
-      return;
-    }
     const res = await progressRepo.fetchQuiz();
-    if (!mounted.current) return;
-    if (res.status === "ok" && res.data.length > 0) {
-      cachedQuizPool = res.data;
-      startPlaying(res.data);
+    if (myGen !== quizFetchGen || !mounted.current) return; // superseded / unmounted → drop
+    if (res.status === "ok") {
+      if (res.data.length > 0) {
+        startPlaying(res.data);
+      } else {
+        // A legitimately empty catalog is a distinct terminal state — NOT a transient error, and
+        // never startPlaying([]) (which would draw a zero-length run). Reopening refetches.
+        setErrorKind("empty");
+        setPhase("error");
+      }
     } else {
       setErrorKind(res.status === "degraded" ? "offline" : "retryable");
       retryRef.current = () => void loadRun();
@@ -93,19 +150,30 @@ export function QuizBoard() {
   const answered = selected !== null;
   const isLast = index === picked.length - 1;
 
+  // In-flight guard: a held Enter fires key-repeat (~30ms) faster than the listener's deferred
+  // cleanup, so a second submit could land in the pre-commit window (double submit_quiz; a late
+  // transient failure would flip an already-painted summary back to error). Synchronous ref, so it
+  // blocks re-entry before any state commits.
+  const submittingRef = useRef(false);
   const submitRun = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setPhase("grading");
-    const answers = picked.map((q, i) => ({ code: q.code, choice: choices[i] ?? 0 }));
-    const outcome = await gameStore.getState().submitQuiz(answers);
-    if (!mounted.current) return;
-    if (outcome.ok) {
-      setResults(outcome.results);
-      setAwarded(outcome.awarded);
-      setPhase("summary");
-    } else {
-      setErrorKind(outcome.reason === "degraded" ? "offline" : "retryable");
-      retryRef.current = () => void submitRun();
-      setPhase("error");
+    try {
+      const answers = picked.map((q, i) => ({ code: q.code, choice: choices[i] ?? 0 }));
+      const outcome = await gameStore.getState().submitQuiz(answers);
+      if (!mounted.current) return;
+      if (outcome.ok) {
+        setResults(outcome.results);
+        setAwarded(outcome.awarded);
+        setPhase("summary");
+      } else {
+        setErrorKind(outcome.reason === "degraded" ? "offline" : "retryable");
+        retryRef.current = () => void submitRun();
+        setPhase("error");
+      }
+    } finally {
+      submittingRef.current = false;
     }
   };
 
@@ -137,6 +205,7 @@ export function QuizBoard() {
   useEffect(() => {
     if (phase !== "playing") return;
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return; // ignore auto-repeat: a held Enter must not advance/submit twice
       if (e.key >= "1" && e.key <= "4") {
         e.preventDefault();
         e.stopPropagation();
@@ -173,31 +242,7 @@ export function QuizBoard() {
         <h2 id="quiz-title" className="mb-4 text-center font-display text-sm text-forest md:text-base">
           Kuis Koperasi
         </h2>
-        <div className="border-3 border-border bg-cream px-6 py-6 text-center">
-          {errorKind === "offline" ? (
-            <>
-              <p className="font-body text-xl text-ink">Kuis butuh koneksi internet.</p>
-              <p className="mt-2 font-body text-lg text-ink-soft">
-                Sambungkan koneksi lalu buka kuis kembali.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="font-body text-xl text-ink">Gagal memuat kuis.</p>
-              <p className="mt-2 font-body text-lg text-ink-soft">Coba lagi sebentar.</p>
-            </>
-          )}
-        </div>
-        <div className="mt-6 flex justify-center gap-4">
-          {errorKind === "retryable" && (
-            <GameButton variant="primary" onClick={() => retryRef.current()}>
-              Coba Lagi
-            </GameButton>
-          )}
-          <GameButton variant="ghost" onClick={close}>
-            Tutup
-          </GameButton>
-        </div>
+        <QuizErrorContent errorKind={errorKind} onRetry={() => retryRef.current()} onClose={close} />
       </ModalShell>
     );
   }

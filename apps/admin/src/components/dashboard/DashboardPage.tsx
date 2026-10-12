@@ -2,9 +2,13 @@ import { useEffect } from "react";
 import { dashboardMetricsStore, useDashboardMetrics } from "../../stores/dashboardMetrics.store";
 import { scenarioAnalyticsStore, useScenarioAnalytics } from "../../stores/scenarioAnalytics.store";
 import { leaderboardStore } from "../../stores/leaderboard.store";
+import { quizContentStore } from "../../stores/quizContent.store";
+import { madingContentStore } from "../../stores/madingContent.store";
 import { KpiCard } from "./KpiCard";
 import { ScenarioTable } from "./ScenarioTable";
 import { LeaderboardPanel } from "./LeaderboardPanel";
+import { QuizContentPanel } from "./QuizContentPanel";
+import { MadingContentPanel } from "./MadingContentPanel";
 import { count, pct, score } from "../../lib/formatMetrics";
 
 /**
@@ -23,11 +27,15 @@ export function DashboardPage({ userId }: { userId: string }) {
   useEffect(() => {
     dashboardMetricsStore.getState().load(userId); // fetch once per authorized userId
     leaderboardStore.getState().load(); // fetch the latest season once (StrictMode-safe)
-    // One unmount owner: tear down the dashboard fetch, any open drill-down panel, and the board.
+    quizContentStore.getState().load(); // fetch the quiz list once (StrictMode-safe)
+    madingContentStore.getState().load(); // fetch the mading content once (StrictMode-safe)
+    // One unmount owner: tear down the dashboard fetch, drill-down panel, board, quiz, mading.
     return () => {
       dashboardMetricsStore.getState().dispose();
       scenarioAnalyticsStore.getState().close();
       leaderboardStore.getState().dispose();
+      quizContentStore.getState().dispose();
+      madingContentStore.getState().dispose();
     };
   }, [userId]);
 
@@ -81,6 +89,12 @@ export function DashboardPage({ userId }: { userId: string }) {
       )}
       <section className="border-t border-brown/40 pt-6">
         <LeaderboardPanel />
+      </section>
+      <section className="border-t border-brown/40 pt-6">
+        <QuizContentPanel />
+      </section>
+      <section className="border-t border-brown/40 pt-6">
+        <MadingContentPanel />
       </section>
     </div>
   );

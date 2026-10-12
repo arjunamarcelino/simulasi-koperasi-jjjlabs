@@ -42,7 +42,8 @@ Level and badges are **derived** in the UI from live signals, also not stored.
 
 ## TARGET — Supabase schema
 
-12 tables (10 for SIM-2 + the SIM-5 `quiz_definition`/`quiz_completion` pair). Owner-only RLS
+15 tables (10 for SIM-2 + the SIM-5 `quiz_definition`/`quiz_completion` pair + the 2 SIM-17
+`leaderboard_seasons`/`leaderboard_entries` snapshot tables + the SIM-18 `mading_block`). Owner-only RLS
 on user-scoped tables; public read on `*_definition` catalogs — **except** `mission_definition`
 (reallife `redeem_code`) and `quiz_definition` (the `correct_index` answer key), both kept out of
 clients behind a plain owner-privileged view (`mission_catalog` / `quiz_catalog`) that omits the
@@ -237,6 +238,28 @@ RLS-on with no client policies + explicit `revoke … from anon, authenticated, 
 > so the admin DB role does **reads + admin-gated writes** — still NO direct table privileges (writes
 > run with the postgres-owned fn's rights), but a leaked `METRICS_DB_URL` now reaches writes. The
 > require_role('admin') backend gate is the control; a dedicated writer-role split is deferred.
+
+### Admin content management (SIM-18)
+Live admin CRUD over educational content — no deploy to edit a quiz question or a bulletin.
+- **Quiz** reuses the existing `quiz_definition` (added `updated_at` for audit + a compare-and-swap
+  token, and an FK-covering `quiz_completion(question_code)` index for the delete soft-block). New
+  `admin.*` fns: `list_quiz` (exposes the hidden `correct_index`/`explanation` for editing — the
+  client still reads the `quiz_catalog` view without them), `upsert_quiz_question` (CAS create/edit),
+  `delete_quiz_question` (soft-blocks a question with existing `quiz_completion` rows via an
+  EXCEPTION handler — TOCTOU-safe, never a raw `23503`).
+- **Mading** is one generic `public.mading_block(id, board, block_key, payload jsonb, sort_order,
+  updated_at)` for all 4 board kinds (`board ∈ info|data|knowledge|identitas`; `UNIQUE(board,
+  block_key)` + a partial unique index enforcing a single `identitas` row; `(board, sort_order)`
+  hot-read index). No hidden fields → learners read the plain owner-privileged `public.mading_catalog`
+  view (granted `anon/authenticated`); admins go through `admin.list_mading/upsert_mading_block/
+  delete_mading_block`. `admin._mading_reject_reason` is a **closed, element-typed** validation floor
+  mirroring the FE/Pydantic contract (so the seed, which writes the table directly, can't persist a
+  payload the learner parser would reject).
+- **Compare-and-swap is atomic**: the `updated_at` token is in the `UPDATE … where … updated_at is
+  not distinct from p_prev_updated_at` predicate (not a prior SELECT) so concurrent edits can't both
+  win. Both upsert fns return structured `{ok,reason}` (never RAISE — the backend maps reason→status).
+- Both tables are seeded one-way from `@simkop/catalog` (`quiz.json` / `mading.json`); the DB is
+  authoritative at runtime. `metrics_reader` widened again to EXECUTE these quiz/mading writes.
 
 > **On the reallife codes:** `redeem_code` is a *soft* gate — printed at the KDMP and typed
 > by the player. It is **not** a cryptographic secret. As of SIM-9 the codes live server-side
