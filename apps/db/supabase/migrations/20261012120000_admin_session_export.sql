@@ -37,7 +37,10 @@ returns jsonb language sql stable security definer set search_path = '' as $$
         'scenario_title',   sd.title,
         'started_at',       to_char(s.started_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
         'ended_at',         to_char(s.ended_at   at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-        'duration_seconds', extract(epoch from (s.ended_at - s.started_at))::bigint,  -- >= 0 (CHECK ended_at >= started_at)
+        -- floor to whole seconds, clamped >= 0: the CHECK (ended_at >= started_at) already guarantees
+        -- non-negative, but greatest(0, …) makes the backend's "numeric cells can't lead with '-'"
+        -- CSV-injection invariant self-standing (not reliant on the CHECK). floor (not round-to-nearest).
+        'duration_seconds', greatest(0, floor(extract(epoch from (s.ended_at - s.started_at)))::bigint),
         'trigger',          s.trigger,
         'ending_type',      s.ending_type,
         -- per-session rubric mean — SAME object-guard + CASE-gated ::numeric cast + 0..100 range-guard

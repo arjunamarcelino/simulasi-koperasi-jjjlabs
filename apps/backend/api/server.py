@@ -781,7 +781,8 @@ def _csv_safe(value: object) -> str:
 
     Both come from scenario_definition.code/title (unconstrained text, editable via SIM-18 content
     mgmt), so both are untrusted here. UUID/ISO-timestamp/enum/number cells can't lead with a trigger
-    char, so they're left alone by the callers. `s[:1]` (slice) is empty-string-safe (no IndexError)."""
+    char (avg_score is 0–100; duration_seconds is clamped >= 0 in SQL — so neither leads with '-'), so
+    they're left alone by the callers. `s[:1]` (slice) is empty-string-safe (no IndexError)."""
     if value is None:
         return ""
     s = str(value)
