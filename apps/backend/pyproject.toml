@@ -19,6 +19,10 @@ dependencies = [
     # SIM-15: satu-satunya jalur DB backend — pool fail-soft untuk GET /admin/metrics
     # (role metrics_reader → admin.metrics_overview()). Voice/token path tetap tanpa DB.
     "asyncpg~=0.30",
+    # SIM-21: validasi gagal-aman output JSON AI Auditor (voice_worker, tak pakai
+    # FastAPI). Sebelumnya pydantic hanya dep transitif via fastapi/openai; worker
+    # kini bergantung langsung → deklarasikan eksplisit.
+    "pydantic~=2.0",
 ]
 
 [dependency-groups]
@@ -32,7 +36,11 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+# SIM-21: modul voice_worker/ saling impor sebagai top-level (`from scenarios
+# import ...`, tanpa __init__.py), jadi root `voice_worker` wajib agar test bisa
+# mengimpornya. INVARIAN: jangan pernah pakai impor ber-dot `voice_worker.` —
+# akan membuat dua instance modul (dua `_SCENARIOS`) & merusak cross-check.
+pythonpath = [".", "voice_worker"]
 addopts = "-q"
 
 [tool.ruff]

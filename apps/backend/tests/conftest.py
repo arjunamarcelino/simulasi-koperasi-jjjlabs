@@ -10,6 +10,7 @@ import base64
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 import jwt
@@ -164,3 +165,39 @@ def client(monkeypatch):
     with TestClient(server.app) as test_client:
         yield test_client
     server.app.dependency_overrides.clear()
+
+
+# --- SIM-21: klien Azure OpenAI palsu untuk test parser voice_worker ---------
+# Klien disuntikkan sebagai argumen pertama ke run_auditor/evaluate_turn/
+# generate_hint, jadi tak perlu monkeypatch global. Pola stub hand-rolled
+# (bukan unittest.mock) konsisten dengan _FakeConn/_FakePool di test admin.
+
+
+@pytest.fixture
+def fake_openai() -> Callable[..., Any]:
+    """Factory → klien stub dengan `chat.completions.create` async.
+
+    `content` = string yang dikembalikan sebagai `.choices[0].message.content`.
+    `raises=<exc>` = create() melempar exc (uji jalur gagal-aman).
+    `no_choices=True` = `.choices == []` (uji IndexError → fallback).
+    """
+
+    def _make(
+        content: str | None = None,
+        *,
+        raises: BaseException | None = None,
+        no_choices: bool = False,
+    ) -> Any:
+        async def _create(*args: Any, **kwargs: Any) -> Any:
+            if raises is not None:
+                raise raises
+            choices = [] if no_choices else [
+                SimpleNamespace(message=SimpleNamespace(content=content))
+            ]
+            return SimpleNamespace(choices=choices)
+
+        return SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=_create))
+        )
+
+    return _make

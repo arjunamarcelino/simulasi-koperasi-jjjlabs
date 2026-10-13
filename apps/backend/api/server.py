@@ -72,7 +72,8 @@ TOKEN_RATE_CAPACITY = int(os.environ.get("TOKEN_RATE_CAPACITY", "10"))
 TOKEN_RATE_WINDOW_SEC = float(os.environ.get("TOKEN_RATE_WINDOW_SEC", "60"))
 _TOKEN_LIMITER = RateLimiter(TOKEN_RATE_CAPACITY, TOKEN_RATE_WINDOW_SEC)
 
-# scenario_id valid (mirror CONTRACT.md §1). Divalidasi SETELAH auth → 422.
+# scenario_id valid (mirror CONTRACT.md §1 & voice_worker `_SCENARIOS`). Divalidasi
+# SETELAH auth → 422. Drift antar kedua set code dijaga tests/test_scenario_registry.py.
 VALID_SCENARIOS = frozenset(
     {
         "tutorial-koperasi-konsumen",

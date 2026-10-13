@@ -11,10 +11,16 @@ import json
 import logging
 
 from openai import AsyncAzureOpenAI
-
 from scenarios import Scenario
+from schemas import AuditorResult
 
 logger = logging.getLogger("koperasi.auditor")
+
+# Narasi fallback saat evaluasi otomatis gagal (parse/LLM error).
+_FALLBACK_NARRATIVE = (
+    "Evaluasi otomatis tidak dapat diselesaikan. Silakan tinjau "
+    "transkrip secara manual."
+)
 
 _SYSTEM = """\
 Kamu adalah AI Auditor untuk simulasi tata kelola koperasi Indonesia. Kamu membaca
@@ -97,24 +103,24 @@ async def run_auditor(
                 {"role": "user", "content": _format_transcript(transcript)},
             ],
         )
-        result = json.loads(resp.choices[0].message.content or "{}")
-    except Exception:  # noqa: BLE001 — jangan biarkan sesi berakhir tanpa hasil
+        # Validasi gagal-aman: input non-object / salah-tipe akan raise di sini
+        # (ditangkap except → fallback), bukan crash di luar try. model_dump()
+        # menjamin `result` dict berisi keempat field (default dari model).
+        content = resp.choices[0].message.content
+        if not content:
+            # Completion kosong (content-filter / refusal / empty finish) adalah
+            # KEGAGALAN, bukan hasil valid → lempar agar jatuh ke fallback bernarasi
+            # alih-alih mengirim narasi kosong ke FE.
+            raise ValueError("auditor mengembalikan content kosong")
+        raw = json.loads(content)
+        result = AuditorResult.model_validate(raw).model_dump()
+    except Exception:
         logger.exception("Auditor gagal; kirim hasil fallback netral.")
-        result = {
-            "stateClassification": {},
-            "scores": {},
-            "endingType": "neutral",
-            "narrativeFeedback": (
-                "Evaluasi otomatis tidak dapat diselesaikan. Silakan tinjau "
-                "transkrip secara manual."
-            ),
-        }
+        result = AuditorResult(narrativeFeedback=_FALLBACK_NARRATIVE).model_dump()
 
-    # Lengkapi field yang dikonsumsi FE (bentuk AuditorResult).
-    result.setdefault("stateClassification", {})
-    result.setdefault("scores", {})
-    result.setdefault("endingType", "neutral")
-    result.setdefault("narrativeFeedback", "")
+    # `result` dijamin dict (model_dump) → stamp identitas tak mungkin crash.
+    # Nilai LLM untuk scenarioId/trigger (bila ada) sudah dibuang extra="ignore";
+    # stamp di sini bersifat otoritatif (anti-spoof identitas).
     result["scenarioId"] = scenario.scenario_id
     result["trigger"] = trigger
     return result
