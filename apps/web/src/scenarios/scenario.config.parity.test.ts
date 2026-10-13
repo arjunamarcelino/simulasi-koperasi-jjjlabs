@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import backendSource from "../../../../apps/backend/voice_worker/scenarios.py?raw";
 import { SCENARIOS as FE_SCENARIOS } from "./scenario.config";
 import { SCENARIOS as CATALOG_SCENARIOS } from "@simkop/catalog";
+import { SCORE_KEY_LABELS } from "../components/session/resultLabels";
 
 /**
  * Extracts the backend's scenario ids by matching the `scenario_id="..."` assignment
@@ -16,6 +17,23 @@ function parseBackendScenarioIds(src: string): string[] {
   return [...src.matchAll(/scenario_id\s*=\s*["']([^"']+)["']/g)]
     .map((m) => m[1])
     .filter((id): id is string => id !== undefined);
+}
+
+/**
+ * Extracts the quoted keys from every `score_keys=(...)` tuple in the backend
+ * (e.g. `score_keys=("member_centric", "compliance", "soft_skills")`) — the 0–100
+ * scoring dimensions the auditor emits. Each must have an FE label or the result
+ * UI renders the bare key via the prettify fallback.
+ */
+function parseBackendScoreKeys(src: string): string[] {
+  const keys: string[] = [];
+  for (const tuple of src.matchAll(/\bscore_keys\s*=\s*\(([^)]*)\)/g)) {
+    const body = tuple[1] ?? "";
+    for (const q of body.matchAll(/["']([^"']+)["']/g)) {
+      if (q[1] !== undefined) keys.push(q[1]);
+    }
+  }
+  return keys;
 }
 
 describe("scenario.config id integrity", () => {
@@ -49,5 +67,19 @@ describe("scenario.config ↔ backend parity", () => {
   it("every backend scenario exists in FE config", () => {
     const feSet = new Set(FE_SCENARIOS.map((s) => s.id));
     expect(beIds.filter((id) => !feSet.has(id))).toEqual([]);
+  });
+});
+
+describe("backend score_keys ↔ FE score labels", () => {
+  const scoreKeys = parseBackendScoreKeys(backendSource);
+  const labeled = new Set(Object.keys(SCORE_KEY_LABELS));
+
+  it("fail-loud guard: parse found backend score_keys", () => {
+    expect(scoreKeys.length).toBeGreaterThan(0);
+  });
+
+  it("every backend score_key has an FE label (no prettify fallback)", () => {
+    const unlabeled = [...new Set(scoreKeys)].filter((k) => !labeled.has(k));
+    expect(unlabeled).toEqual([]);
   });
 });

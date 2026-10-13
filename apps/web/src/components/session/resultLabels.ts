@@ -63,8 +63,9 @@ const STATE_VALUE_LABELS: Record<string, { label: string; tone: Tone }> = {
   TIDAK_BERLAKU: { label: "Tidak Berlaku", tone: "warn" },
 };
 
-/** Human label for a score KEY (e.g. "member_centric"). */
-const SCORE_KEY_LABELS: Record<string, string> = {
+/** Human label for a score KEY (e.g. "member_centric"). Exported so a parity test
+ *  can assert every backend `score_keys` entry is labeled here (no prettify fallback). */
+export const SCORE_KEY_LABELS: Record<string, string> = {
   member_centric: "Member-Centric",
   compliance: "Kepatuhan",
   soft_skills: "Diplomasi",
