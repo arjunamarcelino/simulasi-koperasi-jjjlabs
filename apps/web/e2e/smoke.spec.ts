@@ -99,8 +99,18 @@ test("auth + kredit-macet → scored result rendered & persisted", async ({ page
 
   // --- Persisted: exactly ONE finalized owner-scoped row -------------------------
   // Existence proves record_session returned {ok:true}; {ok:false} persists nothing (and is also HTTP 200).
-  await expect.poll(async () => (await fetchSessions(request, token)).length, { timeout: 10_000 }).toBe(1);
-  const [row] = await fetchSessions(request, token);
+  // Capture rows inside the poll so the asserted row is the same response that satisfied the count (one fetch/iteration).
+  let rows: SessionRow[] = [];
+  await expect
+    .poll(
+      async () => {
+        rows = await fetchSessions(request, token);
+        return rows.length;
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(1);
+  const [row] = rows;
   expect(row?.ending_type).toBe("good");
   expect(row?.scores_json).toEqual(GOOD.scores);
   expect(row?.state_json).toEqual(GOOD.stateClassification);
