@@ -4,11 +4,13 @@ version = "0.1.0"
 description = "Koperasi Simulator — token server + voice agent (LiveKit Agents)"
 requires-python = ">=3.12"
 dependencies = [
-    "livekit-agents[openai]~=1.6",
-    "livekit-plugins-azure~=1.6",
-    "livekit-plugins-silero~=1.6",
+    # Worker Google: Gemini Live (NPC) + Cloud STT (pendengar RAT). Spec "Telinga ≠ Mulut"
+    # diverifikasi pada 1.8.x — jangan turunkan.
+    "livekit-agents~=1.8",
+    "livekit-plugins-google~=1.8",
     "livekit-api~=1.0",
-    "openai~=2.0",
+    # Observer / Auditor / Mentor / Direktur RAT (panggilan JSON sekali-jalan ke Gemini).
+    "google-genai~=2.29",
     "fastapi~=0.115",
     "uvicorn[standard]~=0.34",
     "python-dotenv~=1.0",
