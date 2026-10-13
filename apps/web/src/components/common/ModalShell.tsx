@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type KeyboardEventHandler, type ReactNode } from "react";
 import { PixelPanel } from "./PixelPanel";
 import { handleEscape } from "../../lib/escapeStack";
 
@@ -8,6 +8,14 @@ type ModalShellProps = {
   onClose: () => void;
   /** Extra classes for the panel (e.g. width / max-height). */
   panelClassName?: string;
+  /**
+   * Optional bubble-phase keydown handler scoped to the dialog panel. Lets a consumer handle keys
+   * from anywhere inside the dialog — including the close button, which is a sibling of `children` —
+   * without a document-wide listener. Escape is consumed by the shell's own capture-phase handler
+   * (below) and never reaches this; Tab runs the shell's focus trap but still bubbles here, so a
+   * consumer may observe it.
+   */
+  onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
   children: ReactNode;
 };
 
@@ -45,6 +53,7 @@ export function ModalShell({
   titleId,
   onClose,
   panelClassName = "",
+  onKeyDown,
   children,
 }: ModalShellProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -59,7 +68,7 @@ export function ModalShell({
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    const onKeyDown = (e: KeyboardEvent) => {
+    const trapKeys = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
@@ -84,10 +93,10 @@ export function ModalShell({
         }
       }
     };
-    document.addEventListener("keydown", onKeyDown, { capture: true });
+    document.addEventListener("keydown", trapKeys, { capture: true });
 
     return () => {
-      document.removeEventListener("keydown", onKeyDown, { capture: true });
+      document.removeEventListener("keydown", trapKeys, { capture: true });
       document.body.style.overflow = prevOverflow;
       if (previouslyFocused?.isConnected) previouslyFocused.focus();
     };
@@ -104,7 +113,7 @@ export function ModalShell({
       }}
     >
       <PixelPanel as="div" className={`relative ${panelClassName}`}>
-        <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={onKeyDown}>
           <button
             type="button"
             onClick={onClose}
