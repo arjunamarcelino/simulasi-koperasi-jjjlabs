@@ -1,7 +1,7 @@
 # Koperasi Backend — token server + voice agent
 
 Backend & AI pipeline untuk Koperasi Simulator (PRD `apps/backent-prd.md`).
-Voice penuh (Azure STT + Azure OpenAI `gpt-5-mini` + Azure TTS). **Keempat
+Voice penuh di atas Google: Gemini Live (NPC) + Cloud STT (pendengar RAT). **Keempat
 skenario** terpasang: Tutorial, Kredit Macet, Keanggotaan Fiktif, dan RAT (dua
 NPC + state machine fase) — lengkap dengan observer drift (Lapisan 2), AI Auditor
 (Lapisan 3), dan fitur **Petunjuk** (mentor kontekstual). Detail arsitektur di
@@ -9,7 +9,7 @@ NPC + state machine fase) — lengkap dengan observer drift (Lapisan 2), AI Audi
 
 Dua proses terpisah, satu project `uv`:
 - `api/server.py` — FastAPI, `POST /token` (mint token + dispatch agent).
-- `voice_worker/voice_agent.py` — worker `livekit-agents` (STT→LLM→TTS per NPC).
+- `voice_worker/voice_agent.py` — worker `livekit-agents` (Gemini Live per NPC; RAT dua NPC + direktur).
 
 ## Setup
 

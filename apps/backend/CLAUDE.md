@@ -12,9 +12,10 @@ project `uv`:
 - **`api/server.py`** — FastAPI. Verifikasi JWT Supabase lalu mint LiveKit token +
   dispatch agent (`POST /token`, digerbangi `api/auth.py`, rate-limit
   `api/ratelimit.py`). Tanpa database.
-- **`voice_worker/voice_agent.py`** — worker `livekit-agents` v1.6.5. Satu proses
-  menangani SELURUH skenario & persona (PRD §2.1). STT (Azure) → LLM dialog
-  (Azure OpenAI `gpt-5-mini`) → TTS (Azure).
+- **`voice_worker/voice_agent.py`** — worker `livekit-agents` 1.8 + Google. Satu proses
+  menangani SELURUH skenario & persona (PRD §2.1). Single-NPC: Gemini Live (speech-to-speech,
+  mendengar mic langsung). RAT: arsitektur "Telinga ≠ Mulut" (Cloud STT + dua NPC Gemini
+  Live tanpa telinga + direktur). Observer/auditor/mentor/direktur: Gemini via `google-genai`.
 
 Jalur voice/token **tanpa database** — seluruh state sesi in-memory, hidup selama
 room LiveKit aktif (PRD §2.5, §8). **Pengecualian admin (SIM-15/16/17/18/19):** `GET /admin/metrics`
@@ -47,13 +48,16 @@ cp .env.example .env          # isi kredензial (lihat daftar env di .env.exam
 uv run python voice_worker/voice_agent.py dev         # worker (registrasi agent_name)
 uv run uvicorn api.server:app --port 8000 --reload    # token server
 
-# test (SIM-4: verifikasi JWT + gating /token). Tak butuh jaringan/Supabase nyata.
+# test (API + logika worker dengan objek palsu). Tak butuh jaringan/Supabase/Google nyata.
 uv run pytest
 ```
+Catatan: tes preflight CORS gagal bila `.env` lokal men-set `CORS_ALLOW_ORIGIN` (dibaca saat
+impor). Jalankan `CORS_ALLOW_ORIGIN= uv run pytest` untuk suite bersih.
 
 Verifikasi live: jalankan `apps/web-sementara` dengan `VITE_TRANSPORT=livekit` +
 `VITE_TOKEN_ENDPOINT=http://localhost:8000`, pilih skenario, bicara/ketik.
-Log worker (`koperasi.voice_agent`) mencetak observer & fase — pakai untuk debug.
+Log worker (`koperasi.*`) mencetak observer, fase, keputusan direktur (`direktur -> '<raw>'
+(dipakai: …)`), dan giliran (`giliran -> <key>`) — pakai untuk debug.
 Input mic sulit di-headless; jalur teks bisa di-drive dengan Playwright.
 
 ## Struktur
@@ -63,13 +67,19 @@ api/server.py                 POST /token (+ /health) — digerbangi JWT + rate-
 api/auth.py                   verifikasi JWT Supabase (JWKS/ES256) → dependency FastAPI
 api/ratelimit.py              token-bucket per-user untuk /token (429)
 tests/                        pytest: verifier + endpoint + rate-limit (uv run pytest)
-voice_worker/
-  voice_agent.py              entrypoint agent + RatAgent + wiring semua lapisan
+voice_worker/                 (impor top-level, TANPA prefiks `voice_worker.` — invarian pytest)
+  voice_agent.py              entry TIPIS: AgentServer → pilih runner per skenario
+  settings.py                 SATU-SATUNYA pembaca env Google + nama model + tuning RAT
   scenarios.py                REGISTRY: semua skenario + spec drift/auditor/RAT/mentor
-  observer.py                 Lapisan 2: drift (gpt-5-mini async) + DriftTracker
-  auditor.py                  Lapisan 3: AI Auditor (gpt-5.4) → JSON
-  mentor.py                   Fitur Petunjuk: hint kontekstual (gpt-5-mini) → JSON
-  prompts/*.py                system prompt persona, di-grounding ke ../scenarios.md
+  schemas.py                  validasi gagal-aman output auditor
+  prompts/*.py                prompt persona (+ rat_meja.py: aturan "satu mulut" RAT)
+  gemini/                     client.py (genai.Client, RealtimeModel) · json_call.py
+  evaluation/                 observer.py (L2) · auditor.py (L3) · mentor.py (Petunjuk)
+  runtime/                    publisher (sinyal ke FE) · lifecycle (akhir sesi) · drift ·
+                              rpc · tasks — dipakai kedua runner
+  single_npc/runner.py        skenario 1–3: satu AgentSession Gemini Live
+  rat/                        skenario 4: runner · discussion · director · listener ·
+                              npc · floor · connection
 ```
 
 Keempat skenario (Tutorial, Kredit Macet, Keanggotaan Fiktif, RAT) sudah
@@ -80,21 +90,23 @@ skenario `apps/scenarios.md` (bukan lagi placeholder).
 
 1. **Lapisan 1 — nada NPC real-time**: murni via system prompt + ChatContext.
    Tanpa state-tracking. Ada di semua skenario.
-2. **Lapisan 2 — observer drift**: `observer.py`. Panggilan `gpt-5-mini` asinkron
+2. **Lapisan 2 — observer drift**: `evaluation/observer.py` + `runtime/drift.py`. Panggilan Gemini asinkron
    non-blocking menilai tiap giliran pemain (escalate/neutral/deescalate);
    `DriftTracker` → level 0/1/2 (streak). Level dipublish ke FE via participant
    attribute `drift_level`. Level 2 → force quit. Hanya skenario ber-`drift`.
-3. **Lapisan 3 — AI Auditor**: `auditor.py`. `gpt-5.4` sekali di akhir sesi,
+3. **Lapisan 3 — AI Auditor**: `evaluation/auditor.py`. Model auditor sekali di akhir sesi,
    baca transkrip penuh + taksonomi + grounding → JSON (klasifikasi + skor +
    narasi). Hanya skenario ber-`auditor`. Tutorial pakai hasil terskrip.
 
 **Tiga jalur akhir sesi** (PRD §6): `manual` (RPC `end_session`), sinyal Level 1
 (attribute `drift_level=1`, FE menonjolkan tombol), `force_quit_level_2` (agent
-memicu otomatis → data message `session_ended`).
+memicu otomatis → data message `session_ended`). `runtime/lifecycle.py` menjamin SATU
+hasil per sesi: jalur yang datang belakangan menerima hasil yang sama (auditor tak
+pernah jalan dua kali).
 
 ## Fitur Petunjuk (mentor kontekstual — menggantikan "Tanya Mentor", PRD §9)
 
-`mentor.py`. RPC `petunjuk` → `gpt-5-mini` membaca transkrip + `mentor_brief`
+`evaluation/mentor.py`. RPC `petunjuk` → Gemini membaca transkrip + `mentor_brief`
 skenario → satu saran langkah berikutnya (JSON `{"hint": ...}`). DI LUAR
 ChatContext dialog (seperti observer/auditor) → tak mengubah percakapan. Guardrail
 prompt: hanya saran yang bisa dilakukan LEWAT percakapan (bukan aksi fisik),
@@ -118,49 +130,54 @@ Menambah/mengubah skenario TIDAK perlu menyentuh `voice_agent.py`.
 dengan `drift`+`auditor`+`mentor_brief`, daftarkan di `_SCENARIOS`. Selesai —
 semua wiring (observer, auditor, Petunjuk, tiga jalur akhir) sudah generik.
 
-## RAT (dua NPC) — pola yang dipakai
+## RAT (dua NPC) — arsitektur "Telinga ≠ Mulut" (`rat/`)
 
-Satu `RatAgent(Agent)`, dua persona (PRD §2.1: bukan proses/agent terpisah):
-- **Prompt** ditukar per persona via `update_instructions()` (async).
-- **Suara** ditukar via override `tts_node` → sintesis dengan TTS persona aktif.
-- **Persona aktif** (`RatAgent.route()`): (1) penyebutan nama
-  (`RatSpec.name_mentions`) → prioritas; (2) tanpa nama → giliran PERTAMA tiap
-  fase dijawab pemimpin fase (`RatPhase.default_persona`, via flag
-  `just_entered_phase`), sesudahnya **digilir** antar persona
-  (`RatAgent._next_persona`) agar partisipasi seimbang tak didominasi satu suara.
-  Hasil: Fase 1 dipimpin Ibu Sri (kuorum), Fase 2 Pak Darma (interupsi), Fase 3
-  Ibu Sri (keputusan).
-- **Watak persona terkunci**: Darma selalu bela kepentingannya (dana ke
-  propertinya), Sri selalu bela anggota kecil + jaga prosedur — clue "dorong maju"
-  di prompt tidak boleh membuat mereka berpindah pihak (jaga konflik PRD §7.4).
-- **Fase**: RPC `advance_phase` menaikkan fase; publish attribute `phase`. Fase 2
-  memicu interupsi terskrip (`session.say`) dari Pak Darma.
+Telinga dipisah dari mulut, supaya NPC yang salah tak pernah menjawab duluan:
+- **Listener** (`rat/listener.py`): `google.STT` (id-ID, `detect_language=False`) pada mic
+  pemain — tanpa LLM, tak pernah menjawab. Debounce potongan FINAL, barge-in dari INTERIM
+  berteks, proteksi echo 3 dtk, dan **mempublish transkripsi pemain** ke FE.
+- **NPC** (`rat/npc.py`): tiap persona = `AgentSession` Gemini Live sendiri dengan
+  `audio_input=False, text_input=False` → hanya bicara saat `generate_reply()` dipanggil.
+  Suara terikat ke sesi sejak konstruksi (tak pernah ditukar). Host (pemimpin Fase 1,
+  Ibu Sri) memakai `ctx.room`; Pak Darma participant TERPISAH `npc-pak-darma` via
+  `rat/connection.py` (dua track mic dari satu participant tidak dirender klien).
+- **Discussion** (`rat/discussion.py`): transkrip bersama, mirror ucapan ke `chat_ctx`
+  NPC lain (`[Nama berbicara] …`, role user), rantai giliran, fase, giliran terjadwal.
+- **Direktur** (`rat/director.py`): LLM kecil memilih pembicara berikutnya; guard keras
+  di kode. Nama NPC disebut tepat satu → dipilih deterministik tanpa direktur.
+- **Watak persona terkunci** (prompt): Darma selalu bela kepentingannya, Sri selalu bela
+  anggota kecil + prosedur. `domain` & `director_hint` di `scenarios.py` dibaca direktur.
+- **Fase**: RPC `advance_phase` → `Discussion.advance_phase()` (lock, idempoten; hentikan
+  suara & tunggu lantai kosong dulu) → `update_instructions` kedua NPC + attribute `phase`.
+  Fase 2 = giliran terjadwal Pak Darma (`entry_line`).
+- RPC didaftarkan di KEDUA koneksi (FE mengirim RPC ke participant remote pertama).
+- Spec lengkap + invarian I1–I12: dokumen "Telinga ≠ Mulut" (milik pemilik proyek).
 
 ## GOTCHAS penting (pelajaran nyata — jangan diulang)
 
-1. **`livekit-agents` v1.6.5 memakai `AgentServer` + `@server.rtc_session(agent_name=...)`
+1. **`livekit-agents` 1.8 memakai `AgentServer` + `@server.rtc_session(agent_name=...)`
    + `cli.run_app(server)`** — BUKAN pola lama `WorkerOptions(entrypoint_fnc=...)`.
    PRD ditulis sebelum perubahan ini.
 2. **`asyncio.create_task` WAJIB disimpan referensinya.** Event loop hanya
    memegang weak reference → task bisa di-GC sebelum selesai. Observer sempat
-   "acak tidak jalan" karena ini. Lihat helper `_spawn` di `voice_agent.py`.
-3. **`on_user_turn_completed` TIDAK menyala di jalur teks** (`generate_reply(user_input=...)`
-   melewati turn-detection STT). Routing nama RAT karena itu dilakukan DI DUA
-   tempat: hook `on_user_turn_completed` (suara) DAN RPC `send_text` (teks).
+   "acak tidak jalan" karena ini. Semua task latar lewat `runtime/tasks.BackgroundTasks`.
+3. **RAT: ucapan pemain BUKAN conversation item sesi NPC.** Teks pemain masuk lewat
+   `update_chat_ctx` (tak memancarkan `conversation_item_added`). Observer RAT dipasang
+   di `Discussion.add_transcript_listener`, bukan event sesi. Jalur suara (Listener) dan
+   teks (RPC `send_text`) sama-sama masuk ke `Discussion.on_user_said`.
 4. **RPC hanya bisa setelah agent join** (~12–19 dtk pertama, saat sapaan muncul).
    Kirim RPC sebelum itu → "Agent belum tersambung". FE sebaiknya menunggu NPC
    menyapa. (Kandidat pengerasan: nonaktifkan input sampai greeting.)
-5. **`tts_node` mengumpulkan teks penuh sebelum sintesis** (agar routing suara
-   pasti benar). Latency naik sedikit untuk balasan panjang; oke untuk 1–2 kalimat.
-   **Suara persona DIBEKUKAN per-utterance** (`RatAgent._utterance_persona`,
-   di-set di `llm_node` saat generasi mulai & lewat `set_speaking()` sebelum
-   `session.say`). JANGAN membaca `self._state.active` langsung di `tts_node`:
-   nilai itu bisa bergeser (giliran berikutnya/alternation) sebelum sintesis
-   selesai → konten satu persona keluar dengan suara persona lain (bug nyata:
-   interupsi Pak Darma sempat bersuara Ibu Sri).
-6. **Nama deployment model = env** (`AZURE_OPENAI_DEPLOYMENT_DIALOGUE` untuk
-   dialog+observer, `AZURE_OPENAI_DEPLOYMENT_AUDITOR` untuk gpt-5.4). Jangan
-   hardcode nama model.
+5. **JANGAN `session.update_agent()` / membuat ulang Agent untuk ganti NPC atau fase.**
+   Satu NPC = satu sesi = satu suara, seumur sesi (bug lama: interupsi Pak Darma
+   bersuara Ibu Sri saat persona ditukar di satu agent). Barge-in RAT WAJIB dua langkah:
+   batalkan rantai DAN `interrupt()` semua sesi — `await handle` dibungkus
+   `asyncio.shield`, membatalkan rantai saja tidak menghentikan suara.
+6. **Nama model = env** (`GEMINI_*_MODEL`, dibaca di `settings.py`). Jangan hardcode.
+   Cloud STT memakai ADC/`GOOGLE_APPLICATION_CREDENTIALS`, BUKAN `GOOGLE_API_KEY`.
+   `google.STT` default `detect_language=True` — WAJIB `False` (transkrip meleset ke
+   Korea/Jepang → direktur salah pilih). Realtime model tak punya `session.say()` tanpa
+   TTS: kalimat terskrip lewat `generate_reply(instructions="Ucapkan PERSIS …")`.
 7. **Observer, Auditor & mentor gagal-aman**: kalau panggilan LLM error, observer
    → "neutral", auditor → fallback netral, mentor → hint fallback. Jangan biarkan
    error menjatuhkan sesi.
@@ -168,8 +185,9 @@ Satu `RatAgent(Agent)`, dua persona (PRD §2.1: bukan proses/agent terpisah):
 
 ## Kredensial
 
-Semua di `.env` (gitignored). Butuh: LiveKit Cloud, Azure OpenAI (2 deployment:
-gpt-5-mini + gpt-5.4), Azure Speech (region eastus2). Lihat `.env.example`.
+Semua di `.env` (gitignored). Butuh: LiveKit Cloud, Google AI Studio (`GOOGLE_API_KEY`)
+atau Vertex AI, dan kredensial GCP (ADC) dengan Cloud Speech-to-Text API aktif untuk
+RAT. Lihat `.env.example`. Var Azure tidak dipakai worker lagi.
 
 ## Konvensi
 

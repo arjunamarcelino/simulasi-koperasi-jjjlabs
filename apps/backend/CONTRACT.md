@@ -345,14 +345,16 @@ Definisi lengkap + rencana di `docs/plans/2026-10-12-feat-admin-session-results-
 ## 3. FE → Agent (RPC)
 
 Panggil via `localParticipant.performRpc({ destinationIdentity, method, payload })`.
-`destinationIdentity` = identity peserta **agent** (satu-satunya remote
-participant; identity berawalan `agent-`, `kind` = agent). Tunggu agent join dulu.
+`destinationIdentity` = identity peserta **agent** (identity berawalan `agent-`,
+`kind` = agent). Tunggu agent join dulu. **RAT** punya participant NPC tambahan
+(`npc-pak-darma`, lihat §4a); handler RPC yang sama terdaftar di koneksi itu juga,
+jadi RPC berhasil ke participant remote mana pun yang dipilih FE.
 
 | method | payload | balasan | keterangan |
 |---|---|---|---|
 | `end_session` | `""` | `AuditorResult` (JSON string) | "Keputusan Akhir" / "Bayar & Daftar". Jalur **manual**. Agent hentikan NPC & jalankan Auditor. |
 | `send_text` | teks pemain | `"ok"` | Jalur fallback teks. Agent membalas seperti giliran suara. |
-| `petunjuk` | `""` | `{ "hint": "..." }` (JSON string) | Fitur **Petunjuk** (menggantikan "Tanya Mentor", PRD §9). Mentor `gpt-5-mini` membaca transkrip → satu saran langkah berikutnya. Tak mengubah percakapan/ChatContext. Semua skenario. |
+| `petunjuk` | `""` | `{ "hint": "..." }` (JSON string) | Fitur **Petunjuk** (menggantikan "Tanya Mentor", PRD §9). Mentor (Gemini, model `GEMINI_MENTOR_MODEL`) membaca transkrip → satu saran langkah berikutnya. Tak mengubah percakapan/ChatContext. Semua skenario. |
 | `advance_phase` | `""` | `"ok"` / `"noop"` | **RAT saja.** Aksi agenda → maju satu fase. |
 
 Setelah menerima balasan `end_session`, FE menampilkan hasil lalu
@@ -365,8 +367,15 @@ Setelah menerima balasan `end_session`, FE menampilkan hasil lalu
 ### 4a. Transkripsi (LiveKit native)
 Kata-kata NPC & pemain datang lewat transkripsi LiveKit standar
 (`RoomEvent.TranscriptionReceived`), streaming partial→final (`segment.final`).
-Transkripsi TIDAK membawa identitas persona (semua dari satu participant agent) —
-gunakan sinyal `speaker` (4d) untuk tahu siapa yang bicara.
+Transkripsi TIDAK dijamin membawa identitas persona — gunakan sinyal `speaker` (4d)
+untuk tahu siapa yang bicara.
+
+**RAT (dua NPC):** tiap NPC adalah participant LiveKit TERPISAH dengan track audionya
+sendiri — Ibu Sri memakai koneksi worker (`agent-…`), Pak Darma bergabung sebagai
+`npc-pak-darma`. Room RAT berisi 3 participant. Transkripsi NPC datang dari participant
+masing-masing; giliran NPC diserialkan (tak pernah dua NPC bersuara bersamaan).
+Transkripsi suara **pemain** dipublish worker atas nama identity pemain (STT terpisah),
+jadi tetap tiba sebagai transkripsi milik participant lokal.
 
 ### 4b. Participant attribute `drift_level` — indikator ketegangan (Lapisan 2)
 `RoomEvent.ParticipantAttributesChanged` → `changed["drift_level"]` = `"0" | "1" | "2"`.
@@ -502,7 +511,8 @@ game membaca `mading_catalog`/`quiz_catalog` live via `supabase-js`. Seed bootst
   sinkronkan animasi bicara karakter ke aktivitas track audio + sinyal `speaker`.
 - **RAT**: `phase` attribute menggerakkan indikator/tombol agenda; `speaker`
   menggerakkan karakter aktif; interupsi Fase 2 datang otomatis sebagai giliran
-  NPC (speaker=Pak Darma).
+  NPC (speaker=Pak Darma). Room berisi participant tambahan `npc-pak-darma` —
+  putar SEMUA track audio remote (bukan hanya milik agent).
 - **Tanpa persistensi**: semua hilang saat room ditutup. Tak ada endpoint riwayat.
 - Bentuk payload di sini adalah kontrak de-facto dari implementasi saat ini;
   perubahan wire harus memperbarui dokumen ini + `LiveKitTransport` bersamaan.
