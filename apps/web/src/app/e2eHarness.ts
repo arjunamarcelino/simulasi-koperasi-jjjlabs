@@ -23,8 +23,10 @@ import { sessionStore } from "../stores/session.store";
 import type { ScenarioId } from "../session/transport/contract";
 import type { E2EBridge } from "./e2eHarness.types";
 
-/** Allow-list so an arbitrary `?e2e=` value can't be widened into a ScenarioId. */
-const KNOWN_SCENARIOS = ["kredit-macet"] as const;
+/** Allow-list so an arbitrary `?e2e=` value can't be widened into a ScenarioId.
+ *  `satisfies readonly ScenarioId[]` makes a rename in the contract a compile error
+ *  here rather than a silently-inert harness. */
+const KNOWN_SCENARIOS = ["kredit-macet"] as const satisfies readonly ScenarioId[];
 const isScenarioId = (s: string): s is ScenarioId =>
   (KNOWN_SCENARIOS as readonly string[]).includes(s);
 
