@@ -41,7 +41,10 @@ class AuditorResult(BaseModel):
     terakhir tetap blok `try/except` di `run_auditor` (mis. input non-dict).
     """
 
-    model_config = ConfigDict(extra="ignore")  # buang key LLM nyasar, jangan raise
+    # extra="ignore" memang default pydantic v2 — ditulis EKSPLISIT sebagai
+    # dokumentasi (kebalikan dari extra="forbid" di api/server.py) sekaligus penopang
+    # anti-spoof: scenarioId/trigger dari LLM dibuang sebelum di-stamp server.
+    model_config = ConfigDict(extra="ignore")
 
     stateClassification: dict[str, str] = Field(default_factory=dict)
     scores: dict[str, int] = Field(default_factory=dict)
