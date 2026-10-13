@@ -12,6 +12,7 @@ berbeda antar skenario → sengaja TIDAK dienumerasi (pelajaran SIM-16). `scenar
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -62,13 +63,25 @@ class AuditorResult(BaseModel):
     @field_validator("scores", mode="before")
     @classmethod
     def _coerce_scores(cls, v: Any) -> dict[str, int]:
-        """Salvage per-key: clamp ke 0–100; satu nilai buruk tak merusak sisanya."""
+        """Salvage per-key: clamp ke 0–100; satu nilai buruk tak merusak sisanya.
+
+        inf → batas (100 / 0); nan serta nilai tak-ternumerik dibuang. OverflowError
+        WAJIB ditangkap: `json.loads` menerima `Infinity` & integer presisi-arbitrer
+        secara default, jadi `float()`/`int()` bisa meluap — jangan biarkan satu nilai
+        meluap menjatuhkan seluruh audit.
+        """
         if not isinstance(v, dict):
             return {}
         out: dict[str, int] = {}
         for k, n in list(v.items())[:_MAX_KEYS]:
             try:
-                out[str(k)] = max(0, min(100, int(float(n))))
-            except (TypeError, ValueError):
-                continue  # buang nilai tak-ternumerik, pertahankan key lain
+                f = float(n)
+            except (TypeError, ValueError, OverflowError):
+                continue  # tak-ternumerik / int terlalu besar untuk float → buang
+            if math.isnan(f):
+                continue  # nan bukan skor → buang
+            if math.isinf(f):
+                out[str(k)] = 100 if f > 0 else 0  # clamp ke batas
+                continue
+            out[str(k)] = max(0, min(100, int(f)))
         return out

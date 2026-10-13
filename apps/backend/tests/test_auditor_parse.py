@@ -112,6 +112,22 @@ def test_scores_out_of_range_are_clamped(fake_openai):
     assert result["scores"] == {"a": 100, "b": 0, "c": 99}
 
 
+def test_scores_infinity_and_overflow_salvage_per_key(fake_openai):
+    # json.loads menghasilkan inf dari 1e999 dan int presisi-arbitrer dari literal
+    # besar; keduanya tak boleh menjatuhkan seluruh audit (regresi OverflowError).
+    payload = '{"scores": {"pos": 1e999, "neg": -1e999, "big": ' + "9" * 400 + ', "ok": 72}}'
+    result = _run(fake_openai(payload))
+    # pos/neg inf → clamp ke batas; big (overflow float) dibuang; ok tetap ada.
+    assert result["scores"] == {"pos": 100, "neg": 0, "ok": 72}
+    assert result["endingType"] == "neutral"  # BUKAN fallback penuh
+    assert result["narrativeFeedback"] == ""  # field valid lain tak ikut hilang
+
+
+def test_scores_nan_is_dropped(fake_openai):
+    result = _run(fake_openai('{"scores": {"bad": NaN, "ok": 40}}'))
+    assert result["scores"] == {"ok": 40}
+
+
 def test_scores_wrong_type_becomes_empty_others_survive(fake_openai):
     payload = json.dumps({"scores": [1, 2, 3], "narrativeFeedback": "tetap ada"})
     result = _run(fake_openai(payload))
