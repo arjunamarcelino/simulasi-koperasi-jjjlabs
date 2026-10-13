@@ -23,3 +23,9 @@ docs/
 # vite cache
 .vite/
 **/.vite/
+
+# playwright
+**/test-results/
+**/playwright-report/
+**/playwright/.cache/
+**/.last-run.json

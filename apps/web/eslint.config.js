@@ -21,7 +21,7 @@ const noServerOnlyCodes = {
 };
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  { ignores: ["dist", "playwright-report", "test-results", "e2e/**", "playwright.config.ts"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

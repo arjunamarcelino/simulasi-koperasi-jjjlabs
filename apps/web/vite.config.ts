@@ -107,6 +107,9 @@ export default defineConfig(({ mode }) => {
     // imports cleanly here. Explicit `vitest` imports in tests (no globals).
     test: {
       environment: "node",
+      // Scope to colocated unit tests under src/. Excludes apps/web/e2e/*.spec.ts,
+      // which are Playwright specs (run via `pnpm e2e`), not Vitest.
+      include: ["src/**/*.{test,spec}.{ts,tsx}"],
     },
   };
 });

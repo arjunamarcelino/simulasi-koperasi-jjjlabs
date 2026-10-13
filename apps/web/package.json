@@ -8,8 +8,11 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "typecheck:e2e": "tsc -p e2e/tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "node e2e/run-e2e.mjs",
+    "e2e:play": "playwright test"
   },
   "dependencies": {
     "@simkop/catalog": "workspace:*",
@@ -22,6 +25,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^22.10.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
