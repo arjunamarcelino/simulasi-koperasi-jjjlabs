@@ -23,6 +23,7 @@ _ALLOWED_ENDINGS = {"good", "bad", "neutral"}
 
 _MAX_KEYS = 50  # batas jumlah key (pertahanan berlapis vs output LLM membengkak)
 _MAX_NARRATIVE = 4000  # batas panjang narasi (selaras size-guard DB, SIM-15)
+_MAX_STATE_LEN = 200  # batas panjang per kunci/nilai state (hindari str() objek besar)
 
 
 def _as_str(v: Any) -> str:
@@ -66,7 +67,10 @@ class AuditorResult(BaseModel):
         """Salvage per-key: non-dict → {}; tiap nilai dipaksa jadi str."""
         if not isinstance(v, dict):
             return {}
-        return {str(k): _as_str(val) for k, val in list(v.items())[:_MAX_KEYS]}
+        return {
+            str(k)[:_MAX_STATE_LEN]: _as_str(val)[:_MAX_STATE_LEN]
+            for k, val in list(v.items())[:_MAX_KEYS]
+        }
 
     @field_validator("scores", mode="before")
     @classmethod

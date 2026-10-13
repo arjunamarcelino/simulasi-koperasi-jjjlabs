@@ -164,6 +164,13 @@ def test_state_classification_values_stringified(fake_openai):
     assert result["stateClassification"] == {"State_X": "3", "State_Y": ""}
 
 
+def test_state_classification_value_length_bounded(fake_openai):
+    # Nilai objek bersarang besar di-str() lalu dipotong (tak menyimpan blob tak terbatas).
+    payload = json.dumps({"stateClassification": {"State_X": {"nested": "y" * 1000}}})
+    result = _run(fake_openai(payload))
+    assert len(result["stateClassification"]["State_X"]) <= 200
+
+
 def test_oversize_narrative_truncated_others_survive(fake_openai):
     payload = json.dumps({"narrativeFeedback": "x" * 5000, "scores": {"a": 50}})
     result = _run(fake_openai(payload))
