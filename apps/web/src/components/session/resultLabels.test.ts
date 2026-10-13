@@ -40,6 +40,21 @@ describe("resolveStateChip — the degrade-to-raw-string contract", () => {
     });
   });
 
+  it("resolves a bad-tone value", () => {
+    expect(resolveStateChip("State_Relasi_NPC", "RUSAK")).toEqual({
+      keyLabel: "Relasi Pengurus",
+      valueLabel: "Relasi Rusak",
+      tone: "bad",
+      known: true,
+    });
+  });
+
+  it("resolves a warn-tone value", () => {
+    const chip = resolveStateChip("State_Analisis_Masalah", "NAIF");
+    expect(chip.valueLabel).toBe("Terlalu Naif");
+    expect(chip.tone).toBe("warn");
+  });
+
   it("known key + UNKNOWN value → raw value, tone neutral, known:false", () => {
     expect(resolveStateChip("State_Jalur_Remedi", "WAT_IS_THIS")).toEqual({
       keyLabel: "Jalur Remedi",
