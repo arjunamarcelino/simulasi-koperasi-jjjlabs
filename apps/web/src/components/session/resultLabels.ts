@@ -69,6 +69,7 @@ const SCORE_KEY_LABELS: Record<string, string> = {
   compliance: "Kepatuhan",
   soft_skills: "Diplomasi",
   integritas_data: "Integritas Data",
+  kepemimpinan: "Kepemimpinan",
 };
 
 /** "State_Jalur_Remedi" / "member_centric" → "Jalur Remedi" / "member centric". */
