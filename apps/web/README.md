@@ -15,11 +15,18 @@ Frontend untuk **Simulasi Koperasi**. Iterasi-1 (fondasi): aplikasi boot sampai
 Dari root repo (mendelegasi via `pnpm --filter web`), atau di dalam `apps/web`:
 
 ```bash
-pnpm dev         # vite dev server
-pnpm build       # tsc --noEmit && vite build
-pnpm typecheck   # tsc --noEmit
-pnpm lint        # eslint .
+pnpm dev           # vite dev server
+pnpm build         # tsc --noEmit && vite build
+pnpm typecheck     # tsc --noEmit
+pnpm typecheck:e2e # tsc -p e2e/tsconfig.json (Playwright specs; Playwright itself doesn't typecheck)
+pnpm lint          # eslint .
+pnpm test          # vitest run (unit)
+pnpm e2e           # Playwright smoke: boots local Supabase, runs auth → scenario → persisted-result (needs Docker)
 ```
+
+The E2E smoke (`e2e/`, SIM-22) is the single critical-path confidence check; `pnpm e2e`
+(root alias too) boots local Supabase, serves the app on a dedicated port, drives the
+`kredit-macet` scenario on the mock transport, and asserts the scored `public.sessions` row.
 
 ## Arsitektur — bagaimana React & Phaser berkomunikasi
 
