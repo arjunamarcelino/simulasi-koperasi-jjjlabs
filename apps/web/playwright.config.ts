@@ -12,6 +12,11 @@ const baseURL = `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: "./e2e",
+  // Sequential polls budget ~90s total (auth + connect + greeting + send + reply +
+  // ending + persist). Raise the per-test cap above the 30s default so a slow runner
+  // (SwiftShader WebGL boot, Supabase warm-up, CI contention) can't be killed mid-flow
+  // even when no individual step exceeds its budget.
+  timeout: 120_000,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0, // safe: each retry = fresh context → fresh anon uid; RLS hides prior rows
   workers: 1,
