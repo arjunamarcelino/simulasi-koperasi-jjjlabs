@@ -48,6 +48,13 @@ describe("MadingKnowledgeBoardBody", () => {
     expect(html).toContain("motion-reduce:animate-none");
   });
 
+  it("announces the swap via a single stable live region (not the remounting fade node)", () => {
+    const html = render({ status: "ok", data: CARDS }, 0);
+    // Position + content name on one polite region; exactly one so the keyed fade node isn't also live.
+    expect(html).toContain("Kartu 1 dari 2: Nasional: 12.345 — unit aktif");
+    expect((html.match(/aria-live="polite"/g) ?? []).length).toBe(1);
+  });
+
   it("renders the empty state on ok + empty list", () => {
     const html = render({ status: "ok", data: [] });
     expect(html).toContain("Belum ada kartu di papan ini.");

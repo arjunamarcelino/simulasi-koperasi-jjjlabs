@@ -58,14 +58,18 @@ export function MadingKnowledgeBoardBody({
           {`Kartu ${safeIdx + 1} dari ${len}`}
         </p>
 
+        {/* Stable live region (never remounts) so screen readers reliably announce the swap — a
+            key={}-remounted region arriving pre-populated is frequently missed. Mirrors the data
+            board; the keyed node below is now visual-only. */}
+        <p className="sr-only" aria-live="polite" aria-atomic="true">
+          {`Kartu ${safeIdx + 1} dari ${len}: ${knowledgeSlideName(card)}`}
+        </p>
+
         <div role="group" aria-roledescription="salindia" aria-label={knowledgeSlideName(card)}>
           <div
             key={safeIdx}
-            aria-live="polite"
-            aria-atomic="true"
             className="flex h-60 animate-[fadeIn_120ms_ease-out] items-center justify-center overflow-y-auto border-3 border-border bg-cream px-5 py-6 text-center motion-reduce:animate-none"
           >
-            <span className="sr-only">{`Kartu ${safeIdx + 1} dari ${len}.`}</span>
             {card.kind === "stat" ? (
               <div>
                 {card.group && (
