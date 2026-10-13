@@ -94,6 +94,14 @@ def test_empty_choices_falls_back(fake_openai):
     assert result["narrativeFeedback"] == _FALLBACK_NARRATIVE
 
 
+def test_empty_content_falls_back_with_narrative(fake_openai):
+    # content None/"" (content-filter/refusal/empty) → fallback bernarasi, bukan blank.
+    for content in (None, ""):
+        result = _run(fake_openai(content))
+        assert result["endingType"] == "neutral"
+        assert result["narrativeFeedback"] == _FALLBACK_NARRATIVE
+
+
 # --- salvage per-key (nilai salah-tipe/di-luar-rentang tak merusak sisanya) --
 
 

@@ -106,7 +106,13 @@ async def run_auditor(
         # Validasi gagal-aman: input non-object / salah-tipe akan raise di sini
         # (ditangkap except → fallback), bukan crash di luar try. model_dump()
         # menjamin `result` dict berisi keempat field (default dari model).
-        raw = json.loads(resp.choices[0].message.content or "{}")
+        content = resp.choices[0].message.content
+        if not content:
+            # Completion kosong (content-filter / refusal / empty finish) adalah
+            # KEGAGALAN, bukan hasil valid → lempar agar jatuh ke fallback bernarasi
+            # alih-alih mengirim narasi kosong ke FE.
+            raise ValueError("auditor mengembalikan content kosong")
+        raw = json.loads(content)
         result = AuditorResult.model_validate(raw).model_dump()
     except Exception:
         logger.exception("Auditor gagal; kirim hasil fallback netral.")
