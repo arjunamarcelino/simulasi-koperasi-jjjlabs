@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEventHandler } from "react";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { madingRepo, type Keyed, type RepoResult } from "../../lib/madingRepo";
-import { fallbackMessage, wrapIndex } from "../../lib/madingBoard";
+import { carouselArrowIndex, fallbackMessage, wrapIndex } from "../../lib/madingBoard";
 import type { KnowledgeCard } from "../../lib/mading.types";
 import { ModalShell } from "../common/ModalShell";
 import { GameButton } from "../common/GameButton";
@@ -141,17 +141,13 @@ export function MadingKnowledgeBoard() {
 
   // Arrow nav scoped to the dialog panel (bubble phase via ModalShell), not `document`: catches
   // keys from any focus inside the dialog — including the close button, a sibling of the content —
-  // without hijacking arrows page-wide. Reads the live index at fire-time. The Phaser scene disables
-  // its (global) keyboard while an overlay is open, so nothing leaks to the game behind the modal.
+  // without hijacking arrows page-wide. Reads the live index at fire-time (see carouselArrowIndex).
   const onArrowKey: KeyboardEventHandler<HTMLDivElement> = (e) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    if (e.repeat) return; // ignore auto-repeat so a held key doesn't strobe the fade
-    const target = e.target as HTMLElement;
-    if (target.closest("input, textarea, select, [contenteditable='true']")) return; // never steal typing
+    const next = carouselArrowIndex(e, gameStore.getState().madingIndex, len);
+    if (next === null) return;
     e.preventDefault();
     e.stopPropagation();
-    const cur = gameStore.getState().madingIndex;
-    gameStore.getState().setMadingIndex(wrapIndex(cur + (e.key === "ArrowRight" ? 1 : -1), len));
+    gameStore.getState().setMadingIndex(next);
   };
 
   return (
