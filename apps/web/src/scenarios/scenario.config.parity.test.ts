@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 // Vite `?raw` inlines the backend file as a string at transform time — no node:fs,
 // no @types/node (the repo deliberately avoids it; see vite.config.ts). A moved or
 // renamed scenarios.py makes this import fail to resolve → a loud build-time failure.
+// NOTE: this couples the web test suite to apps/backend being present in the checkout;
+// a FE-only build context would fail this file loudly (acceptable — not silent).
 import backendSource from "../../../../apps/backend/voice_worker/scenarios.py?raw";
 import { SCENARIOS as FE_SCENARIOS } from "./scenario.config";
 import { SCENARIOS as CATALOG_SCENARIOS } from "@simkop/catalog";
@@ -14,7 +16,10 @@ import { SCORE_KEY_LABELS } from "../components/session/resultLabels";
  * none of those are `scenario_id = "<literal>"`.
  */
 function parseBackendScenarioIds(src: string): string[] {
-  return [...src.matchAll(/scenario_id\s*=\s*["']([^"']+)["']/g)]
+  // \b anchors the left edge so a longer identifier (e.g. default_scenario_id = "...")
+  // can't masquerade as a match. The `=` (not `:`) still excludes the `scenario_id: str`
+  // field decl and the `.scenario_id:` registry keys.
+  return [...src.matchAll(/\bscenario_id\s*=\s*["']([^"']+)["']/g)]
     .map((m) => m[1])
     .filter((id): id is string => id !== undefined);
 }
@@ -55,6 +60,7 @@ describe("scenario.config ↔ backend parity", () => {
 
   it("fail-loud guard: parse found exactly 4 backend ids (no dups)", () => {
     // Guards against a reformatted scenarios.py passing green on an empty/partial set.
+    // Intentionally hardcoded: bump this to match when a scenario is added/removed.
     expect(beIds).toHaveLength(4);
     expect(new Set(beIds).size).toBe(beIds.length);
   });
