@@ -11,8 +11,14 @@ import "../src/app/e2eHarness.types";
  * which boots local Supabase first and injects VITE_* env.
  */
 
-const SUPA_URL = process.env["VITE_SUPABASE_URL"];
-const ANON_KEY = process.env["VITE_SUPABASE_ANON_KEY"];
+/** Fail fast with a clear message (not an opaque assertion) if run-e2e.mjs didn't inject env. */
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} must be injected by run-e2e.mjs (run \`pnpm e2e\`)`);
+  return value;
+}
+const SUPA_URL = requireEnv("VITE_SUPABASE_URL");
+const ANON_KEY = requireEnv("VITE_SUPABASE_ANON_KEY");
 
 /** Single source of truth for the expected scores — assert the pipeline persists
  *  faithfully what the script declares, not magic numbers. */
@@ -33,7 +39,7 @@ interface SessionRow {
 /** REST returns untyped JSON — the single validated boundary of the test. */
 async function fetchSessions(request: APIRequestContext, token: string): Promise<SessionRow[]> {
   const res = await request.get(`${SUPA_URL}/rest/v1/sessions?select=*&order=ended_at.desc`, {
-    headers: { apikey: ANON_KEY as string, Authorization: `Bearer ${token}` },
+    headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` },
   });
   expect(res.ok(), `REST read failed: ${res.status()}`).toBeTruthy();
   return (await res.json()) as SessionRow[];
@@ -50,9 +56,6 @@ const npcSettled = (page: Page) =>
   });
 
 test("auth + kredit-macet → scored result rendered & persisted", async ({ page, request }) => {
-  expect(SUPA_URL, "VITE_SUPABASE_URL must be injected by run-e2e.mjs").toBeTruthy();
-  expect(ANON_KEY, "VITE_SUPABASE_ANON_KEY must be injected by run-e2e.mjs").toBeTruthy();
-
   await page.goto("/?e2e=kredit-macet");
 
   // --- Auth: anonymous session established (gate on "guest", not "ready") --------
@@ -75,8 +78,9 @@ test("auth + kredit-macet → scored result rendered & persisted", async ({ page
 
   // --- One benign turn, gated on stream state (never a fixed sleep) --------------
   await expect.poll(() => npcSettled(page), { timeout: 15_000 }).toBe(true); // greeting done
-  await page.getByRole("textbox").fill(BENIGN_TURN);
-  await page.getByRole("textbox").press("Enter");
+  const input = page.getByRole("textbox");
+  await input.fill(BENIGN_TURN);
+  await input.press("Enter");
   await expect.poll(() => lastSpeaker(page), { timeout: 10_000 }).toBe("player"); // send registered
   await expect.poll(() => npcSettled(page), { timeout: 15_000 }).toBe(true); // reply done
 
