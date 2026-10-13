@@ -1,7 +1,11 @@
 """Registry skenario → persona/voice + spesifikasi drift & auditor.
 
 Skenario 1 (Tutorial): tanpa drift/auditor (hasil terskrip). Skenario 2 & 3:
-observer drift (Lapisan 2) + AI Auditor (Lapisan 3). Skenario 4 (RAT) menyusul.
+observer drift (Lapisan 2) + AI Auditor (Lapisan 3). Skenario 4 (RAT): dua NPC,
+arsitektur "Telinga ≠ Mulut" (lihat `rat/`).
+
+`voice` = nama suara Gemini Live (prebuilt voice), BUKAN lagi id Azure Speech.
+Pilihan suara adalah USULAN — validasi dengan mendengarkan langsung.
 """
 
 from dataclasses import dataclass
@@ -46,8 +50,12 @@ class Persona:
 
     key: str
     name: str
-    voice: str  # Azure Speech voice id
-    prompt: str
+    voice: str  # nama suara Gemini Live
+    prompt: str  # dibaca NPC (instruksi persona)
+    identity: str  # identity participant LiveKit (satu participant per NPC)
+    # Dibaca DIREKTUR (bukan NPC): posisi, sikap, dan pemicu persona ini di rapat —
+    # dasar memilih siapa yang paling "tersentuh" oleh ucapan pimpinan.
+    domain: str
 
 
 @dataclass(frozen=True)
@@ -57,8 +65,12 @@ class RatPhase:
     id: int
     label: str
     advance_action_label: str | None  # label tombol → fase berikutnya; None di fase akhir
-    default_persona: str  # responder default fase ini (key)
+    default_persona: str  # pemimpin fase: fallback direktur bila ragu (key)
     entry_line: tuple[str, str] | None = None  # (persona_key, teks) auto saat masuk fase
+    # Batas NPC saling menyambung sebelum giliran wajib balik ke pemain (D6).
+    max_npc_exchanges: int = 3
+    # Petunjuk tambahan untuk DIREKTUR di fase ini (draf — review pemilik).
+    director_hint: str = ""
 
 
 @dataclass(frozen=True)
@@ -80,7 +92,7 @@ class RatSpec:
 class Scenario:
     scenario_id: str
     npc_name: str
-    voice: str  # Azure Speech voice id (persona utama; RAT pakai rat.personas)
+    voice: str  # suara Gemini Live (persona utama; RAT pakai rat.personas)
     prompt: str
     greeting_instructions: str
     mentor_brief: str = ""  # grounding fitur Petunjuk (mentor.py); tujuan + langkah
@@ -99,7 +111,7 @@ class Scenario:
 TUTORIAL = Scenario(
     scenario_id="tutorial-koperasi-konsumen",
     npc_name="Ibu Rumah Tangga",
-    voice="id-ID-GadisNeural",
+    voice="Aoede",
     prompt=TUTORIAL_PROMPT,
     greeting_instructions=(
         "Sebagai ibu rumah tangga non-anggota, buka dengan menyapa petugas "
@@ -143,7 +155,7 @@ TUTORIAL = Scenario(
 KREDIT_MACET = Scenario(
     scenario_id="kredit-macet",
     npc_name="Pak Joko",
-    voice="id-ID-ArdiNeural",
+    voice="Puck",
     prompt=KREDIT_MACET_PROMPT,
     greeting_instructions=(
         "Buka sebagai Joko dengan nada cemas dan sedikit defensif: akui cicilan "
@@ -205,7 +217,7 @@ KREDIT_MACET = Scenario(
 KEANGGOTAAN_FIKTIF = Scenario(
     scenario_id="keanggotaan-fiktif",
     npc_name="Pak Bambang",
-    voice="id-ID-ArdiNeural",
+    voice="Charon",
     prompt=KEANGGOTAAN_FIKTIF_PROMPT,
     greeting_instructions=(
         "Buka sebagai Bambang: sambut petugas dengan ramah, persilakan memeriksa "
@@ -267,8 +279,8 @@ KEANGGOTAAN_FIKTIF = Scenario(
 RAPAT_ANGGOTA_TAHUNAN = Scenario(
     scenario_id="rapat-anggota-tahunan",
     npc_name="Pak Darma & Ibu Sri",
-    voice="id-ID-GadisNeural",  # tak dipakai langsung; lihat rat.personas
-    prompt=RAT_SRI_PROMPT,  # placeholder; llm_node menukar per persona aktif
+    voice="Aoede",  # tak dipakai langsung; lihat rat.personas
+    prompt=RAT_SRI_PROMPT,  # tak dipakai langsung; tiap NPC memakai Persona.prompt
     greeting_instructions=(
         "Sebagai Sri, sambut pimpinan rapat dengan santun: sampaikan anggota kecil "
         "sudah hadir dan berharap suara mereka didengar, lalu selipkan dorongan "
@@ -333,14 +345,28 @@ RAPAT_ANGGOTA_TAHUNAN = Scenario(
             Persona(
                 key="darma",
                 name="Pak Darma",
-                voice="id-ID-ArdiNeural",
+                voice="Orus",
                 prompt=RAT_DARMA_PROMPT,
+                identity="npc-pak-darma",
+                domain=(
+                    "penyetor modal terbesar; ingin dana koperasi dialihkan ke properti "
+                    "pribadinya dan mengancam menarik modal. Tersentuh bila pimpinan "
+                    "membahas modal, rencana kerja/anggaran, penolakan usulannya, "
+                    "tata tertib yang membatasi pengaruh modal, atau bila ia ditegur."
+                ),
             ),
             Persona(
                 key="sri",
                 name="Ibu Sri",
-                voice="id-ID-GadisNeural",
+                voice="Aoede",
                 prompt=RAT_SRI_PROMPT,
+                identity="npc-ibu-sri",
+                domain=(
+                    "wakil petani/pedagang kecil; membela 'satu anggota satu suara' dan "
+                    "usulan beli beras dari kelompok tani lokal; penjaga prosedur. "
+                    "Tersentuh bila pimpinan membahas kuorum, hak suara, tata tertib, "
+                    "musyawarah/voting, usulan beras lokal, atau nasib anggota kecil."
+                ),
             ),
         ),
         name_mentions={"darma": "darma", "sri": "sri"},
@@ -350,6 +376,11 @@ RAPAT_ANGGOTA_TAHUNAN = Scenario(
                 label="Buka Rapat",
                 advance_action_label="Baca LPJ",
                 default_persona="sri",
+                max_npc_exchanges=2,
+                director_hint=(
+                    "Tahap pembukaan: fokus kuorum dan membuka rapat. Ibu Sri paling "
+                    "relevan; Pak Darma cukup sesekali tak sabar."
+                ),
             ),
             RatPhase(
                 id=2,
@@ -362,12 +393,22 @@ RAPAT_ANGGOTA_TAHUNAN = Scenario(
                     "koperasi ini dari saya, jadi arah kebijakan harus ikut saya. "
                     "Jangan buang waktu dengan keluhan pedagang kecil!",
                 ),
+                max_npc_exchanges=3,
+                director_hint=(
+                    "Tahap LPJ: konflik memanas. Bila salah satu NPC baru saja menyerang "
+                    "posisi yang lain secara langsung, NPC yang diserang boleh menyanggah."
+                ),
             ),
             RatPhase(
                 id=3,
                 label="Ambil Keputusan",
                 advance_action_label=None,
                 default_persona="sri",
+                max_npc_exchanges=2,
+                director_hint=(
+                    "Tahap keputusan: utamakan menjawab pimpinan; jangan biarkan kedua "
+                    "NPC berdebat sendiri tanpa arah — kembalikan giliran ke pimpinan."
+                ),
             ),
         ),
     ),
