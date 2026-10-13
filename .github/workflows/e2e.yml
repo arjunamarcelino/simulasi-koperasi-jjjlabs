@@ -1,0 +1,66 @@
+# SIM-22 end-to-end smoke: anonymous auth + one full scored scenario (kredit-macet,
+# mock transport) against a real local Supabase, asserting the persisted sessions row.
+# Combines the web toolchain (pnpm/node) with the Supabase CLI (as in db-tests.yml).
+name: e2e
+
+on:
+  push:
+    paths:
+      - "apps/web/**"
+      - "apps/db/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/e2e.yml"
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "apps/db/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/e2e.yml"
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0 # pinned; bump deliberately
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck e2e specs
+        run: pnpm --filter web typecheck:e2e
+      - name: Install Playwright Chromium
+        run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: Start Supabase (retry flaky Docker Hub pulls)
+        # Isolate the one flaky step: anonymous Docker Hub pulls are rate-limited on
+        # shared runner IPs. `supabase start` runs inside run-e2e.mjs BEFORE Playwright,
+        # so Playwright's retries don't cover it — warm-start here with retry; the
+        # orchestrator then detects the running stack and reuses it.
+        working-directory: apps/db
+        run: |
+          for i in 1 2 3; do
+            supabase start && break
+            echo "supabase start attempt $i failed; retrying in 30s"; supabase stop || true; sleep 30
+          done
+      - name: Run E2E smoke (reuses the running Supabase, tears it down)
+        run: pnpm e2e
+      - name: Stop Supabase (safety net)
+        if: always()
+        run: cd apps/db && supabase stop || true
+      - name: Upload Playwright report
+        # Only on failure: a green run captures no trace (trace: on-first-retry), so
+        # there's nothing to debug — and this shrinks the window where a trace could
+        # carry the (ephemeral, already-destroyed) local anon token into a public artifact.
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7

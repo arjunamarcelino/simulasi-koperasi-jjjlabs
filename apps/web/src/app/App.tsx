@@ -59,6 +59,11 @@ export function App() {
       setCaptchaTokenProvider(getCaptchaToken);
     }
     initAuth();
+    // DEV-only E2E harness (SIM-22). Dynamic import guarded on DEV so the entire
+    // module is dead-code-eliminated from the production build.
+    if (import.meta.env.DEV) {
+      void import("./e2eHarness").then((m) => m.installE2EHarness());
+    }
   }, []);
 
   return <ErrorBoundary>{ready ? renderView(view) : <BootGate />}</ErrorBoundary>;

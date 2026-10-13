@@ -63,7 +63,11 @@ export function ResultPanel({
   const scored = chips.length > 0 || pillars.length > 0;
 
   return (
-    <div className={`${overlayClassName} ${OVERLAY_LAYOUT}`}>
+    <div
+      className={`${overlayClassName} ${OVERLAY_LAYOUT}`}
+      data-testid="result-panel"
+      data-ending={endingType}
+    >
       <PixelPanel
         className={`flex max-h-full w-full flex-col gap-4 overflow-y-auto text-center ${
           scored ? "max-w-2xl" : "max-w-xl"
