@@ -3,19 +3,19 @@ import { scoreTone, resolveScoreLabel, resolveStateChip, ENDING_STYLE } from "./
 
 describe("scoreTone — threshold triad", () => {
   // >=70 good, >=40 warn, else bad (resultLabels.ts)
+  // Only the branch boundaries carry signal; higher/lower values in a band are
+  // redundant, so we pin 70/69 and 40/39 plus one representative bad case.
   it.each([
-    [100, "good"],
     [70, "good"], // lower bound of good
     [69, "warn"],
     [40, "warn"], // lower bound of warn
     [39, "bad"],
     [0, "bad"],
-    [-5, "bad"], // defensive negative
   ] as const)("scoreTone(%i) === %s", (score, tone) => {
     expect(scoreTone(score)).toBe(tone);
   });
 
-  it("NaN falls through to bad (documents the else branch)", () => {
+  it("NaN falls through to bad (both comparisons are false — a non-obvious edge)", () => {
     expect(scoreTone(Number.NaN)).toBe("bad");
   });
 });
