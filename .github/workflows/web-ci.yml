@@ -38,7 +38,9 @@ jobs:
         run: pnpm --filter web build
       - name: Assert DEV e2e seam stripped from prod build
         # Independent of the NODE_ENV axis both DEV guards share: fail if the harness
-        # leaked into dist/ (SIM-22 security control).
+        # leaked into dist/ (SIM-22 security control). Guards the standard production
+        # `pnpm build` (NODE_ENV=production → import.meta.env.DEV=false); a non-standard
+        # `vite build --mode development` would ship the seam and is intentionally out of scope.
         run: |
           if grep -rqE "__e2e|installE2EHarness" apps/web/dist; then
             echo "::error::E2E harness leaked into the production build"; exit 1

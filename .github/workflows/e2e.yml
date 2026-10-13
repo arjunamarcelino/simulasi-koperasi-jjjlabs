@@ -25,13 +25,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0 # pinned; bump deliberately
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-      - uses: supabase/setup-cli@v1
-        with:
-          version: 2.117.0
       - name: Install workspace
         run: pnpm install --frozen-lockfile
       - name: Typecheck e2e specs
@@ -55,7 +55,10 @@ jobs:
         if: always()
         run: cd apps/db && supabase stop || true
       - name: Upload Playwright report
-        if: ${{ !cancelled() }}
+        # Only on failure: a green run captures no trace (trace: on-first-retry), so
+        # there's nothing to debug — and this shrinks the window where a trace could
+        # carry the (ephemeral, already-destroyed) local anon token into a public artifact.
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report

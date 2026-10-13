@@ -21,7 +21,7 @@ const noServerOnlyCodes = {
 };
 
 export default tseslint.config(
-  { ignores: ["dist", "playwright-report", "test-results", "e2e/**", "playwright.config.ts"] },
+  { ignores: ["dist", "playwright-report", "test-results"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -50,6 +50,16 @@ export default tseslint.config(
     files: ["src/pages/**/*.{ts,tsx}", "src/components/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": ["error", { patterns: [noPhaserInReact, noServerOnlyCodes] }],
+    },
+  },
+  // Playwright E2E specs + config run in Node (not the browser). Lint them (parity with
+  // src/**/*.test.ts) with Node globals added, and drop the React fast-refresh rule that
+  // doesn't apply to a test/config module.
+  {
+    files: ["e2e/**/*.ts", "playwright.config.ts"],
+    languageOptions: { globals: { ...globals.node } },
+    rules: {
+      "react-refresh/only-export-components": "off",
     },
   },
 );

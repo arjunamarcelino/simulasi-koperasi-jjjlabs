@@ -10,6 +10,10 @@ import type { Speaker, SessionEnded } from "../session/transport/contract";
 /** Read-only inspection surface Playwright polls for deterministic gating. */
 export interface E2EBridge {
   getAuth(): {
+    // Deliberately `string`, not the store's AuthSnapshot["status"] union: this
+    // types-only module must stay free of value-module imports (auth.store pulls in
+    // import.meta.hot, which the e2e tsconfig can't resolve). The spec only compares
+    // against "guest", so the loose type is sufficient here.
     status: string;
     isAnonymous: boolean | null;
     accessToken: string | null;

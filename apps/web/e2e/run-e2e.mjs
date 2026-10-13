@@ -29,6 +29,11 @@ const stop = () => {
   stopped = true;
   sb(["stop"], { stdio: "inherit" });
 };
+// On a signal during `supabase start`/`status` (below), the sync child hasn't been
+// spawned yet, so stop here. Once `playwright test` is running under spawnSync the
+// event loop is parked; the signal propagates to the child, it exits, spawnSync
+// returns, and the `finally` handles teardown — so these handlers mainly cover the
+// pre-Playwright window.
 for (const sig of ["SIGINT", "SIGTERM"]) {
   process.on(sig, () => {
     stop();
@@ -37,13 +42,18 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
 }
 
 try {
+  // stdio:"inherit" echoes the local status table (incl. the local service_role key)
+  // to the CI log — these are Supabase's fixed, publicly-documented demo keys for a
+  // throwaway local stack, not our hosted project's secrets.
   if (!alreadyUp) execFileSync("supabase", ["start"], { cwd: DB_DIR, stdio: "inherit" });
 
   const envText = execFileSync("supabase", ["status", "-o", "env"], {
     cwd: DB_DIR,
     encoding: "utf8",
   });
-  const pick = (key) => envText.match(new RegExp(`${key}="?([^"\\n]+)`))?.[1];
+  // Line-anchored (^…/m) so a future env key that contains API_URL/ANON_KEY as a
+  // substring can't match ahead of the intended line.
+  const pick = (key) => envText.match(new RegExp(`^${key}="?([^"\\n]+)`, "m"))?.[1];
   const apiUrl = pick("API_URL");
   const anonKey = pick("ANON_KEY");
   if (!apiUrl || !anonKey) throw new Error("Could not read API_URL / ANON_KEY from supabase status");
