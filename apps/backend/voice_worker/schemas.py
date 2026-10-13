@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 _ALLOWED_ENDINGS = {"good", "bad", "neutral"}
 
 _MAX_KEYS = 50  # batas jumlah key (pertahanan berlapis vs output LLM membengkak)
+_MAX_NARRATIVE = 4000  # batas panjang narasi (selaras size-guard DB, SIM-15)
 
 
 def _as_str(v: Any) -> str:
@@ -44,13 +45,20 @@ class AuditorResult(BaseModel):
     stateClassification: dict[str, str] = Field(default_factory=dict)
     scores: dict[str, int] = Field(default_factory=dict)
     endingType: str = "neutral"
-    narrativeFeedback: str = Field(default="", max_length=4000)
+    narrativeFeedback: str = Field(default="", max_length=_MAX_NARRATIVE)
 
     @field_validator("endingType", mode="before")
     @classmethod
     def _coerce_ending(cls, v: Any) -> str:
         """Nilai tak dikenal / salah-tipe → "neutral" (seperti observer)."""
         return v if isinstance(v, str) and v in _ALLOWED_ENDINGS else "neutral"
+
+    @field_validator("narrativeFeedback", mode="before")
+    @classmethod
+    def _coerce_narrative(cls, v: Any) -> str:
+        """Paksa jadi str & potong; narasi kepanjangan/salah-tipe/null jangan DITOLAK
+        (menolak akan membuang scores/state yang sudah valid — langgar salvage)."""
+        return _as_str(v)[:_MAX_NARRATIVE]
 
     @field_validator("stateClassification", mode="before")
     @classmethod

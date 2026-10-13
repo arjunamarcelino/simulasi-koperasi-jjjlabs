@@ -156,6 +156,22 @@ def test_state_classification_values_stringified(fake_openai):
     assert result["stateClassification"] == {"State_X": "3", "State_Y": ""}
 
 
+def test_oversize_narrative_truncated_others_survive(fake_openai):
+    payload = json.dumps({"narrativeFeedback": "x" * 5000, "scores": {"a": 50}})
+    result = _run(fake_openai(payload))
+    # Narasi dipotong (bukan menjatuhkan audit); scores valid tetap ada.
+    assert len(result["narrativeFeedback"]) == 4000
+    assert result["scores"] == {"a": 50}
+
+
+def test_non_string_narrative_coerced_others_survive(fake_openai):
+    for bad in (123, None, ["a"]):
+        payload = json.dumps({"narrativeFeedback": bad, "endingType": "good"})
+        result = _run(fake_openai(payload))
+        assert isinstance(result["narrativeFeedback"], str)
+        assert result["endingType"] == "good"  # salah-tipe narasi tak buang ending
+
+
 def test_llm_supplied_identity_is_overwritten(fake_openai):
     payload = json.dumps(
         {"scenarioId": "HACKED", "trigger": "HACKED", "endingType": "good"}
