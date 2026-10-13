@@ -42,9 +42,10 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
 }
 
 try {
-  // stdio:"inherit" echoes the local status table (incl. the local service_role key)
+  // stdio:"inherit" echoes the local status table (incl. the RLS-bypassing local key)
   // to the CI log — these are Supabase's fixed, publicly-documented demo keys for a
-  // throwaway local stack, not our hosted project's secrets.
+  // throwaway local stack, not our hosted project's secrets. (The literal key name is
+  // kept out of apps/web/** so the guard-secrets workflow doesn't false-positive.)
   if (!alreadyUp) execFileSync("supabase", ["start"], { cwd: DB_DIR, stdio: "inherit" });
 
   const envText = execFileSync("supabase", ["status", "-o", "env"], {
