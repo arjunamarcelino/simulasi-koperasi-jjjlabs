@@ -35,7 +35,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm run dev -- --port ${PORT} --strictPort`,
+    // Invoke vite directly (not `pnpm run dev --`) — pnpm leaks the `--` through to
+    // the script, so `vite -- --port` is parsed as positional and ignored (binds 5173).
+    command: `pnpm exec vite --port ${PORT} --strictPort`,
     url: baseURL,
     reuseExistingServer: false,
     timeout: 180_000,
