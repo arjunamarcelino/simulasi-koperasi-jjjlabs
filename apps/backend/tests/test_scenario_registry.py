@@ -26,8 +26,10 @@ def test_valid_scenarios_matches_registry_cross_process():
 
 
 def test_get_scenario_resolves_known_and_rejects_unknown():
-    for key in _SCENARIOS:
-        assert get_scenario(key).scenario_id == key
+    # Sapuan id==key penuh ada di test_registry_keys_match_scenario_id; di sini cukup
+    # satu resolusi representatif + penolakan id tak dikenal (ValueError).
+    some_key = next(iter(_SCENARIOS))
+    assert get_scenario(some_key).scenario_id == some_key
     with pytest.raises(ValueError):
         get_scenario("skenario-tak-ada")
 

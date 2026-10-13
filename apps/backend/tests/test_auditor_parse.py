@@ -196,22 +196,25 @@ def test_llm_supplied_identity_is_overwritten(fake_openai):
     assert result["trigger"] == "manual"
 
 
-# --- garansi "tak pernah raise" atas seluruh matriks ------------------------
+def test_unhashable_ending_type_coerced_to_neutral(fake_openai):
+    # `[] in _ALLOWED_ENDINGS` akan TypeError tanpa guard isinstance di _coerce_ending.
+    result = _run(fake_openai('{"endingType": []}'))
+    assert result["endingType"] == "neutral"
+
+
+# --- garansi "tak pernah raise": sapuan wakil atas cabang-cabang exception utama,
+# bukan pengulangan test ber-asersi-nilai di atas (lih. test spesifik masing-masing).
 
 
 @pytest.mark.parametrize(
     "kwargs",
     [
-        {"content": None},
-        {"content": ""},
-        {"content": "{bad"},
-        {"content": "null"},
-        {"content": "[1,2]"},
-        {"content": '{"scores": {"x": "abc"}}'},
-        {"content": '{"stateClassification": 5}'},
-        {"content": '{"endingType": []}'},
-        {"raises": RuntimeError("boom")},
-        {"no_choices": True},
+        {"content": "{bad"},  # JSONDecodeError
+        {"content": "null"},  # JSON valid non-object
+        {"content": '{"scores": {"x": 1e999}}'},  # OverflowError di validator
+        {"content": '{"endingType": []}'},  # nilai unhashable
+        {"raises": RuntimeError("boom")},  # error klien
+        {"no_choices": True},  # choices kosong → IndexError
     ],
 )
 def test_never_raises(fake_openai, kwargs):
