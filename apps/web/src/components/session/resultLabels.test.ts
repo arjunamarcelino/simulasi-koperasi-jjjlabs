@@ -58,13 +58,22 @@ describe("resolveStateChip — the degrade-to-raw-string contract", () => {
   });
 });
 
-describe("ENDING_STYLE — every EndingType is styled", () => {
-  it.each(["good", "neutral", "bad"] as const)("has a token set for %s", (kind) => {
-    expect(ENDING_STYLE[kind]).toMatchObject({
+describe("ENDING_STYLE — every ending has a complete, correctly-labeled token set", () => {
+  // Derive from the object itself (not a hardcoded list) and use toEqual so an
+  // accidental extra/missing field is caught, not silently tolerated.
+  it.each(Object.entries(ENDING_STYLE))("%s has exactly the four string tokens", (_kind, style) => {
+    expect(style).toEqual({
       badgeLabel: expect.any(String),
       accent: expect.any(String),
       titleColor: expect.any(String),
       chip: expect.any(String),
     });
+  });
+
+  // Pin the user-facing badge text — a type cannot enforce the actual label.
+  it("maps each ending to its human badge label", () => {
+    expect(ENDING_STYLE.good.badgeLabel).toBe("Berhasil");
+    expect(ENDING_STYLE.neutral.badgeLabel).toBe("Selesai");
+    expect(ENDING_STYLE.bad.badgeLabel).toBe("Berakhir");
   });
 });
