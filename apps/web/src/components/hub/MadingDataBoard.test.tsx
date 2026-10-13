@@ -29,7 +29,7 @@ describe("MadingDataBoardBody", () => {
     expect(html).toContain('aria-roledescription="korsel"');
     expect(html).toContain('aria-label="Papan Data"');
     expect(html).toContain('aria-roledescription="salindia"');
-    expect(html).toContain('aria-label="Slide 1: Daftar Anggota"');
+    expect(html).toContain('aria-label="Daftar Anggota"'); // slide name = title (content-only, matches knowledge board)
   });
 
   it("renders the slide title in the labelled heading and names/announces position", () => {

@@ -65,11 +65,11 @@ export function MadingDataBoardBody({
           {`Slide ${safeIdx + 1} dari ${len}: ${slide.title}`}
         </p>
 
-        <div role="group" aria-roledescription="salindia" aria-label={`Slide ${safeIdx + 1}: ${slide.title}`}>
+        <div role="group" aria-roledescription="salindia" aria-label={slide.title}>
           <div className="overflow-x-auto border-3 border-border">
             <table
               key={entry.block_key}
-              className="w-full border-collapse font-body text-lg animate-[fadeIn_120ms_ease-out] motion-reduce:animate-none md:text-xl"
+              className="w-full border-collapse font-body text-lg md:text-xl animate-[fadeIn_120ms_ease-out] motion-reduce:animate-none"
             >
               <thead>
                 <tr>
