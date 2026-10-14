@@ -552,6 +552,79 @@ async def quiz_delete(
     return {"deleted": True}
 
 
+# --- Mission unlock codes (SIM-42) ------------------------------------------------------
+# Admin-gated rotation of reallife mission redeem_codes via the SAME metrics_reader pool.
+# Mirrors the quiz content pattern with four divergences: rotate-only (no create/delete,
+# no collection POST), last-write-wins (NO CAS token / prev_updated_at / 409), one honest
+# MissionRow shape for list + rotate, and str_strip_whitespace so a whitespace-only code is
+# a clean 422 at the boundary (min_length then measures the trimmed value, aligning with the
+# DB's char_length(btrim)). Only STATE reason `not_found`→404 is enumerated; validation
+# reasons (empty_redeem_code/too_long) are defense-in-depth and fall to the 422 default.
+class MissionCodeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    redeem_code: Annotated[str, Field(min_length=1, max_length=64)]
+
+
+class MissionRow(BaseModel):
+    code: str
+    title: str | None = None
+    redeem_code: str
+    redeem_code_updated_at: str | None
+    redeem_code_updated_by: str | None
+
+
+class ListMissionsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # outer contract frozen; sub-model (MissionRow) is not
+    ok: bool
+    rows: list[MissionRow]
+
+
+_MISSION_REASON_STATUS: dict[str, int] = {"not_found": 404}  # state reasons only
+
+
+def _raise_for_mission_reason(result: dict[str, Any]) -> None:
+    # Default 422 (NOT 409): there is no CAS/conflict here, and the FE degrades an unexpected
+    # 409 to serviceUnavailable — a stray 409 would mislead it. An unknown ok:false never 200s.
+    reason = result.get("reason") or "rejected"
+    raise HTTPException(_MISSION_REASON_STATUS.get(reason, 422), reason)
+
+
+@app.get("/admin/missions", response_model=ListMissionsResponse)
+async def missions_list(
+    request: Request,
+    _admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    try:
+        return await metrics_db.list_missions(request.app.state.metrics_pool)
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+
+
+@app.post("/admin/missions/{code}", response_model=MissionRow)
+async def mission_rotate_code(
+    code: str,
+    req: MissionCodeBody,
+    request: Request,
+    admin: AuthedUser = Depends(_require_admin),
+) -> dict[str, Any]:
+    # Rotate the redeem_code on an existing reallife mission. `code` (mission id) is the path
+    # key; the admin's JWT-verified user_id is forwarded as the audit actor.
+    try:
+        result = await metrics_db.set_mission_redeem_code(
+            request.app.state.metrics_pool,
+            code=code,
+            redeem_code=req.redeem_code,
+            actor=admin.user_id,
+        )
+    except MetricsUnavailable:
+        raise HTTPException(503, "metrics_unavailable") from None
+    if not result.get("ok"):
+        _raise_for_mission_reason(result)
+    # Log the mission code + acting admin — NEVER the redeem_code value (shared logs).
+    log.info("Mission redeem_code rotated by %s → %s", admin.user_id, code)
+    return result["row"]
+
+
 # --- Mading content management (SIM-18) -------------------------------------------------
 # Admin-gated CRUD over mading_block. Per-board payload validation is authoritative HERE in
 # Pydantic (→ 422 at the boundary); the DB admin._mading_reject_reason is the defense-in-depth

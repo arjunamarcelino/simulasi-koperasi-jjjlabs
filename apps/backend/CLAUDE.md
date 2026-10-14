@@ -26,7 +26,10 @@ delete_leaderboard_season`), dan **manajemen konten SIM-18** — kuis (`GET /adm
 (`GET /admin/mading`, `POST /admin/mading` create, `POST /admin/mading/{id}` edit,
 `DELETE /admin/mading/{id}`) lewat definer fn `admin.list_quiz/upsert_quiz_question/…` &
 `admin.list_mading/upsert_mading_block/…`, dan **ekspor laporan SIM-19** — `GET /admin/reports/sessions.csv`
-(→ `admin.session_results_export()`; respons `text/csv` non-JSON pertama, baris sesi selesai tanpa PII)
+(→ `admin.session_results_export()`; respons `text/csv` non-JSON pertama, baris sesi selesai tanpa PII),
+dan **kode misi SIM-42** — rotasi kode unlock reallife (`GET /admin/missions` → `admin.list_missions()`;
+`POST /admin/missions/{code}` → `admin.set_mission_redeem_code()`; rotate-only, last-write-wins, actor =
+`admin.user_id` diteruskan sebagai `$3::uuid`, nilai `redeem_code` TAK PERNAH di-log)
 — semuanya membuka pool asyncpg **fail-soft** yang SAMA ke
 Supabase sebagai role `metrics_reader` (`api/metrics_db.py`). **SIM-17/18 melebarkan `metrics_reader`
 dari read-only ke baca + TULIS admin-gated** (capture/delete + quiz/mading upsert/delete lewat definer
