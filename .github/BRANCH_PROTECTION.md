@@ -27,6 +27,11 @@ Branch protection lives in GitHub repo settings, so it does **not** appear in an
 **lost on a repo transfer/fork**. Re-apply with the commands below (requires `gh` authenticated as
 a repo **admin**; for this repo that is the `arjunamarcelino` account).
 
+> There is no automatic reconciliation — the **Verify** step below is manual, so this document can
+> drift from the live settings. If the gate outlives the handover, migrate it to a
+> version-controlled mechanism: GitHub **repository Rulesets** (exportable/importable as JSON) or
+> Terraform `github_branch_protection`, so the config lives in the repo and drift becomes reviewable.
+
 ```bash
 # Apply identical protection to develop and main.
 for b in develop main; do
