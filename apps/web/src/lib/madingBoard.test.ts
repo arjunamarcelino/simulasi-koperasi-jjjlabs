@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { carouselArrowIndex, wrapIndex } from "./madingBoard";
+import { allCardsSeen, carouselArrowIndex, wrapIndex } from "./madingBoard";
 
 // carouselArrowIndex centralizes the arrow-nav decision shared by both mading carousels. The
 // editable-target guard needs a DOM, so these cover the DOM-independent paths (the typeof guard in
@@ -34,5 +34,23 @@ describe("wrapIndex", () => {
     expect(wrapIndex(3, 3)).toBe(0);
     expect(wrapIndex(-1, 3)).toBe(2);
     expect(wrapIndex(5, 0)).toBe(0);
+  });
+});
+
+describe("allCardsSeen", () => {
+  const cards = [{ block_key: "a" }, { block_key: "b" }, { block_key: "c" }];
+
+  it("is true only once every card's block_key has been visited", () => {
+    expect(allCardsSeen(new Set(["a", "b"]), cards)).toBe(false);
+    expect(allCardsSeen(new Set(["a", "b", "c"]), cards)).toBe(true);
+  });
+
+  it("ignores extra visited keys no longer in the card set (admin removed a card)", () => {
+    expect(allCardsSeen(new Set(["a", "b", "c", "stale"]), cards)).toBe(true);
+  });
+
+  it("is false for an empty card list (empty / degraded board never counts as read)", () => {
+    expect(allCardsSeen(new Set(["a"]), [])).toBe(false);
+    expect(allCardsSeen(new Set(), [])).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEventHandler } from "react";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { madingRepo, type Keyed, type RepoResult } from "../../lib/madingRepo";
-import { carouselArrowIndex, fallbackMessage, wrapIndex } from "../../lib/madingBoard";
+import { allCardsSeen, carouselArrowIndex, fallbackMessage, wrapIndex } from "../../lib/madingBoard";
 import { KNOWLEDGE_CONTENT_ID } from "../../content/badges";
 import type { KnowledgeCard } from "../../lib/mading.types";
 import { ModalShell } from "../common/ModalShell";
@@ -154,7 +154,7 @@ export function MadingKnowledgeBoard() {
     if (total === 0) return;
     const current = cards[wrapIndex(index, total)]?.block_key;
     if (current) visitedRef.current.add(current);
-    if (visitedRef.current.size >= total) {
+    if (allCardsSeen(visitedRef.current, cards)) {
       const firstTime = !gameStore.getState().readContentIds.includes(KNOWLEDGE_CONTENT_ID);
       gameStore.getState().markKnowledgeRead(KNOWLEDGE_CONTENT_ID);
       if (firstTime) setEarnAnnounce("Lencana diperoleh: Kutu Buku Koperasi");

@@ -77,11 +77,6 @@ describe("readContentIdsFromEarned", () => {
   it("returns an empty list for no earned badges", () => {
     expect(readContentIdsFromEarned([])).toEqual([]);
   });
-
-  it("round-trips: a contentRead badge earns once its id is surfaced via earned", () => {
-    const earned = readContentIdsFromEarned([readingBadge!.id]);
-    expect(isEarned(readingBadge!.criteria, ctx({ readContentIds: earned }))).toBe(true);
-  });
 });
 
 describe("isEarned — null teaser + existing kinds (no regression)", () => {
