@@ -125,13 +125,10 @@ async function runRotate(code: string, redeemCode: string): Promise<boolean> {
         void runList({ refreshing: true });
         return true;
       case "rejected":
-        setToast(myEpoch, {
-          tone: "error",
-          text:
-            outcome.reason === "too_long"
-              ? "Kode terlalu panjang (maks 64 karakter)."
-              : "Input ditolak server. Periksa isian.",
-        });
+        // The panel's maxLength={64} + the backend's Pydantic max_length reject an over-long
+        // code at the boundary (generic 422) before the DB's too_long reason is reachable, so a
+        // single generic message is correct — there is no reachable reason-specific branch here.
+        setToast(myEpoch, { tone: "error", text: "Input ditolak server. Periksa isian." });
         return false;
       case "notFound":
         setToast(myEpoch, { tone: "error", text: "Misi tidak ditemukan — memuat ulang." });

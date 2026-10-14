@@ -103,13 +103,13 @@ describe("missionContent store — rotate", () => {
     expect(h.listMissions).toHaveBeenCalledTimes(2); // load + refetch
   });
 
-  it("rejected (422) → error toast, resolves false, NO refetch (draft kept by panel)", async () => {
+  it("rejected (422) → generic error toast, resolves false, NO refetch (draft kept by panel)", async () => {
     await ready();
-    h.rotateMissionCode.mockResolvedValue({ kind: "rejected", reason: "too_long" });
-    const committed = await missionContentStore.getState().rotate("kunjungi-kdmp", "x".repeat(99));
+    h.rotateMissionCode.mockResolvedValue({ kind: "rejected", reason: "some_boundary_msg" });
+    const committed = await missionContentStore.getState().rotate("kunjungi-kdmp", "bad");
     expect(committed).toBe(false);
     expect(toast()?.tone).toBe("error");
-    expect(toast()?.text).toContain("maks 64");
+    expect(toast()?.text).toContain("Input ditolak");
     await flush();
     expect(h.listMissions).toHaveBeenCalledTimes(1);
   });
