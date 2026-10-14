@@ -15,6 +15,11 @@ depend on a local Supabase/Docker stack and are Docker-Hub-flaky.
 > For a required check to work it must run on *every* PR — that is why `web-ci`/`admin-ci`/
 > `backend-ci` have **no `paths:`/`paths-ignore:` filter**. A path-filtered required check never
 > runs on an unrelated PR, and GitHub then pins it "Expected"/pending forever and blocks merge.
+>
+> ⚠️ Because the contexts are **job names**, renaming a job — or adding a `strategy.matrix`
+> (which turns the context into `web (variant)`) — makes the pinned context stop reporting and
+> re-hangs every PR on "Expected", the exact failure this setup removes. Treat a job rename or
+> matrix change as **protection-breaking**: update the `contexts` list in the same change.
 
 ## Protection is repo settings, not a committed file
 
