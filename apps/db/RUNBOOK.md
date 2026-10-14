@@ -78,7 +78,7 @@ you want the pause risk gone entirely.
 - [ ] Job **ran** (not skipped — a skip means `SUPABASE_ENABLED` isn't set).
 - [ ] `supabase db push` reported migrations applied (**not** "no changes" on a fresh project).
 - [ ] Seed step exit 0.
-- [ ] **Smoke checks green** (`supabase/smoke/run.sh`: 10-table set, seed counts 4/7/5/9, `mission_definition` denied, `add_rewards` denied, JWKS ES256).
+- [ ] **Smoke checks green** (`supabase/smoke/run.sh`: 10-table set, seed counts 4/7/5/10, `mission_definition` denied, `add_rewards` denied, JWKS ES256).
 
 **Manual auth-flow verification** (can't run in CI once Turnstile is on — do from the app/SDK, or temporarily disable CAPTCHA to test):
 - [ ] Anonymous sign-in returns a JWT with `is_anonymous: true`.
