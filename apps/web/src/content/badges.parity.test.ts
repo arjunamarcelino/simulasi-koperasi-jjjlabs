@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BADGES } from "./badges";
+import { BADGES, KNOWLEDGE_CONTENT_ID } from "./badges";
 import { SCENARIOS } from "@simkop/catalog";
 
 // BADGES is loaded from JSON via a double cast, so scenarioId literals are NOT
@@ -24,5 +24,31 @@ describe("badge catalog parity", () => {
     expect(wired.has("juara-rat")).toBe(true);
     expect(wired.has("simpanan-rutin")).toBe(true);
     expect(wired.has("pinjaman-lancar")).toBe(true);
+  });
+
+  // contentId is not type-checked (JSON double cast), and an empty/typo id would make the
+  // badge permanently unearnable — the read signal (markKnowledgeRead) emits a fixed id.
+  it("every contentRead criterion carries a non-empty contentId", () => {
+    for (const badge of BADGES) {
+      if (badge.criteria?.kind === "contentRead") {
+        expect(typeof badge.criteria.contentId).toBe("string");
+        expect(badge.criteria.contentId.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("the micro-learning reading badge is wired (contentRead, not a null teaser)", () => {
+    const wired = BADGES.filter((b) => b.criteria?.kind === "contentRead").map((b) => b.id);
+    expect(wired).toContain("pembaca-mading");
+  });
+
+  // Links the board's KNOWLEDGE_CONTENT_ID to the catalog: without this, renaming the
+  // badge's contentId (or the board const) would silently make the badge unearnable —
+  // the board marks its own id read, which would never intersect the criteria.
+  it("a contentRead badge carries the knowledge board's content id", () => {
+    const contentIds = BADGES.flatMap((b) =>
+      b.criteria?.kind === "contentRead" ? [b.criteria.contentId] : [],
+    );
+    expect(contentIds).toContain(KNOWLEDGE_CONTENT_ID);
   });
 });

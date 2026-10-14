@@ -36,6 +36,7 @@ export type BadgeCriteria =
   | { kind: "missionCount"; min: number }
   | { kind: "missionDone"; missionId: string }
   | { kind: "scenarioGoodEnding"; scenarioId: string }
+  | { kind: "contentRead"; contentId: string }
   | null; // teaser — signal not trackable yet
 export type Badge = {
   id: string;

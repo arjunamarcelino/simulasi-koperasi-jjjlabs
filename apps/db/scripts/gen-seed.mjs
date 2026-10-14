@@ -123,7 +123,7 @@ const parts = [
   ),
   "",
   block(
-    "Badges (9) — criteria mirrors BadgeCriteria; null = teaser (locked until its signal exists)",
+    `Badges (${badges.length}) — criteria mirrors BadgeCriteria; null = teaser (locked until its signal exists)`,
     "badge_definition",
     ["code", "title", "requirement", "icon", "criteria", "sort_order"],
     badges,

@@ -17,6 +17,18 @@ export function fallbackMessage(result: RepoResult<unknown> | null): string | nu
 export const wrapIndex = (i: number, len: number): number => (len ? ((i % len) + len) % len : 0);
 
 /**
+ * True once every card has been visited (matched by `block_key`). The knowledge board
+ * awards its reading badge on this. False for an empty card list — an empty / degraded /
+ * error board (no cards) never counts as "read".
+ */
+export function allCardsSeen(
+  visited: ReadonlySet<string>,
+  cards: readonly { block_key: string }[],
+): boolean {
+  return cards.length > 0 && cards.every((c) => visited.has(c.block_key));
+}
+
+/**
  * The next carousel index for an arrow keydown, already wrapped — or `null` when the event must be
  * ignored: a non-arrow key, an auto-repeat (a held key would strobe the fade), an empty board, or a
  * keystroke aimed at an editable field (so nav never steals typing). Shared by both mading carousels

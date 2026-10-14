@@ -33,7 +33,7 @@ echo "P2 — seed counts via anon REST (public-read catalogs + seed applied)"
 [ "$(rest 'scenario_definition?select=code' | jq 'length')" = "4" ] || fail "scenario_definition != 4"
 [ "$(rest 'mission_catalog?select=code'     | jq 'length')" = "7" ] || fail "mission_catalog != 7"
 [ "$(rest 'voucher_definition?select=code'  | jq 'length')" = "5" ] || fail "voucher_definition != 5"
-[ "$(rest 'badge_definition?select=code'    | jq 'length')" = "9" ] || fail "badge_definition != 9"
+[ "$(rest 'badge_definition?select=code'    | jq 'length')" = "10" ] || fail "badge_definition != 10"
 
 echo "N2 — mission_definition base table is NOT client-readable (secret redeem_code hidden)"
 code=$(status "$BASE/rest/v1/mission_definition?select=redeem_code" -H "apikey: $ANON" -H "Authorization: Bearer $ANON")
