@@ -7,5 +7,6 @@
   { "id": "misi-perdana", "title": "Misi Perdana", "requirement": "Selesaikan 1 misi", "icon": "flag", "criteria": { "kind": "missionCount", "min": 1 } },
   { "id": "juara-rat", "title": "Juara RAT", "requirement": "Raih hasil baik di RAT", "icon": "trophy", "criteria": { "kind": "scenarioGoodEnding", "scenarioId": "rapat-anggota-tahunan" } },
   { "id": "simpanan-rutin", "title": "Simpanan Rutin", "requirement": "Selesaikan tutorial simpanan", "icon": "piggy", "criteria": { "kind": "scenarioGoodEnding", "scenarioId": "tutorial-koperasi-konsumen" } },
-  { "id": "pinjaman-lancar", "title": "Pinjaman Lancar", "requirement": "Tangani kredit macet dengan baik", "icon": "check", "criteria": { "kind": "scenarioGoodEnding", "scenarioId": "kredit-macet" } }
+  { "id": "pinjaman-lancar", "title": "Pinjaman Lancar", "requirement": "Tangani kredit macet dengan baik", "icon": "check", "criteria": { "kind": "scenarioGoodEnding", "scenarioId": "kredit-macet" } },
+  { "id": "pembaca-mading", "title": "Kutu Buku Koperasi", "requirement": "Baca semua kartu Pengetahuan Koperasi", "icon": "book", "criteria": { "kind": "contentRead", "contentId": "knowledge" } }
 ]

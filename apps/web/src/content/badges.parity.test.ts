@@ -25,4 +25,20 @@ describe("badge catalog parity", () => {
     expect(wired.has("simpanan-rutin")).toBe(true);
     expect(wired.has("pinjaman-lancar")).toBe(true);
   });
+
+  // contentId is not type-checked (JSON double cast), and an empty/typo id would make the
+  // badge permanently unearnable — the read signal (markKnowledgeRead) emits a fixed id.
+  it("every contentRead criterion carries a non-empty contentId", () => {
+    for (const badge of BADGES) {
+      if (badge.criteria?.kind === "contentRead") {
+        expect(typeof badge.criteria.contentId).toBe("string");
+        expect(badge.criteria.contentId.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("the micro-learning reading badge is wired (contentRead, not a null teaser)", () => {
+    const wired = BADGES.filter((b) => b.criteria?.kind === "contentRead").map((b) => b.id);
+    expect(wired).toContain("pembaca-mading");
+  });
 });

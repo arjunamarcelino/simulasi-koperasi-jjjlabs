@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { LEVELS } from "@simkop/catalog";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { useAuth, authStore, MAX_NAME } from "../../stores/auth.store";
-import { BADGES, isEarned, buildBadgeContext } from "../../content/badges";
+import { BADGES, isEarned, buildBadgeContext, readContentIdsFromEarned } from "../../content/badges";
 import { sessionsRepo } from "../../lib/sessionsRepo";
 import { goodEndingScenarioIds } from "../../lib/sessionHistory";
 import type { SessionRecord } from "../../lib/sessionsRepo.contracts";
@@ -48,6 +48,10 @@ export function ProfileModal() {
   const point = useGameStore((s) => s.point);
   const voucherCount = useGameStore((s) => s.redeemedVouchers.length);
   const completedMissionIds = useGameStore((s) => s.completedMissionIds);
+  // Reading badges: content read this session ∪ content implied by already-earned badges
+  // (the latter is how a reading badge survives reload — user_badge is the durable record).
+  const readContentIds = useGameStore((s) => s.readContentIds);
+  const earnedBadgeIds = useGameStore((s) => s.earnedBadgeIds);
   // Name + auth state come from auth.store (profiles.display_name); the game.store
   // playerName is only a Phaser-facing mirror of the same value.
   const displayName = useAuth((s) => s.auth.profile?.display_name ?? null);
@@ -124,6 +128,7 @@ export function ProfileModal() {
     completedMissionIds,
     voucherCount,
     goodEndingScenarioIds: goodIds,
+    readContentIds: [...readContentIds, ...readContentIdsFromEarned(earnedBadgeIds)],
   });
 
   return (

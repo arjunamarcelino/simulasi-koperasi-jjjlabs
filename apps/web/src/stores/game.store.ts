@@ -9,7 +9,7 @@ import {
   type RedeemedVoucher,
 } from "../content/vouchers";
 import { MISSIONS, isStringArray, type MissionReward } from "../content/missions";
-import { BADGES, isEarned, buildBadgeContext } from "../content/badges";
+import { BADGES, isEarned, buildBadgeContext, readContentIdsFromEarned } from "../content/badges";
 import { SCENARIOS } from "../scenarios/scenario.config";
 import { supabase } from "../lib/supabase";
 import { progressRepo } from "../lib/progressRepo";
@@ -157,6 +157,14 @@ export type GameState = {
    * hydrateAndMigrate sequences the load/reconcile/badge steps internally; nothing
    * gates on this today (tests assert it; a future UI could show a loading state). */
   hydrated: boolean;
+  /** Micro-learning content ids fully read THIS session (e.g. "knowledge"), set by
+   * markKnowledgeRead. Transient — the durable record is the earned badge itself
+   * (see earnedBadgeIds). Owner-scoped: reset on onOwnerChanged. */
+  readContentIds: string[];
+  /** Earned badge ids hydrated from get_my_progress (user_badge). The read side
+   * otherwise re-derives everything from live signals; this makes a reading badge
+   * survive reload / cross-device via readContentIdsFromEarned. Reset on owner change. */
+  earnedBadgeIds: string[];
 
   setView: (view: View) => void;
   /**
@@ -240,6 +248,13 @@ export type GameState = {
    * session finalizes (the profile modal may never open) and internally on hydrate.
    */
   syncSessionBadges: () => Promise<void>;
+  /**
+   * Record that a micro-learning content board was fully read this session and persist
+   * any newly-earned reading badge. Idempotent (no-op if already recorded). Fire-and-
+   * forget persist via the existing guarded wallet-path sync. Called by the knowledge
+   * board once every card has been viewed.
+   */
+  markKnowledgeRead: (contentId: string) => void;
 };
 
 /** How long (ms) the scene ignores E after an overlay closes — see interactSuppressedUntil. */
@@ -283,6 +298,8 @@ export const gameStore = createStore<GameState>()(
     completedMissionIds: [],
     walletUid: null,
     hydrated: false,
+    readContentIds: [],
+    earnedBadgeIds: [],
 
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
@@ -299,6 +316,9 @@ export const gameStore = createStore<GameState>()(
         redeemedVouchers: [],
         completedMissionIds: [],
         hydrated: false,
+        // Owner-scoped: never let the previous account's reads/earned badges leak.
+        readContentIds: [],
+        earnedBadgeIds: [],
       });
 
       if (!supabase || !uid) {
@@ -527,6 +547,13 @@ export const gameStore = createStore<GameState>()(
     },
 
     syncSessionBadges: () => syncBadgesFromSessions(),
+
+    markKnowledgeRead: (contentId) => {
+      if (get().readContentIds.includes(contentId)) return; // idempotent
+      set({ readContentIds: [...get().readContentIds, contentId] });
+      // Persist any newly-earned reading badge via the existing guarded wallet path.
+      void syncBadgesFromState();
+    },
   })),
 );
 
@@ -662,6 +689,9 @@ async function persistEarnedCore(good: readonly string[], guard: WriteGuard): Pr
     completedMissionIds: st.completedMissionIds,
     voucherCount: st.redeemedVouchers.length,
     goodEndingScenarioIds: good,
+    // Session reads drive the "fresh" (newly-earned) filter below; the earned-derived
+    // ids keep already-persisted reading badges satisfied (idempotent, dedups to no-op).
+    readContentIds: [...st.readContentIds, ...readContentIdsFromEarned(st.earnedBadgeIds)],
   });
   const fresh = BADGES.filter((b) => isEarned(b.criteria, ctx) && !syncedBadges.has(b.id)).map(
     (b) => b.id,
@@ -700,6 +730,7 @@ async function hydrateAndMigrate(uid: string, guard: WriteGuard): Promise<void> 
     point: number;
     missions: string[];
     vouchers: RedeemedVoucher[];
+    badges: string[];
   }): void => {
     const wallet: Wallet = {
       xp: data.xp,
@@ -707,7 +738,9 @@ async function hydrateAndMigrate(uid: string, guard: WriteGuard): Promise<void> 
       completedMissionIds: data.missions,
       redeemedVouchers: data.vouchers,
     };
-    gameStore.setState(wallet);
+    // Surface earned badges onto the read side (otherwise user_badge is write-only on
+    // the client) so a reading badge survives reload / cross-device.
+    gameStore.setState({ ...wallet, earnedBadgeIds: data.badges });
     saveWallet(uid, wallet);
   };
 

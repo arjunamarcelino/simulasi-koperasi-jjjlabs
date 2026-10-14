@@ -122,11 +122,22 @@ export function MadingKnowledgeBoardBody({
 }
 
 /** The koperasi "Papan Pengetahuan": a carousel of stat + fact cards (live from DB). */
+/** The content id of the knowledge board — matches the `contentRead` badge criteria in
+ * the catalog (badges.json). The single literal that ties this board to its reading badge. */
+const KNOWLEDGE_CONTENT_ID = "knowledge";
+
 export function MadingKnowledgeBoard() {
   const active = useGameStore((s) => s.activeOverlay === "MADING_KNOWLEDGE");
   const index = useGameStore((s) => s.madingIndex);
   const [result, setResult] = useState<RepoResult<Keyed<KnowledgeCard>[]> | null>(null);
   const reqId = useRef(0);
+  // Read-all tracking: the block_keys viewed since the current fetch. Reset per fetch
+  // (resultRef guards StrictMode double-run). When every current card has been seen the
+  // reading badge is awarded. Keyed by block_key (not index) so an admin reorder/removal
+  // between opens can't satisfy completion against the wrong card.
+  const visitedRef = useRef<Set<string>>(new Set());
+  const resultRef = useRef<RepoResult<Keyed<KnowledgeCard>[]> | null>(null);
+  const [earnAnnounce, setEarnAnnounce] = useState("");
 
   useEffect(() => {
     if (!active) return;
@@ -136,6 +147,26 @@ export function MadingKnowledgeBoard() {
       if (myReq === reqId.current) setResult(r);
     });
   }, [active]);
+
+  // Mark the current card visited; award once all current cards have been seen. Never
+  // awards on an empty / degraded / error board (requires status ok AND >= 1 card).
+  useEffect(() => {
+    if (!active || result?.status !== "ok") return;
+    const cards = result.data;
+    const total = cards.length;
+    if (total === 0) return;
+    if (resultRef.current !== result) {
+      resultRef.current = result;
+      visitedRef.current = new Set();
+    }
+    const current = cards[wrapIndex(index, total)]?.block_key;
+    if (current) visitedRef.current.add(current);
+    if (visitedRef.current.size >= total) {
+      const firstTime = !gameStore.getState().readContentIds.includes(KNOWLEDGE_CONTENT_ID);
+      gameStore.getState().markKnowledgeRead(KNOWLEDGE_CONTENT_ID);
+      if (firstTime) setEarnAnnounce("Lencana diperoleh: Kutu Buku Koperasi");
+    }
+  }, [active, result, index]);
 
   const len = result?.status === "ok" ? result.data.length : 0;
 
@@ -164,6 +195,11 @@ export function MadingKnowledgeBoard() {
       <h2 id="mading-knowledge-title" className="mb-4 text-center font-display text-sm text-forest md:text-base">
         Pengetahuan Koperasi
       </h2>
+      {/* Assertive so the badge-earned confirmation isn't swallowed by the per-card polite
+          region that announces on every navigation. Empty until the badge is earned. */}
+      <p className="sr-only" role="status" aria-live="assertive">
+        {earnAnnounce}
+      </p>
       <MadingKnowledgeBoardBody result={result} idx={index} onSelect={go} />
     </ModalShell>
   );

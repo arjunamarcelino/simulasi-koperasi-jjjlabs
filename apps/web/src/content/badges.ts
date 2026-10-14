@@ -10,7 +10,7 @@
  * trackable); it always renders locked. `scenarioGoodEnding` reads
  * `ctx.goodEndingScenarioIds`, derived from session history (see sessionHistory.ts).
  */
-import { LEVELS, type BadgeCriteria } from "@simkop/catalog";
+import { BADGES, LEVELS, type BadgeCriteria } from "@simkop/catalog";
 
 export type { BadgeIconKind, BadgeCriteria, Badge } from "@simkop/catalog";
 export { BADGES } from "@simkop/catalog";
@@ -22,6 +22,10 @@ export type BadgeContext = {
   completedMissionIds: readonly string[];
   voucherCount: number;
   goodEndingScenarioIds: readonly string[];
+  /** Content ids whose micro-learning board has been fully read (e.g. "knowledge").
+   * Session reads ∪ ids implied by already-earned contentRead badges — see
+   * readContentIdsFromEarned. Powers the `contentRead` criteria. */
+  readContentIds: readonly string[];
 };
 
 /** 1-based level from xp (mirrors the DB level_from_xp + ProfileModal's tier walk). */
@@ -42,6 +46,7 @@ export function buildBadgeContext(input: {
   completedMissionIds: readonly string[];
   voucherCount: number;
   goodEndingScenarioIds?: readonly string[];
+  readContentIds?: readonly string[];
 }): BadgeContext {
   return {
     xp: input.xp,
@@ -50,7 +55,26 @@ export function buildBadgeContext(input: {
     completedMissionIds: input.completedMissionIds,
     voucherCount: input.voucherCount,
     goodEndingScenarioIds: input.goodEndingScenarioIds ?? [],
+    readContentIds: input.readContentIds ?? [],
   };
+}
+
+/**
+ * The content ids implied by a set of already-earned badge ids: for each earned
+ * `contentRead` badge, its `contentId`. Lets the read set survive reload / cross-device
+ * (the badge is the durable record) without hardcoding any badge id at the call sites —
+ * callers union this with the live session reads. Mirrors how goodEndingScenarioIds
+ * feeds scenarioGoodEnding.
+ */
+export function readContentIdsFromEarned(earnedBadgeIds: readonly string[]): string[] {
+  const earned = new Set(earnedBadgeIds);
+  const ids: string[] = [];
+  for (const badge of BADGES) {
+    if (badge.criteria?.kind === "contentRead" && earned.has(badge.id)) {
+      ids.push(badge.criteria.contentId);
+    }
+  }
+  return ids;
 }
 
 /** Pure: is this badge's criteria satisfied by the current context? */
@@ -69,6 +93,8 @@ export function isEarned(criteria: BadgeCriteria, ctx: BadgeContext): boolean {
       return ctx.completedMissionIds.includes(criteria.missionId);
     case "scenarioGoodEnding":
       return ctx.goodEndingScenarioIds.includes(criteria.scenarioId);
+    case "contentRead":
+      return ctx.readContentIds.includes(criteria.contentId);
     default: {
       // Exhaustiveness guard: a new BadgeCriteria kind fails to compile here.
       const _exhaustive: never = criteria;
