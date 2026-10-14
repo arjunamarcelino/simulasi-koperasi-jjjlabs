@@ -128,18 +128,18 @@ export function MadingKnowledgeBoard() {
   const index = useGameStore((s) => s.madingIndex);
   const [result, setResult] = useState<RepoResult<Keyed<KnowledgeCard>[]> | null>(null);
   const reqId = useRef(0);
-  // Read-all tracking: the block_keys viewed since the current fetch. Reset per fetch
-  // (resultRef guards StrictMode double-run). When every current card has been seen the
-  // reading badge is awarded. Keyed by block_key (not index) so an admin reorder/removal
-  // between opens can't satisfy completion against the wrong card.
+  // Read-all tracking: the block_keys viewed since the current fetch, reset at fetch start
+  // (the fetch effect is the single origin of each new result). Keyed by block_key (not
+  // index) so an admin reorder/removal between opens can't satisfy completion against the
+  // wrong card. When every current card has been seen the reading badge is awarded.
   const visitedRef = useRef<Set<string>>(new Set());
-  const resultRef = useRef<RepoResult<Keyed<KnowledgeCard>[]> | null>(null);
   const [earnAnnounce, setEarnAnnounce] = useState("");
 
   useEffect(() => {
     if (!active) return;
     const myReq = ++reqId.current;
     setResult(null);
+    visitedRef.current = new Set();
     void madingRepo.knowledge().then((r) => {
       if (myReq === reqId.current) setResult(r);
     });
@@ -152,10 +152,6 @@ export function MadingKnowledgeBoard() {
     const cards = result.data;
     const total = cards.length;
     if (total === 0) return;
-    if (resultRef.current !== result) {
-      resultRef.current = result;
-      visitedRef.current = new Set();
-    }
     const current = cards[wrapIndex(index, total)]?.block_key;
     if (current) visitedRef.current.add(current);
     if (visitedRef.current.size >= total) {
