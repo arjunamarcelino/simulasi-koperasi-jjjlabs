@@ -18,7 +18,6 @@ import logging
 
 import asyncpg
 import pytest
-from pydantic import ValidationError
 
 from api import metrics_db
 from api.metrics_db import MetricsUnavailable
@@ -262,13 +261,6 @@ def test_rotate_logs_attribution_without_code_value(client, install_jwks, token_
 
 
 # --------------------------------- response models / fault detection ----------------
-
-
-def test_list_response_model_forbids_extra_keys():
-    from api.server import ListMissionsResponse
-
-    with pytest.raises(ValidationError):
-        ListMissionsResponse(**{**LIST_SAMPLE, "surprise": 1})
 
 
 def test_list_extra_response_key_is_500_not_leaked(install_jwks, token_factory, monkeypatch):
