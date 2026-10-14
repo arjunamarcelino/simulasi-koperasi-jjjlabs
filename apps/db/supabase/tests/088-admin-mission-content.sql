@@ -6,7 +6,7 @@
 -- EXECUTE admin.*). The error-contract invariant is proven by asserting every expected
 -- rejection is a STRUCTURED RETURN ({ok:false, reason}) — never a raised exception.
 begin;
-select plan(39);
+select plan(40);
 
 -- Fixtures: an actor + two claimers. The seed loads 7 missions (4 game, 3 reallife);
 -- we operate on the reallife rows and never add any (rotate-only scope).
@@ -67,6 +67,12 @@ select is((select redeem_code from public.mission_definition where code='impact-
 -- rotate-to-same value is a harmless ok (keeps kunjungi-kdmp = NEW123 for the linkage block)
 select is((admin.set_mission_redeem_code('kunjungi-kdmp', 'NEW123', tests.get_uid('admin1'))->>'ok')::boolean, true,
   'rotate-to-same value: ok');
+
+-- length boundary: exactly 64 chars is accepted (only 65 is too_long — guards an off-by-one).
+-- Uses ajak-anggota (untouched by the linkage/seed-durability blocks below).
+select admin.set_mission_redeem_code('ajak-anggota', repeat('x', 64), tests.get_uid('admin1'));
+select is((select char_length(redeem_code) from public.mission_definition where code='ajak-anggota'), 64,
+  '64-char code accepted and stored (boundary just below too_long)');
 
 -- ── set_mission_redeem_code: negatives (structured returns, NEVER a raised CHECK → 503) ────
 select is((admin.set_mission_redeem_code('does-not-exist', 'X', tests.get_uid('admin1'))->>'reason'), 'not_found',
