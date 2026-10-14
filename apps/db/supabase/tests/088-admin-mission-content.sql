@@ -111,8 +111,10 @@ select is(has_schema_privilege('metrics_reader', 'admin', 'USAGE'), true,
   'metrics_reader has USAGE on admin');
 
 -- ── seed durability (C1): a re-seed (conflict-update omits redeem_code) preserves rotation ──
--- Mirrors the generated seed.sql mission statement: the `do update set` list has NO
--- redeem_code (the gen-seed inline NOTE + CI parity are the complementary generator guards).
+-- This proves the SEMANTIC (an on-conflict set without redeem_code preserves a rotated value).
+-- The GENERATOR side is enforced separately by gen-seed's MISSION_CONFLICT_UPDATE self-guard
+-- (throws if redeem_code is re-added) + CI `gen:seed --check` parity — so a regression there
+-- fails the build, not silently here.
 insert into public.mission_definition (code, kind, title, description, reward_xp, reward_point, redeem_code, sort_order) values
   ('kunjungi-kdmp', 'reallife', 'Kunjungi KDMP', 'desc', 50, 100, 'KDMP2026', 5)
 on conflict (code) do update set

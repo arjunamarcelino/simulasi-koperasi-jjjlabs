@@ -90,6 +90,17 @@ if (Object.keys(codes).length !== reallifeIds.length) {
   }
 }
 
+// SIM-42 C1 self-guard: redeem_code MUST stay out of the mission on-conflict set so a re-seed
+// never clobbers an admin-rotated code (codes are rotate-only after init). Named + asserted here
+// so a future edit that re-adds it fails `gen:seed` / `--check` at generation time — the pgTAP
+// seed-durability test only proves the SEMANTIC, not the generator.
+const MISSION_CONFLICT_UPDATE = ["kind", "title", "description", "reward_xp", "reward_point", "sort_order"];
+if (MISSION_CONFLICT_UPDATE.includes("redeem_code")) {
+  throw new Error(
+    "gen-seed: redeem_code must NOT be in the mission on-conflict set (SIM-42 C1) — a re-seed would clobber admin-rotated codes",
+  );
+}
+
 const parts = [
   "-- GENERATED FILE — do not edit by hand.",
   "-- Source: @simkop/catalog (packages/catalog)  •  Regenerate: pnpm --filter @simkop/db gen:seed",
@@ -117,7 +128,7 @@ const parts = [
     ["code", "kind", "title", "description", "reward_xp", "reward_point", "redeem_code", "sort_order"],
     missions,
     (r, i) => [s(r.id), s(r.kind), s(r.title), s(r.description), n(r.reward.xp), n(r.reward.point), s(r.kind === "reallife" ? codes[r.id] : null), n(i)],
-    ["kind", "title", "description", "reward_xp", "reward_point", "sort_order"],
+    MISSION_CONFLICT_UPDATE,
   ),
   "",
   block(
