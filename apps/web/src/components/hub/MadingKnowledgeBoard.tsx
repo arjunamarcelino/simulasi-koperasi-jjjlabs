@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEventHandler } from "react";
 import { useGameStore, gameStore } from "../../stores/game.store";
 import { madingRepo, type Keyed, type RepoResult } from "../../lib/madingRepo";
 import { carouselArrowIndex, fallbackMessage, wrapIndex } from "../../lib/madingBoard";
+import { KNOWLEDGE_CONTENT_ID } from "../../content/badges";
 import type { KnowledgeCard } from "../../lib/mading.types";
 import { ModalShell } from "../common/ModalShell";
 import { GameButton } from "../common/GameButton";
@@ -122,10 +123,6 @@ export function MadingKnowledgeBoardBody({
 }
 
 /** The koperasi "Papan Pengetahuan": a carousel of stat + fact cards (live from DB). */
-/** The content id of the knowledge board — matches the `contentRead` badge criteria in
- * the catalog (badges.json). The single literal that ties this board to its reading badge. */
-const KNOWLEDGE_CONTENT_ID = "knowledge";
-
 export function MadingKnowledgeBoard() {
   const active = useGameStore((s) => s.activeOverlay === "MADING_KNOWLEDGE");
   const index = useGameStore((s) => s.madingIndex);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BADGES } from "./badges";
+import { BADGES, KNOWLEDGE_CONTENT_ID } from "./badges";
 import { SCENARIOS } from "@simkop/catalog";
 
 // BADGES is loaded from JSON via a double cast, so scenarioId literals are NOT
@@ -40,5 +40,15 @@ describe("badge catalog parity", () => {
   it("the micro-learning reading badge is wired (contentRead, not a null teaser)", () => {
     const wired = BADGES.filter((b) => b.criteria?.kind === "contentRead").map((b) => b.id);
     expect(wired).toContain("pembaca-mading");
+  });
+
+  // Links the board's KNOWLEDGE_CONTENT_ID to the catalog: without this, renaming the
+  // badge's contentId (or the board const) would silently make the badge unearnable —
+  // the board marks its own id read, which would never intersect the criteria.
+  it("a contentRead badge carries the knowledge board's content id", () => {
+    const contentIds = BADGES.flatMap((b) =>
+      b.criteria?.kind === "contentRead" ? [b.criteria.contentId] : [],
+    );
+    expect(contentIds).toContain(KNOWLEDGE_CONTENT_ID);
   });
 });

@@ -15,6 +15,11 @@ import { BADGES, LEVELS, type BadgeCriteria } from "@simkop/catalog";
 export type { BadgeIconKind, BadgeCriteria, Badge } from "@simkop/catalog";
 export { BADGES } from "@simkop/catalog";
 
+/** Content id of the knowledge micro-learning board. Shared by the board (which marks it
+ * read via markKnowledgeRead) and the `contentRead` badge criteria in badges.json, so the
+ * two can't silently drift — the parity test asserts a badge carries exactly this id. */
+export const KNOWLEDGE_CONTENT_ID = "knowledge";
+
 export type BadgeContext = {
   xp: number;
   level: number;
