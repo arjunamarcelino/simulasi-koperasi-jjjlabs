@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { missionContentStore, useMissionContent } from "../../stores/missionContent.store";
 import type { MissionRow } from "../../lib/adminApi";
 import { ContentPanelShell, PanelFallback } from "./ContentPanelShell";
@@ -24,6 +24,14 @@ export function MissionContentPanel() {
   const state = useMissionContent((s) => s.state);
   const toast = useMissionContent((s) => s.toast);
   const [editing, setEditing] = useState<Editing>(null);
+
+  // Reconcile the row-local edit draft against the list: if a background refetch drops the row
+  // being edited, close the editor so a stale draft can't linger (or reopen if the row reappears).
+  useEffect(() => {
+    if (!editing) return;
+    const rows = state.status === "ready" ? state.rows : [];
+    if (!rows.some((r) => r.code === editing.code)) setEditing(null);
+  }, [state, editing]);
 
   if (state.status !== "ready") {
     return (

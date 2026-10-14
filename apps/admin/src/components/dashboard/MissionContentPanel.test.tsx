@@ -130,4 +130,19 @@ describe("MissionContentPanel", () => {
     fireEvent.click(screen.getByText("Coba lagi"));
     expect(h.listMissions).toHaveBeenCalled(); // retry refetches
   });
+
+  it("closes the editor if a background refetch drops the row being edited", () => {
+    render(<MissionContentPanel />);
+    ready([row("kunjungi-kdmp", { redeem_code: "A" }), row("impact-umkm", { redeem_code: "B" })]);
+    fireEvent.click(screen.getAllByText("Ubah kode")[0]!); // edit kunjungi-kdmp
+    expect(screen.getByLabelText("Kode unlock untuk kunjungi-kdmp")).toBeTruthy();
+    setState({
+      status: "ready",
+      rows: [row("impact-umkm", { redeem_code: "B" })], // kunjungi-kdmp vanished
+      refreshing: false,
+      mutating: null,
+    });
+    expect(screen.queryByLabelText("Kode unlock untuk kunjungi-kdmp")).toBeNull();
+    expect(screen.queryByText("Simpan")).toBeNull(); // editor fully closed, no stale draft
+  });
 });
