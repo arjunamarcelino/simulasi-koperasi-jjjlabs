@@ -4,11 +4,13 @@ import { scenarioAnalyticsStore, useScenarioAnalytics } from "../../stores/scena
 import { leaderboardStore } from "../../stores/leaderboard.store";
 import { quizContentStore } from "../../stores/quizContent.store";
 import { madingContentStore } from "../../stores/madingContent.store";
+import { missionContentStore } from "../../stores/missionContent.store";
 import { KpiCard } from "./KpiCard";
 import { ScenarioTable } from "./ScenarioTable";
 import { LeaderboardPanel } from "./LeaderboardPanel";
 import { QuizContentPanel } from "./QuizContentPanel";
 import { MadingContentPanel } from "./MadingContentPanel";
+import { MissionContentPanel } from "./MissionContentPanel";
 import { count, pct, score } from "../../lib/formatMetrics";
 
 /**
@@ -29,13 +31,15 @@ export function DashboardPage({ userId }: { userId: string }) {
     leaderboardStore.getState().load(); // fetch the latest season once (StrictMode-safe)
     quizContentStore.getState().load(); // fetch the quiz list once (StrictMode-safe)
     madingContentStore.getState().load(); // fetch the mading content once (StrictMode-safe)
-    // One unmount owner: tear down the dashboard fetch, drill-down panel, board, quiz, mading.
+    missionContentStore.getState().load(); // fetch the mission codes once (StrictMode-safe)
+    // One unmount owner: tear down the dashboard fetch, drill-down panel, board, quiz, mading, missions.
     return () => {
       dashboardMetricsStore.getState().dispose();
       scenarioAnalyticsStore.getState().close();
       leaderboardStore.getState().dispose();
       quizContentStore.getState().dispose();
       madingContentStore.getState().dispose();
+      missionContentStore.getState().dispose();
     };
   }, [userId]);
 
@@ -95,6 +99,9 @@ export function DashboardPage({ userId }: { userId: string }) {
       </section>
       <section className="border-t border-brown/40 pt-6">
         <MadingContentPanel />
+      </section>
+      <section className="border-t border-brown/40 pt-6">
+        <MissionContentPanel />
       </section>
     </div>
   );

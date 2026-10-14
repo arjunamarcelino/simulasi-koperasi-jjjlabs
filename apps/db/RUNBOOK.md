@@ -119,6 +119,17 @@ since SIM-19, the read-only `admin.session_results_export()` CSV export).
 > this credential can now create/delete leaderboard seasons (still via definer fns only; NO direct table
 > privileges). Treat `METRICS_DB_URL` as a higher-value secret accordingly. The password/DSN setup below
 > is unchanged; the real-role `scripts/e2e-metrics.sh` now also exercises capture → overview → delete.
+>
+> **SIM-18/19/42 note:** `metrics_reader` also `EXECUTE`s the admin content writes — quiz/mading upsert+delete
+> (SIM-18) and, since **SIM-42**, `admin.set_mission_redeem_code` (rotate a reallife mission's unlock code) +
+> `admin.list_missions` (read the hidden codes). Same posture: definer fns only, NO direct table privilege.
+> **INVARIANT:** the `admin` schema must NEVER be added to PostgREST's exposed schemas — these fns are
+> reachable only through the backend as `metrics_reader`, never via the public REST API.
+>
+> **SIM-42 seed interaction:** reallife codes are seeded once from `seed-codes.json`, but the generated
+> `seed.sql` mission `on conflict do update` **omits** `redeem_code`, so codes are **rotate-only after
+> init** — a re-seed will NOT repair or overwrite a code. To change a code on an already-seeded DB, use the
+> admin rotate path (not an edit to `seed-codes.json` + re-seed, which is inert for existing rows).
 
 - **Local dev / branch previews:** after `supabase start` (or a branch reset), set a throwaway password so
   the backend can connect:

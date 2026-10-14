@@ -246,6 +246,35 @@ async def delete_quiz_question(pool: asyncpg.Pool | None, *, code: str) -> dict[
     )
 
 
+# ── SIM-42 mission unlock codes (admin-gated rotation) ───────────────────────────────────
+async def list_missions(pool: asyncpg.Pool | None) -> dict[str, Any]:
+    """Call admin.list_missions() → {ok, rows:[…]} (SIM-42). Reallife missions WITH the
+    hidden redeem_code + audit (the game-facing mission_catalog omits it). Same fail-soft
+    contract as the other definer calls (no pool / dropped conn / timeout / NULL → 503)."""
+    return await _call_definer(pool, "select admin.list_missions()", log_name="list_missions")
+
+
+async def set_mission_redeem_code(
+    pool: asyncpg.Pool | None,
+    *,
+    code: str,
+    redeem_code: str,
+    actor: str,
+) -> dict[str, Any]:
+    """Call admin.set_mission_redeem_code(code, redeem_code, actor) → {ok, reason?/row?} (SIM-42).
+
+    Rotate-only, last-write-wins. `actor` is the admin's JWT user_id (a str); it is cast to
+    uuid IN THE SQL ($3::uuid) so Postgres does the text→uuid conversion — binding a bare str
+    to a uuid param is asyncpg-version-dependent and a bind error would be swallowed into
+    MetricsUnavailable → a silent 503. Only `code` (non-PII) is logged — never the redeem_code."""
+    return await _call_definer(
+        pool,
+        "select admin.set_mission_redeem_code($1, $2, $3::uuid)",
+        code, redeem_code, actor,
+        log_name="set_mission_redeem_code", log_arg=code,
+    )
+
+
 # ── SIM-18 mading content (admin-gated CRUD) ─────────────────────────────────────────────
 async def list_mading(pool: asyncpg.Pool | None) -> dict[str, Any]:
     """Call admin.list_mading() → {ok, groups:{info,data,knowledge,identitas}} (SIM-18)."""

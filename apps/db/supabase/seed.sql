@@ -29,7 +29,6 @@ on conflict (code) do update set
   description = excluded.description,
   reward_xp = excluded.reward_xp,
   reward_point = excluded.reward_point,
-  redeem_code = excluded.redeem_code,
   sort_order = excluded.sort_order;
 
 -- Vouchers (5)

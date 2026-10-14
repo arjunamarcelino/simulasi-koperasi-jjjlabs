@@ -90,6 +90,17 @@ if (Object.keys(codes).length !== reallifeIds.length) {
   }
 }
 
+// SIM-42 C1 self-guard: redeem_code MUST stay out of the mission on-conflict set so a re-seed
+// never clobbers an admin-rotated code (codes are rotate-only after init). Named + asserted here
+// so a future edit that re-adds it fails `gen:seed` / `--check` at generation time — the pgTAP
+// seed-durability test only proves the SEMANTIC, not the generator.
+const MISSION_CONFLICT_UPDATE = ["kind", "title", "description", "reward_xp", "reward_point", "sort_order"];
+if (MISSION_CONFLICT_UPDATE.includes("redeem_code")) {
+  throw new Error(
+    "gen-seed: redeem_code must NOT be in the mission on-conflict set (SIM-42 C1) — a re-seed would clobber admin-rotated codes",
+  );
+}
+
 const parts = [
   "-- GENERATED FILE — do not edit by hand.",
   "-- Source: @simkop/catalog (packages/catalog)  •  Regenerate: pnpm --filter @simkop/db gen:seed",
@@ -104,13 +115,20 @@ const parts = [
     ["title", "difficulty", "status", "sort_order"],
   ),
   "",
+  // NOTE: the mission conflict-update set deliberately OMITS redeem_code (and the SIM-42
+  // audit columns are never emitted at all), so a re-seed is INSERT-ONLY for codes: a fresh
+  // insert still seeds the reallife code (redeem_code stays in the INSERT column list below —
+  // a NULL there would trip mission_reallife_has_code, 23514), but `on conflict do update`
+  // will NOT overwrite a code an admin rotated at runtime (SIM-42 C1). Do NOT re-add
+  // `redeem_code` here — that silently reintroduces the clobber. Seeding is init-only
+  // (apps/db/RUNBOOK.md); post-init, codes are rotate-only via the admin path.
   block(
     "Missions (7) — redeem_code is a soft KDMP gate code (reallife only), not a cryptographic secret",
     "mission_definition",
     ["code", "kind", "title", "description", "reward_xp", "reward_point", "redeem_code", "sort_order"],
     missions,
     (r, i) => [s(r.id), s(r.kind), s(r.title), s(r.description), n(r.reward.xp), n(r.reward.point), s(r.kind === "reallife" ? codes[r.id] : null), n(i)],
-    ["kind", "title", "description", "reward_xp", "reward_point", "redeem_code", "sort_order"],
+    MISSION_CONFLICT_UPDATE,
   ),
   "",
   block(
