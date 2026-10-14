@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const h = vi.hoisted(() => ({
   listMissions: vi.fn(),
@@ -129,6 +129,20 @@ describe("MissionContentPanel", () => {
     expect(screen.getByText("Tidak dapat memuat kode misi saat ini.")).toBeTruthy();
     fireEvent.click(screen.getByText("Coba lagi"));
     expect(h.listMissions).toHaveBeenCalled(); // retry refetches
+  });
+
+  it("keeps the edit draft open when the rotate fails (rejected)", async () => {
+    h.rotateMissionCode.mockResolvedValue({ kind: "rejected", reason: "boundary_msg" });
+    render(<MissionContentPanel />);
+    ready([row("kunjungi-kdmp", { redeem_code: "OLD" })]);
+    fireEvent.click(screen.getByText("Ubah kode"));
+    const input = screen.getByLabelText("Kode unlock untuk kunjungi-kdmp") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "NEW" } });
+    fireEvent.click(screen.getByText("Simpan"));
+    await waitFor(() => expect(h.rotateMissionCode).toHaveBeenCalledWith("kunjungi-kdmp", "NEW"));
+    // rotate resolved false → editor stays open with the typed draft intact (retry affordance)
+    const still = screen.getByLabelText("Kode unlock untuk kunjungi-kdmp") as HTMLInputElement;
+    expect(still.value).toBe("NEW");
   });
 
   it("closes the editor if a background refetch drops the row being edited", () => {
