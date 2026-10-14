@@ -66,10 +66,3 @@ gh api repos/arjunamarcelino/simulasi-koperasi-jjjlabs/branches/develop/protecti
 
 Then open a throwaway PR that deliberately breaks a web test and confirm merge is blocked for a
 non-admin (and that the three checks show, none stuck on "Expected").
-
-## Remove (if ever needed)
-
-```bash
-gh api -X DELETE repos/arjunamarcelino/simulasi-koperasi-jjjlabs/branches/develop/protection
-gh api -X DELETE repos/arjunamarcelino/simulasi-koperasi-jjjlabs/branches/main/protection
-```
