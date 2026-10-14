@@ -18,6 +18,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
+# Least privilege: these jobs only read the checkout (parity checks + pgTAP, no repo writes).
+permissions:
+  contents: read
+
 jobs:
   # Fast, Docker-free guards: seed is in sync with the catalog, and migrations
   # carry no seed data (seeds belong in seed.sql).

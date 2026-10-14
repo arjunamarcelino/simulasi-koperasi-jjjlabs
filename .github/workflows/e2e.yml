@@ -25,6 +25,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
+# Least privilege: checkout + local Supabase + Playwright; artifact upload needs no
+# GITHUB_TOKEN scope (it uses the Actions runtime token), so contents:read suffices.
+permissions:
+  contents: read
+
 jobs:
   e2e:
     runs-on: ubuntu-latest

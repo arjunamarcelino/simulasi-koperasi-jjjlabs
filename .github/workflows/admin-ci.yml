@@ -14,6 +14,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
+# Least privilege: these jobs only read the checkout (build/lint/test, no repo writes).
+permissions:
+  contents: read
+
 jobs:
   admin:
     runs-on: ubuntu-latest
