@@ -6,9 +6,9 @@
 name: backend-ci
 
 on:
-  push:
-    branches: [main, develop]
   pull_request:
+  push:
+    branches: [main, develop] # dedupe: same-repo PRs already run via pull_request
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
