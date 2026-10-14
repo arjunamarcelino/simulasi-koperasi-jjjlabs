@@ -1,10 +1,8 @@
 # Backend gates: ruff lint + pytest (Supabase-JWT verifier, admin gate, rate-limit).
 # The admin authorization core (require_role, /admin/me, strict is_admin parse) lives
 # here, so it must run in CI. Tests need no network/real Supabase (JWKS is faked).
-# REQUIRED status check (branch protection) → must run on EVERY PR, so NO paths/paths-ignore
-# filter: a path-filtered required check never runs on an unrelated PR and GitHub pins it
-# "Expected"/pending forever, blocking merge. `push` is limited to main/develop (open PRs
-# already cover their own branches — same dedup as guard-secrets.yml).
+# REQUIRED check — unfiltered on purpose; rationale + branch-protection setup in
+# .github/BRANCH_PROTECTION.md. (A path-filtered required check hangs "Expected" forever.)
 name: backend-ci
 
 on:
