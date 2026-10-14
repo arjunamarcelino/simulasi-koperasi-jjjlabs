@@ -157,14 +157,11 @@ export type GameState = {
    * hydrateAndMigrate sequences the load/reconcile/badge steps internally; nothing
    * gates on this today (tests assert it; a future UI could show a loading state). */
   hydrated: boolean;
-  /** Micro-learning content ids fully read THIS session (e.g. "knowledge"), set by
-   * markKnowledgeRead. Transient — the durable record is the earned badge itself
-   * (see earnedBadgeIds). Owner-scoped: reset on onOwnerChanged. */
+  /** Micro-learning content ids that count as read: reads made THIS session (via
+   * markKnowledgeRead) plus those folded in at hydrate from already-earned reading
+   * badges (user_badge is the durable record — see applyMyProgress). Owner-scoped:
+   * reset on onOwnerChanged so no previous account's reads leak. Powers `contentRead`. */
   readContentIds: string[];
-  /** Earned badge ids hydrated from get_my_progress (user_badge). The read side
-   * otherwise re-derives everything from live signals; this makes a reading badge
-   * survive reload / cross-device via readContentIdsFromEarned. Reset on owner change. */
-  earnedBadgeIds: string[];
 
   setView: (view: View) => void;
   /**
@@ -299,7 +296,6 @@ export const gameStore = createStore<GameState>()(
     walletUid: null,
     hydrated: false,
     readContentIds: [],
-    earnedBadgeIds: [],
 
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
@@ -316,9 +312,8 @@ export const gameStore = createStore<GameState>()(
         redeemedVouchers: [],
         completedMissionIds: [],
         hydrated: false,
-        // Owner-scoped: never let the previous account's reads/earned badges leak.
+        // Owner-scoped: never let the previous account's reads leak.
         readContentIds: [],
-        earnedBadgeIds: [],
       });
 
       if (!supabase || !uid) {
@@ -689,9 +684,9 @@ async function persistEarnedCore(good: readonly string[], guard: WriteGuard): Pr
     completedMissionIds: st.completedMissionIds,
     voucherCount: st.redeemedVouchers.length,
     goodEndingScenarioIds: good,
-    // Session reads drive the "fresh" (newly-earned) filter below; the earned-derived
-    // ids keep already-persisted reading badges satisfied (idempotent, dedups to no-op).
-    readContentIds: [...st.readContentIds, ...readContentIdsFromEarned(st.earnedBadgeIds)],
+    // readContentIds already carries both this session's reads and the ids folded in
+    // from earned badges at hydrate — so this satisfies both fresh and prior reads.
+    readContentIds: st.readContentIds,
   });
   const fresh = BADGES.filter((b) => isEarned(b.criteria, ctx) && !syncedBadges.has(b.id)).map(
     (b) => b.id,
@@ -738,9 +733,16 @@ async function hydrateAndMigrate(uid: string, guard: WriteGuard): Promise<void> 
       completedMissionIds: data.missions,
       redeemedVouchers: data.vouchers,
     };
-    // Surface earned badges onto the read side (otherwise user_badge is write-only on
-    // the client) so a reading badge survives reload / cross-device.
-    gameStore.setState({ ...wallet, earnedBadgeIds: data.badges });
+    // Fold already-earned reading badges onto the read side (user_badge is otherwise
+    // write-only on the client) so a reading badge survives reload / cross-device.
+    // Deduped union: applyMyProgress can run twice (hydrate + post-reconcile).
+    const readContentIds = [
+      ...new Set([
+        ...gameStore.getState().readContentIds,
+        ...readContentIdsFromEarned(data.badges),
+      ]),
+    ];
+    gameStore.setState({ ...wallet, readContentIds });
     saveWallet(uid, wallet);
   };
 
