@@ -1,20 +1,18 @@
-# Frontend gates: typecheck + lint + unit tests + production build. Runs on any
-# change to apps/web, the shared catalog it imports, or the lockfile.
+# Frontend gates: typecheck + lint + unit tests + production build.
+# REQUIRED status check (branch protection) → must run on EVERY PR, so NO paths/paths-ignore
+# filter: a path-filtered required check never runs on an unrelated PR and GitHub pins it
+# "Expected"/pending forever, blocking merge. `push` is limited to main/develop (open PRs
+# already cover their own branches — same dedup as guard-secrets.yml).
 name: web-ci
 
 on:
   push:
-    paths:
-      - "apps/web/**"
-      - "packages/**"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/web-ci.yml"
+    branches: [main, develop]
   pull_request:
-    paths:
-      - "apps/web/**"
-      - "packages/**"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/web-ci.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   web:

@@ -19,6 +19,12 @@ on:
       - "pnpm-lock.yaml"
       - ".github/workflows/e2e.yml"
 
+# Advisory (not a required check): still cancel superseded runs on the same PR to
+# save the slow Supabase/Docker setup.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
