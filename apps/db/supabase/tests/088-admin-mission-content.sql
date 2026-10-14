@@ -6,7 +6,7 @@
 -- EXECUTE admin.*). The error-contract invariant is proven by asserting every expected
 -- rejection is a STRUCTURED RETURN ({ok:false, reason}) — never a raised exception.
 begin;
-select plan(38);
+select plan(39);
 
 -- Fixtures: an actor + two claimers. The seed loads 7 missions (4 game, 3 reallife);
 -- we operate on the reallife rows and never add any (rotate-only scope).
@@ -93,6 +93,8 @@ select is(has_function_privilege('anon', 'admin.set_mission_redeem_code(text,tex
   'anon cannot EXECUTE set_mission_redeem_code');
 select is(has_function_privilege('authenticated', 'admin.list_missions()', 'EXECUTE'), false,
   'authenticated cannot EXECUTE list_missions');
+select is(has_function_privilege('public', 'admin.list_missions()', 'EXECUTE'), false,
+  'public cannot EXECUTE list_missions (the hidden codes stay unreadable to every unprivileged role)');
 select is(has_function_privilege('public', 'admin.set_mission_redeem_code(text,text,uuid)', 'EXECUTE'), false,
   'public cannot EXECUTE set_mission_redeem_code');
 select is(has_table_privilege('metrics_reader', 'public.mission_definition', 'UPDATE'), false,
