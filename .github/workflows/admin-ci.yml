@@ -1,18 +1,20 @@
-# Admin frontend gates: typecheck + lint + unit tests + production build. Runs on any
-# change to apps/admin or the lockfile (admin has no @simkop/catalog dep, so not packages/**).
+# Admin frontend gates: typecheck + lint + unit tests + production build.
+# REQUIRED check — unfiltered on purpose; rationale + branch-protection setup in
+# .github/BRANCH_PROTECTION.md. (A path-filtered required check hangs "Expected" forever.)
 name: admin-ci
 
 on:
-  push:
-    paths:
-      - "apps/admin/**"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/admin-ci.yml"
   pull_request:
-    paths:
-      - "apps/admin/**"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/admin-ci.yml"
+  push:
+    branches: [main, develop] # dedupe: same-repo PRs already run via pull_request
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: these jobs only read the checkout (build/lint/test, no repo writes).
+permissions:
+  contents: read
 
 jobs:
   admin:

@@ -12,6 +12,16 @@ on:
       - "packages/**" # catalog is an input to the generated seed — re-check parity when it changes
       - ".github/workflows/db-tests.yml"
 
+# Advisory (not a required check): still cancel superseded runs on the same PR to
+# save the slow pgTAP/Supabase setup.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: these jobs only read the checkout (parity checks + pgTAP, no repo writes).
+permissions:
+  contents: read
+
 jobs:
   # Fast, Docker-free guards: seed is in sync with the catalog, and migrations
   # carry no seed data (seeds belong in seed.sql).

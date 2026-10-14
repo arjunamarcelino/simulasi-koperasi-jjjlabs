@@ -1,20 +1,20 @@
-# Frontend gates: typecheck + lint + unit tests + production build. Runs on any
-# change to apps/web, the shared catalog it imports, or the lockfile.
+# Frontend gates: typecheck + lint + unit tests + production build.
+# REQUIRED check — unfiltered on purpose; rationale + branch-protection setup in
+# .github/BRANCH_PROTECTION.md. (A path-filtered required check hangs "Expected" forever.)
 name: web-ci
 
 on:
-  push:
-    paths:
-      - "apps/web/**"
-      - "packages/**"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/web-ci.yml"
   pull_request:
-    paths:
-      - "apps/web/**"
-      - "packages/**"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/web-ci.yml"
+  push:
+    branches: [main, develop] # dedupe: same-repo PRs already run via pull_request
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: these jobs only read the checkout (build/lint/test, no repo writes).
+permissions:
+  contents: read
 
 jobs:
   web:
