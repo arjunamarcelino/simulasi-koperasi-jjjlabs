@@ -34,12 +34,16 @@ simulasi-koperasi-jjjlabs/
 ```bash
 pnpm install          # pasang semua dependency workspace
 pnpm dev              # jalankan frontend (apps/web) dalam mode dev
-pnpm build            # build produksi frontend
-pnpm typecheck        # cek TypeScript (strict)
-pnpm lint             # ESLint
+pnpm build            # build produksi frontend (apps/web)
+pnpm typecheck        # cek TypeScript (strict) — apps/web + apps/admin
+pnpm lint             # ESLint — apps/web + apps/admin
+pnpm test             # unit test (vitest) — apps/web + apps/admin
 ```
 
-Semua perintah root mendelegasikan ke `apps/web` via `pnpm --filter web`.
+Skrip aplikasi tunggal (`dev`/`build`/`preview`/`e2e`) menyasar `apps/web` (target deploy);
+gerbang kualitas (`typecheck`/`lint`/`test`) menyasar `apps/web` + `apps/admin`. Semua skrip root
+ini hanya untuk **kenyamanan dev lokal** — CI memanggil langkah per-paket secara langsung (lihat
+`.github/workflows/`), jadi keduanya dipelihara terpisah.
 
 Mode default **`mock`** berjalan penuh tanpa backend (percakapan terskrip, offline)
 — cukup `pnpm install && pnpm dev`, langsung bisa dimainkan. Untuk pipeline suara
