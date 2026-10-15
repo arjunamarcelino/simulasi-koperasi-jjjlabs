@@ -8,7 +8,7 @@ Keanggotaan Fiktif, dan RAT (dua NPC + state machine fase) — dengan observer d
 > Dokumen lebih dalam (baca ini dulu untuk detail): **[`CLAUDE.md`](./CLAUDE.md)**
 > (arsitektur + panduan mengedit agent + 8 GOTCHAS), **[`CONTRACT.md`](./CONTRACT.md)**
 > (kontrak wire FE↔BE, referensi REST lengkap + status code). Desain produk:
-> `../backent-prd.md`. Deploy: `../../docs/deploy/`.
+> `../../docs/backend-prd.md`. Deploy: `../../docs/deploy/`.
 
 ## Dua proses, satu project `uv`
 
@@ -69,7 +69,7 @@ voice_worker/
   auditor.py      Lapisan 3 AI Auditor (gpt-5.4) → JSON
   mentor.py       fitur Petunjuk: hint kontekstual (gpt-5-mini) → JSON
   schemas.py      skema pydantic (validasi fail-safe JSON Auditor)
-  prompts/*.py    system prompt persona (di-grounding ke ../scenarios.md)
+  prompts/*.py    system prompt persona (di-grounding ke ../../docs/scenarios.md)
 tests/            pytest (13 file): auth, token, rate-limit, auditor-parse, admin/*, dll
 Dockerfile        multi-stage, dua target (api, worker); + docker-compose.yml
 ```

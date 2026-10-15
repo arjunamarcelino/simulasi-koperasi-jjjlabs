@@ -39,7 +39,7 @@
 | DB | `supabase/smoke/run.sh`, `tests/010-…`, `tests/020-…`, `tests/080-…` | guard jumlah skenario (`4` → bump) |
 | BE | `apps/backend/voice_worker/scenarios.py` | `Scenario` dataclass + registry `_SCENARIOS` |
 | BE | `apps/backend/voice_worker/prompts/<x>.py` | system prompt persona (satu konstanta `UPPER_SNAKE`) |
-| BE | `apps/scenarios.md` | dokumen grounding (design) yang dirujuk prompt |
+| BE | `docs/scenarios.md` | dokumen grounding (design) yang dirujuk prompt |
 | BE | `apps/backend/api/server.py` | `VALID_SCENARIOS` (gerbang 422 `/token`) |
 | BE | `apps/backend/CONTRACT.md` | daftar id (§1) + tabel taksonomi/skor (§6) |
 | FE | `apps/web/src/scenarios/scenario.config.ts` | konfig kaya (kartu, misi, langkah, bukti) |
@@ -55,7 +55,7 @@
 ## Langkah demi langkah (single-NPC)
 
 ### 1. Desain + pilih id
-Tulis bagian `# SKENARIO N — <judul>` baru di **`apps/scenarios.md`** (persona, backstory,
+Tulis bagian `# SKENARIO N — <judul>` baru di **`docs/scenarios.md`** (persona, backstory,
 grounding regulasi, jalur baik/buruk). Pilih `scenario_id` kebab-case (mis. `tarik-simpanan`).
 Semua prompt & auditor di-grounding ke dokumen ini.
 
@@ -80,7 +80,7 @@ Lalu **bump hitungan `4` → `5`** di tempat berikut (semua mengasumsikan skenar
 - Buat **`apps/backend/voice_worker/prompts/tarik_simpanan.py`** berisi satu konstanta:
   ```python
   """System prompt — Skenario N (Tarik Simpanan), NPC Bu Sari.
-  Di-grounding ke apps/scenarios.md §Skenario N.
+  Di-grounding ke docs/scenarios.md §Skenario N.
   """
   TARIK_SIMPANAN_PROMPT = """\
   Kamu adalah BU SARI, anggota koperasi yang ingin menarik simpanan pokok ...
@@ -160,7 +160,7 @@ taksonomi/skor **§6** (scenario_id, State{nilai}, score keys, catatan NPC).
 ## Checklist ringkas
 
 ```
-[ ] apps/scenarios.md            — bagian # SKENARIO N
+[ ] docs/scenarios.md            — bagian # SKENARIO N
 [ ] packages/catalog/data/scenarios.json  — entri baru
 [ ] gen:seed                     — regen seed.sql
 [ ] gen-seed.mjs                 — "Scenarios (N)" bump

@@ -15,10 +15,10 @@ Skenario unggulan: **Rapat Anggota Tahunan (RAT)**.
 simulasi-koperasi-jjjlabs/
 ├── apps/
 │   ├── web/            # Frontend game utama (Vite + React + TS + Phaser 3 + Zustand + Tailwind v4)
+│   ├── admin/          # Dashboard admin (React + Vite)
 │   ├── backend/        # FastAPI (mint token) + voice worker (livekit-agents) + AI Auditor
-│   ├── backent-prd.md  # PRD backend & AI pipeline
-│   └── scenarios.md    # Definisi skenario
-├── docs/               # Brainstorm & rencana implementasi
+│   └── db/             # @simkop/db — skema/migrasi/seed Supabase/Postgres
+├── docs/               # Dokumentasi: deploy, QA, panduan skenario, PRD, definisi skenario
 ├── pnpm-workspace.yaml
 └── package.json        # root workspace
 ```

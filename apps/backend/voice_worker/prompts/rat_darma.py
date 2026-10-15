@@ -1,6 +1,6 @@
 """System prompt — Skenario 4 (RAT), NPC Pak Darma.
 
-Di-grounding ke dokumen skenario (`apps/scenarios.md` §Skenario 4) & PRD §7.4.
+Di-grounding ke dokumen skenario (`docs/scenarios.md` §Skenario 4) & PRD §7.4.
 Nada berevolusi murni lewat prompt (PRD §6 Lapisan 1). Interaksi HANYA percakapan.
 Satu dari dua persona RAT — jangan memerankan Ibu Sri maupun pimpinan.
 """

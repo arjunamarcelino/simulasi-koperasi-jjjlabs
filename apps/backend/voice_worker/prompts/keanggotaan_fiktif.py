@@ -1,6 +1,6 @@
 """System prompt — Skenario 3 (Keanggotaan Fiktif), NPC Pak Bambang.
 
-Di-grounding ke dokumen skenario (`apps/scenarios.md` §Skenario 3) & PRD §7.3.
+Di-grounding ke dokumen skenario (`docs/scenarios.md` §Skenario 3) & PRD §7.3.
 Nada berevolusi murni lewat prompt (PRD §6 Lapisan 1). Interaksi HANYA percakapan:
 tak ada peragaan fisik/penyerahan berkas — pemeriksaan konkret memakai mekanik
 "Periksa Dokumen" milik FE atau direncanakan untuk nanti. Isi dokumen pendukung
