@@ -303,23 +303,24 @@ Env: local Supabase (CLI) + local prod preview · transport: mock · browser: Ch
 
 ---
 
-## Appendix — Known risk areas (from `docs/solutions/`)
+## Appendix — Known risk areas
 
 These are classes of bugs that have bitten before; the checks above are mapped to them.
+Full descriptions of each risk live in `LIMITATIONS.md` (§C); this table keeps the QA-section mapping.
 
-| Risk | Where to catch it | Source |
-|---|---|---|
-| FE↔BE config-key drift (raw keys instead of labels) | §5 label-render | `integration-issues/fe-be-scenario-config-key-drift.md` |
-| Catalog drift (FE ↔ DB seed) | §7 catalog parity | `integration-issues/shared-catalog-dual-consumer.md` |
-| DB floor weaker than client parser (mading) | §8 mading parse / error fallback | `integration-issues/db-floor-must-match-client-parser-or-seed-drifts.md` |
-| Auth lifecycle races (multi-tab, OAuth, name) | §6 | `integration-issues/supabase-anon-auth-zustand-races.md` |
-| Turnstile single-use / CSP / env | §6 Turnstile | `integration-issues/turnstile-invisible-captcha-silent-anon-signin.md` |
-| Overlay keyboard-nav scoping / Phaser leak | §8 carousel nav | `integration-issues/modalshell-overlay-keyboard-nav-scoping.md` |
-| Wallet server reconciliation / free-credit | §7 baseline + persistence | `integration-issues/server-authoritative-progress-migration.md` |
-| Reallife code offline free-credit | §7 missions | `integration-issues/client-gate-code-to-server-validated.md` |
-| Admin re-seed clobbers rotated value | §9 redeem-code durability | `deployment-issues/admin-mutable-column-must-leave-seed-on-conflict-set.md` |
-| Leaderboard capture gate reopened by read | §10 capture race | `integration-issues/zustand-read-supersession-reopens-write-gate.md` |
-| Session orphan OPEN rows | §4 orphan check + §5 interrupted | `integration-issues/fe-triggered-session-persistence-atomic-rpc.md` |
-| Admin JWT hook / concurrent retry / asyncpg bind | §9 role gate | `integration-issues/supabase-custom-access-token-hook-local-footguns.md`, `concurrent-callers-nonreentrant-singleton-retry.md`, `asyncpg-str-uuid-definer-param-silent-503.md` |
-| E2E/Supabase CI setup footguns | §2 setup | `test-failures/playwright-e2e-vite-supabase-ci-setup.md` |
-| Oracle value is label-only in `resultLabels.ts` (not emitted by any script) | §3/§5 — derive expected outcomes from the mock scripts | `integration-issues/mock-scenario-oracle-derive-from-scripts-not-label-map.md` |
+| Risk | Where to catch it |
+|---|---|
+| FE↔BE config-key drift (raw keys instead of labels) | §5 label-render |
+| Catalog drift (FE ↔ DB seed) | §7 catalog parity |
+| DB floor weaker than client parser (mading) | §8 mading parse / error fallback |
+| Auth lifecycle races (multi-tab, OAuth, name) | §6 |
+| Turnstile single-use / CSP / env | §6 Turnstile |
+| Overlay keyboard-nav scoping / Phaser leak | §8 carousel nav |
+| Wallet server reconciliation / free-credit | §7 baseline + persistence |
+| Reallife code offline free-credit | §7 missions |
+| Admin re-seed clobbers rotated value | §9 redeem-code durability |
+| Leaderboard capture gate reopened by read | §10 capture race |
+| Session orphan OPEN rows | §4 orphan check + §5 interrupted |
+| Admin JWT hook / concurrent retry / asyncpg bind | §9 role gate |
+| E2E/Supabase CI setup footguns | §2 setup |
+| Oracle value is label-only in `resultLabels.ts` (not emitted by any script) | §3/§5 — derive expected outcomes from the mock scripts |
