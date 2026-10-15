@@ -2,7 +2,7 @@
 
 Panduan untuk AI agent yang memodifikasi backend. Baca ini dulu sebelum mengubah
 kode. Untuk kontrak wire FE↔BE, lihat `CONTRACT.md`. Untuk desain produk, lihat
-`../backent-prd.md` (PRD).
+`../../docs/backend-prd.md` (PRD).
 
 ## Apa ini
 
@@ -54,7 +54,7 @@ uv run uvicorn api.server:app --port 8000 --reload    # token server
 uv run pytest
 ```
 
-Verifikasi live: jalankan `apps/web-sementara` dengan `VITE_TRANSPORT=livekit` +
+Verifikasi live: jalankan `apps/web` dengan `VITE_TRANSPORT=livekit` +
 `VITE_TOKEN_ENDPOINT=http://localhost:8000`, pilih skenario, bicara/ketik.
 Log worker (`koperasi.voice_agent`) mencetak observer & fase — pakai untuk debug.
 Input mic sulit di-headless; jalur teks bisa di-drive dengan Playwright.
@@ -72,12 +72,12 @@ voice_worker/
   observer.py                 Lapisan 2: drift (gpt-5-mini async) + DriftTracker
   auditor.py                  Lapisan 3: AI Auditor (gpt-5.4) → JSON
   mentor.py                   Fitur Petunjuk: hint kontekstual (gpt-5-mini) → JSON
-  prompts/*.py                system prompt persona, di-grounding ke ../scenarios.md
+  prompts/*.py                system prompt persona, di-grounding ke ../../docs/scenarios.md
 ```
 
 Keempat skenario (Tutorial, Kredit Macet, Keanggotaan Fiktif, RAT) sudah
 terpasang penuh di `scenarios.py`. Prompt persona di-grounding ke dokumen
-skenario `apps/scenarios.md` (bukan lagi placeholder).
+skenario `docs/scenarios.md` (bukan lagi placeholder).
 
 ## Arsitektur: model state tiga lapis (PRD §6)
 

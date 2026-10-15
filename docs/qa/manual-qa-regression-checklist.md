@@ -16,7 +16,6 @@ Linear: [SIM-24](https://linear.app/simulasi-koperasi/issue/SIM-24/docs-manual-q
 **Strategy & scope:**
 - **Mock mode is authoritative.** All P0/P1 checks run against `VITE_TRANSPORT=mock` (offline, deterministic — the repo default). LiveKit and Admin are documented but **skippable** (see their sections) and are **not release-blocking**.
 - **In scope:** `apps/web` (game), `apps/admin` (dashboard), local Supabase persistence, backend `/admin/*` (for the Admin section).
-- **Out of scope:** `apps/web-sementara` (throwaway voice-pipeline validator).
 - **Keep this doc alive:** update it after each feature/release. A stale checklist produces false failures and gets abandoned.
 
 **Release bar (minimum GO):** the **Smoke script (§4) passes** AND **all four scenarios (mock) reach a scored/scripted result (§5)**, with auth (§6) and core gamification (§7) working. Admin (§9) and LiveKit (§11) are best-effort.

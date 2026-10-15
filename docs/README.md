@@ -11,6 +11,8 @@ Indeks dokumen proyek. Folder `docs/` kini **version-controlled** (SIM-31).
 | Dokumen | Isi |
 |---|---|
 | [`how-to-add-a-scenario.md`](how-to-add-a-scenario.md) | Panduan menambah skenario baru end-to-end (FE + BE + CONTRACT + katalog + DB) |
+| [`backend-prd.md`](backend-prd.md) | PRD backend & AI pipeline (desain produk) |
+| [`scenarios.md`](scenarios.md) | Definisi skenario — grounding untuk prompt persona |
 | [`deploy/README.md`](deploy/README.md) | Indeks deploy + Go/No-Go + Runbook Day-2 |
 | [`deploy/production-config.md`](deploy/production-config.md) | **Otoritatif**: env, CORS/CSP, DNS, secret, prasyarat Supabase |
 | [`deploy/gcp-backend.md`](deploy/gcp-backend.md) | Cloud Run token server, GCE-VM worker, LB/NEG, Secret Manager, migrasi |

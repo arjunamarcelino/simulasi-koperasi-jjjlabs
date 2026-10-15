@@ -60,7 +60,6 @@ Keputusan-keputusan berikut berlaku lintas seluruh skenario:
 ```
 /apps
   /web              → FE game (tilemap)
-  /web-sementara    → FE validasi (React + Vite)
   /backend
     /api            → server.py (FastAPI, mint token)
     /voice_worker   → voice_agent.py (livekit-agents)
