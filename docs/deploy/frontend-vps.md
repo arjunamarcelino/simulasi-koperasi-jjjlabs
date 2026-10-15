@@ -68,15 +68,18 @@ Rollback = arahkan ulang symlink ke rilis sebelumnya + `nginx -t && systemctl re
 Header keamanan dipisah ke snippet agar bisa di-`include` di tiap `location`.
 `/etc/nginx/snippets/security-headers.conf`:
 ```nginx
-add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;  # ⚠️ TANPA preload (lihat catatan)
+add_header Strict-Transport-Security "max-age=300" always;  # ⚠️ nilai BRING-UP kecil; lihat catatan
 add_header X-Content-Type-Options "nosniff" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 add_header Permissions-Policy "camera=(), microphone=(self), geolocation=(), payment=()" always;
 add_header X-Frame-Options "DENY" always;   # meta-CSP tak bisa bawa frame-ancestors → anti-clickjacking di sini
 ```
-> ⚠️ **HSTS `preload` bersifat ~ireversibel** dan `includeSubDomains` mencakup app/admin/api
-> di bawah apex. Mulai dgn `max-age` kecil saat bring-up; tambah `preload` hanya bila
-> yakin semua subdomain permanen HTTPS. Mic = `microphone=(self)` (app butuh mic voice).
+> ⚠️ **HSTS dinaikkan bertahap.** Mulai `max-age=300` saat bring-up; setelah yakin TLS
+> stabil, naikkan ke `max-age=31536000` (1 tahun). `includeSubDomains` di `app.<domain>`
+> hanya mencakup `*.app.<domain>` (bukan host saudara `admin.`/`api.` — header di-serve
+> per-host), jadi tambahkan di tiap host yang perlu; untuk mencakup semua subdomain, set
+> HSTS di apex. `preload` bersifat **~ireversibel** — tambahkan hanya bila setiap subdomain
+> permanen HTTPS. Mic = `microphone=(self)` (app butuh mic voice).
 
 `/etc/nginx/sites-available/app.<domain>`:
 ```nginx
