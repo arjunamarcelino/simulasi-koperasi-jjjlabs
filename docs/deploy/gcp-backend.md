@@ -42,10 +42,19 @@ printf '%s' '<metrics-db-url-dsn>' | gcloud secrets create metrics-db-url     --
 
 # SA per-service (JANGAN pakai default compute SA yang Editor-level)
 gcloud iam service-accounts create token-server-sa
-# grant secretAccessor DI RESOURCE secret (bukan project-wide):
-for S in livekit-api-secret azure-openai-key azure-speech-key metrics-db-url; do
+gcloud iam service-accounts create worker-sa
+
+# grant secretAccessor DI RESOURCE secret (bukan project-wide), PER KONSUMEN:
+# token server → LiveKit (mint token) + DB admin. TIDAK pakai Azure.
+for S in livekit-api-secret metrics-db-url; do
   gcloud secrets add-iam-policy-binding $S \
     --member="serviceAccount:token-server-sa@<PROJECT>.iam.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+done
+# voice worker → LiveKit + Azure (konsumen Azure yang sebenarnya).
+for S in livekit-api-secret azure-openai-key azure-speech-key; do
+  gcloud secrets add-iam-policy-binding $S \
+    --member="serviceAccount:worker-sa@<PROJECT>.iam.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor"
 done
 ```
@@ -110,18 +119,36 @@ gcloud compute instances create voice-worker \
 # firewall: TANPA inbound selain SSH terhardening (utamakan IAP).
 ```
 
-Jalankan container worker di VM via systemd unit (`/etc/systemd/system/koperasi-worker.service`):
+Kredensial worker **tidak** disimpan plaintext di disk. Buat file **non-rahasia**
+`/etc/koperasi/worker.env.base` (root, `chmod 600`) berisi var non-rahasia saja:
+`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_AGENT_NAME`, `AZURE_OPENAI_ENDPOINT`,
+`AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_DEPLOYMENT_DIALOGUE`,
+`AZURE_OPENAI_DEPLOYMENT_AUDITOR`, `AZURE_SPEECH_REGION`. Secret (LiveKit secret +
+Azure keys) diambil dari Secret Manager **saat boot** via `worker-sa` (SA terpasang
+di VM + scope `cloud-platform`) ke env-file runtime di `/run` (tmpfs — hilang saat
+reboot, `0600`):
+
 ```ini
 [Service]
-ExecStartPre=/usr/bin/docker pull <REGION>-docker.pkg.dev/<PROJECT>/<REPO>/voice-worker:v1
-ExecStart=/usr/bin/docker run --rm --name koperasi-worker --env-file /etc/koperasi/worker.env <IMG>/voice-worker:v1
+ExecStartPre=/usr/bin/docker pull <IMG>/voice-worker:v1
+# Rakit env-file runtime: base non-rahasia + secret dari Secret Manager (umask 077 → 0600).
+# Butuh gcloud/Cloud SDK di VM (image Google menyertakannya; jika tidak: apt install google-cloud-cli).
+ExecStartPre=/bin/bash -c 'umask 077; cat /etc/koperasi/worker.env.base > /run/koperasi-worker.env; \
+  { echo "LIVEKIT_API_SECRET=$(gcloud secrets versions access latest --secret=livekit-api-secret)"; \
+    echo "AZURE_OPENAI_API_KEY=$(gcloud secrets versions access latest --secret=azure-openai-key)"; \
+    echo "AZURE_SPEECH_KEY=$(gcloud secrets versions access latest --secret=azure-speech-key)"; \
+  } >> /run/koperasi-worker.env'
+ExecStart=/usr/bin/docker run --rm --name koperasi-worker --env-file /run/koperasi-worker.env <IMG>/voice-worker:v1
+ExecStopPost=/bin/rm -f /run/koperasi-worker.env
 Restart=always
 KillSignal=SIGTERM
 TimeoutStopSec=660          # ⚠️ ≥ drain window LiveKit (10+ mnt) agar panggilan tak di-SIGKILL
 [Install]
 WantedBy=multi-user.target
 ```
-`sudo systemctl enable --now koperasi-worker`.
+`sudo systemctl enable --now koperasi-worker`. Secret tak pernah persist di disk VM
+(hanya tmpfs `/run`, dihapus saat stop). `worker-sa` butuh `secretAccessor` pada
+`livekit-api-secret` + `azure-*` (§3).
 
 > **Health & autohealing:** worker (livekit-agents 1.6.5) mengekspos health server
 > framework di **`:8081`** (liveness proses, mode `start` — terverifikasi 200).
