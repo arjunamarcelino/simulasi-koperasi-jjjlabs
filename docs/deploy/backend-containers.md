@@ -68,7 +68,7 @@ docker build --target worker -t koperasi-worker apps/backend
   docker compose exec api    printenv LIVEKIT_AGENT_NAME
   docker compose exec worker printenv LIVEKIT_AGENT_NAME   # HARUS identik
   ```
-- [ ] Image bersih dari secret: `docker run --rm koperasi-api sh -c 'ls -a /app | grep -i env || echo none'` → `none`.
+- [ ] Image bersih dari file env: `docker run --rm koperasi-api sh -c 'ls -a /app | grep -iE "^\.env" || echo none'` → `none`. (⚠️ anchor `^\.env` — `grep -i env` tak ber-anchor akan match `.venv` dan selalu gagal.)
 
 > ✅ **Terverifikasi (2026-10-15):** kedua target di-build; `docker compose up`
 > menjalankan api + worker; `/health` 200; unauth `/token` 401 (dengan `.env` terisi
