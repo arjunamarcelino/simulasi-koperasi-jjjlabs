@@ -84,7 +84,7 @@ DNS: `app`/`admin` = A/AAAA → IP VPS; `api` = A/CNAME → IP LB (lihat `produc
 
 ### Monitoring bersenjata (sebelum go-live)
 - [ ] Uptime check menguji `/token` (bukan hanya `/health`); alert 5xx + worker-crash.
-- [ ] GCP Spend Cap + budget; `--max-instances=1`; batas waktu sesi worker aktif; Azure TPM quota.
+- [ ] GCP Spend Cap + budget; `--max-instances=1`; batas durasi sesi via kontrol room LiveKit (`emptyTimeout`/`user_away_timeout` — cap worker belum ada di kode, lihat `monitoring-cost.md`); Azure TPM quota.
 
 ---
 

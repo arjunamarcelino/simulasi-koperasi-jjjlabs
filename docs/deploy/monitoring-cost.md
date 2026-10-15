@@ -40,10 +40,12 @@ Pertahankan logger `koperasi.*` (observer/fase) — itu permukaan debug live
     `max_tokens` + estimasi prompt). https://learn.microsoft.com/azure/foundry/openai/quotas-limits
   - Azure Cost Management budget + Action Group (auto-stop/scale-down).
     https://learn.microsoft.com/azure/cost-management-billing/costs/tutorial-acm-create-budgets
-  - **Batas waktu sesi keras di worker** — tuas anti-biaya-liar terbesar untuk app
-    voice ber-meter; pastikan aktif sebelum user nyata.
-  - LiveKit: `emptyTimeout`/`maxParticipants`/`delete_room_on_close` (stop metering saat
-    sesi berakhir). https://docs.livekit.io/agents/logic/sessions/
+  - **Batas durasi sesi — tuas anti-biaya-liar terbesar, TAPI belum ada di kode.**
+    ⚠️ `voice_worker/voice_agent.py` saat ini TIDAK punya cap durasi/idle sesi.
+    Sebelum user nyata, tegakkan batas via **kontrol room LiveKit** (yang sudah ada):
+    `emptyTimeout`, `maxParticipants`, `delete_room_on_close`, dan `user_away_timeout`
+    agen — plus pertimbangkan menambah watchdog `asyncio` sisi-worker (follow-up).
+    https://docs.livekit.io/agents/logic/sessions/
 
 ## 3. Setelah go-live (tuning — butuh trafik nyata) `[day-2]`
 
@@ -64,7 +66,7 @@ Pertahankan logger `koperasi.*` (observer/fase) — itu permukaan debug live
 | GCE VM (worker) | per jam VM | right-size (`e2-standard-4`), CUD, matikan saat idle |
 | Azure OpenAI | token (TPM) | quota TPM + `max_tokens` |
 | Azure Speech | STT per-jam audio; TTS per-karakter | batasi panjang sesi + volume karakter |
-| LiveKit Cloud | per-detik (min 10s) + bandwidth downstream $/GB | timeouts + batas sesi worker |
+| LiveKit Cloud | per-detik (min 10s) + bandwidth downstream $/GB | timeout room LiveKit (`emptyTimeout`/`user_away_timeout`); cap durasi worker = follow-up |
 
 Harga: GCP https://cloud.google.com/run/pricing , https://cloud.google.com/compute/all-pricing ·
 Azure Speech https://azure.microsoft.com/pricing/details/speech/ ·
