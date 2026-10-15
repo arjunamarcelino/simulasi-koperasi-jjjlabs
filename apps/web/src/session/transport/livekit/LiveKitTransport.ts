@@ -33,6 +33,26 @@ const CONNECTION_MAP: Record<ConnectionState, WireConnectionState> = {
   [ConnectionState.SignalReconnecting]: "connecting",
 };
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
+/** Narrow an untrusted LiveKit payload to AuditorResult before emitting it. */
+function isAuditorResult(x: unknown): x is SessionEnded["result"] {
+  return (
+    isRecord(x) &&
+    typeof x["trigger"] === "string" &&
+    typeof x["endingType"] === "string" &&
+    typeof x["narrativeFeedback"] === "string" &&
+    isRecord(x["scores"]) &&
+    isRecord(x["stateClassification"])
+  );
+}
+
+function isPhaseState(x: unknown): x is PhaseState {
+  return isRecord(x) && typeof x["phase"] === "number" && typeof x["label"] === "string";
+}
+
 /**
  * Real transport over LiveKit. Maps the wire (REST token + LiveKit event/RPC) to
  * the same SessionTransport the mock implements, so the UI is unchanged when
@@ -87,6 +107,12 @@ export class LiveKitTransport implements SessionTransport {
     this.room = room;
 
     room.on(RoomEvent.ConnectionStateChanged, (state: ConnectionState) => {
+      // An unexpected Disconnected (not our own teardown) is a dropped room, not a
+      // clean finish — surface "error" so consumers don't treat a drop as "ended".
+      if (state === ConnectionState.Disconnected && !this.ended) {
+        this.connection.emit("error");
+        return;
+      }
       this.connection.emit(CONNECTION_MAP[state]);
     });
     room.on(RoomEvent.TranscriptionReceived, (segments, participant) => {
@@ -120,7 +146,9 @@ export class LiveKitTransport implements SessionTransport {
       const rawPhase = changed["phase"];
       if (rawPhase !== undefined) {
         try {
-          this.phase.emit(JSON.parse(rawPhase) as PhaseState);
+          const parsed: unknown = JSON.parse(rawPhase);
+          if (isPhaseState(parsed)) this.phase.emit(parsed);
+          else console.error("Phase payload tidak valid, diabaikan:", parsed);
         } catch (cause: unknown) {
           console.error("Gagal parse phase:", cause);
         }
@@ -290,8 +318,14 @@ export class LiveKitTransport implements SessionTransport {
     void this.room?.localParticipant.setMicrophoneEnabled(false).catch(() => {});
     try {
       const raw = await this.rpc("end_session", "");
-      const parsed = JSON.parse(raw) as SessionEnded["result"];
+      const parsed: unknown = JSON.parse(raw);
       if (this.ended) return; // force-quit slipped in between awaits
+      if (!isAuditorResult(parsed)) {
+        console.error("Hasil end_session tidak valid:", parsed);
+        this.ended = true;
+        this.connection.emit("error");
+        return;
+      }
       this.ended = true;
       this.connection.emit("ended");
       this.sessionEnded.emit({ trigger, result: { ...parsed, trigger } });
@@ -309,7 +343,11 @@ export class LiveKitTransport implements SessionTransport {
   private handleSessionEndedData(payload: Uint8Array): void {
     if (this.ended) return;
     try {
-      const parsed = JSON.parse(new TextDecoder().decode(payload)) as SessionEnded["result"];
+      const parsed: unknown = JSON.parse(new TextDecoder().decode(payload));
+      if (!isAuditorResult(parsed)) {
+        console.error("Payload session_ended tidak valid, diabaikan:", parsed);
+        return;
+      }
       this.ended = true;
       void this.room?.localParticipant.setMicrophoneEnabled(false).catch(() => {});
       this.connection.emit("ended");

@@ -223,11 +223,13 @@ async def entrypoint(ctx: JobContext) -> None:
     )
 
     ai_client = _build_openai_client()
+    ctx.add_shutdown_callback(ai_client.close)  # tutup pool httpx klien per sesi (worker long-lived)
     auditor_deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT_AUDITOR", "")
     dialogue_deployment = os.environ["AZURE_OPENAI_DEPLOYMENT_DIALOGUE"]
 
     # State sesi (in-memory, PRD §2.5).
     ended = False
+    final_result: dict | None = None  # hasil akhir di-cache agar end ganda idempoten
     tracker = DriftTracker(scenario.drift) if scenario.drift else None
     last_npc_text = ""
     bg_tasks: set[asyncio.Task] = set()
@@ -305,12 +307,13 @@ async def entrypoint(ctx: JobContext) -> None:
         )
 
     async def _force_quit() -> None:
-        nonlocal ended
+        nonlocal ended, final_result
         if ended:
             return
         ended = True
         await session.interrupt(force=True)
         result = await _finalize("force_quit_level_2")
+        final_result = result
         await ctx.room.local_participant.publish_data(
             json.dumps(result), topic=SESSION_ENDED_TOPIC
         )
@@ -363,10 +366,17 @@ async def entrypoint(ctx: JobContext) -> None:
     # --- RPC: Keputusan Akhir / Bayar & Daftar → hasil akhir ---
     @ctx.room.local_participant.register_rpc_method("end_session")
     async def _end_session(data: rtc.RpcInvocationData) -> str:
-        nonlocal ended
+        nonlocal ended, final_result
+        if ended:
+            # Sudah berakhir (force-quit otomatis / retry RPC): kembalikan hasil yang
+            # sudah dihitung — jangan interupsi ulang atau panggil auditor kedua kali.
+            if final_result is not None:
+                return json.dumps(final_result)
+            return json.dumps({"status": "already_ended"})
         await session.interrupt(force=True)
         ended = True
         result = await _finalize("manual")
+        final_result = result
         return json.dumps(result)
 
     # --- RPC: Petunjuk (mentor kontekstual, menggantikan "Tanya Mentor") ---
