@@ -12,9 +12,10 @@
 Ganti `<domain>` dan semua `<PLACEHOLDER>` dengan nilai asli Anda. **Jangan commit
 nilai rahasia yang terisi.**
 
-## 1. Topologi origin (satu set, dua enkoding)
+## 1. Topologi origin (triplet domain, dua mekanisme)
 
-Ada **satu** set origin produksi; ia muncul di dua tempat yang harus konsisten:
+Ada **satu triplet domain** produksi (`app`, `admin`, `api`), dipartisi ke dua
+mekanisme yang **saling melengkapi — bukan daftar yang sama**:
 
 | Peran | Origin | Dipakai di |
 |---|---|---|
@@ -22,12 +23,15 @@ Ada **satu** set origin produksi; ia muncul di dua tempat yang harus konsisten:
 | Frontend admin (SPA) | `https://admin.<domain>` | VPS nginx (`apps/admin`) |
 | Backend token server | `https://api.<domain>` | GCP (Cloud Run + LB) |
 
-- **Backend `CORS_ALLOW_ORIGINS`** harus memuat `https://app.<domain>,https://admin.<domain>`.
-- **CSP `connect-src` FE** (di-bake saat build) harus memuat `https://api.<domain>`.
+- **Backend `CORS_ALLOW_ORIGINS`** = **pemanggil** yang diizinkan:
+  `https://app.<domain>,https://admin.<domain>` (bukan `api`).
+- **CSP `connect-src` FE** (di-bake saat build) = **tujuan** yang boleh dihubungi:
+  `https://api.<domain>` + origin Supabase + `wss:` LiveKit (bukan `app`/`admin`).
 
-> ⚠️ Keduanya meng-enkode set yang **sama** tapi bisa drift terpisah. Ubah di satu
-> tempat → ubah di keduanya. Deklarasikan set-nya di sini; `frontend-vps.md` (CSP)
-> dan `gcp-backend.md` (env CORS) menunjuk ke sini.
+> ⚠️ Peran keduanya **berbeda**: CORS mendaftar pemanggil, CSP mendaftar tujuan.
+> JANGAN memasukkan `api` ke `CORS_ALLOW_ORIGINS` atau `app`/`admin` ke `connect-src`.
+> Keduanya tetap bisa drift terpisah — ubah triplet → cek kedua mekanisme.
+> Deklarasikan di sini; `frontend-vps.md` (CSP) & `gcp-backend.md` (env CORS) menunjuk ke sini.
 
 ## 2. DNS (siapkan SEBELUM certbot & domain mapping)
 
