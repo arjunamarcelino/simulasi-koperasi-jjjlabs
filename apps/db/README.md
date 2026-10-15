@@ -1,59 +1,93 @@
-# @simkop/db — Koperasi Simulator data model (SIM-2)
+# @simkop/db — Koperasi Simulator data model
 
-Supabase/Postgres schema, seed, and pgTAP tests. The rest of the monorepo backend
-(`apps/backend`) stays database-free; `apps/web` is the only runtime consumer of
-this database (web-direct via `supabase-js`, guarded by RLS).
+Skema Supabase/Postgres: migrations, seed (generated), seed dev, tes pgTAP, smoke, dan
+skrip yang menjaga parity dengan paket katalog bersama `@simkop/catalog`.
 
-Design doc (ERDs + gap table): [`DATA-MODEL.md`](./DATA-MODEL.md).
-Hosted provisioning + deploy (SIM-1): [`RUNBOOK.md`](./RUNBOOK.md).
-Plan + brainstorm live under `docs/` (kept out of git per repo convention).
+Konsumen database:
+- **`apps/web`** — web-direct via `supabase-js`, dibatasi **RLS** (jalur runtime utama).
+- **`apps/backend` & `apps/admin`** — fungsi analitik/konten admin lewat role
+  **`metrics_reader`** (skema `admin`, EXECUTE-only). *Backend bukan lagi sepenuhnya
+  database-free* — ini satu-satunya jalur DB-nya.
+
+> Dokumen lebih dalam: **[`DATA-MODEL.md`](./DATA-MODEL.md)** (ERD AS-IS/TARGET, 15 tabel
+> + kolom, semua RPC, tabel gap, per-fitur SIM-14…42) dan **[`RUNBOOK.md`](./RUNBOOK.md)**
+> (provisioning hosted, config auth dashboard, keep-alive, Go/No-Go, rollback, §10 setup
+> `metrics_reader`).
 
 ## Layout
 
-Catalog content is the shared `@simkop/catalog` package (`packages/catalog`), imported
-by both `apps/web` and the seed generator here — the single source of truth.
+Konten katalog = paket `@simkop/catalog` (`packages/catalog`), diimpor oleh `apps/web`
+**dan** generator seed di sini — sumber kebenaran tunggal.
 
 ```
-scripts/gen-seed.mjs    # @simkop/catalog → supabase/seed.sql (and --check parity guard)
-scripts/check-levels.mjs# pins level_from_xp() thresholds to @simkop/catalog levels.json
+seed-codes.json         # kode unlock reallife (SERVER-ONLY; masuk seed.sql, bukan bundle klien)
+scripts/
+  gen-seed.mjs          # @simkop/catalog + seed-codes.json → supabase/seed.sql (--check = parity guard)
+  check-levels.mjs      # pin ambang level_from_xp() ke @simkop/catalog levels.json
+  e2e-admin-hook.mjs    # e2e: custom access token hook (klaim is_admin)
+  e2e-metrics.sh        # e2e: role metrics_reader nyata
 supabase/
-  config.toml
-  migrations/           # dependency-ordered by timestamp (foundation < progress < gameplay < economy < achievements)
-  seed.sql              # GENERATED — do not edit by hand
-  tests/                # pgTAP: schema-smoke, rls-isolation, rpc-behavior
+  config.toml           # port 54322, PG15, anon sign-ins ON, email provider ON, custom_access_token_hook ON
+  migrations/           # 20 migrasi ter-timestamp (foundation → progress → gameplay → economy →
+                        #   achievements → quiz → reconcile → record_session → admins → admin_metrics →
+                        #   scenario_analytics → leaderboard_snapshots → quiz/mading content → session_export → mission_content)
+  seed.sql              # GENERATED — jangan edit tangan
+  seeds/                # dev-only (TIDAK ikut seed.sql): dev_admins.sql, dev_sessions.sql
+  tests/                # 17 file pgTAP (schema-smoke, rls-isolation, rpc-behavior, quiz, record-session, admin/*)
+  smoke/run.sh          # cek smoke pasca-deploy (jumlah tabel/seed, grant ditolak, JWKS ES256)
 ```
 
-## Common commands
+Tanpa `src/` — paket ini murni SQL + skrip `.mjs`/`.sh`. **Tidak ada `gen:types`**
+(generasi tipe TS belum di-wire). Tidak ada `.env.example` di sini.
+
+## Perintah
 
 ```bash
-# Regenerate the seed after editing packages/catalog/data/*.json
+# Regenerasi seed setelah mengedit packages/catalog/data/*.json
 pnpm --filter @simkop/db gen:seed
 
-# Fails if seed.sql is stale vs @simkop/catalog (also run in CI)
+# Guard CI: gagal bila seed.sql basi vs @simkop/catalog
 pnpm --filter @simkop/db check:parity
 
-# Fails if level_from_xp() drifts from @simkop/catalog levels.json (also run in CI)
+# Guard CI: gagal bila level_from_xp() drift dari @simkop/catalog levels.json
 pnpm --filter @simkop/db check:levels
 
-# Requires Supabase CLI + Docker running:
-supabase start                     # bring up the local stack
-pnpm --filter @simkop/db db:reset  # apply migrations + seed
-pnpm --filter @simkop/db db:test   # run pgTAP tests
+# Butuh Supabase CLI + Docker:
+supabase start                     # nyalakan stack lokal (Postgres :54322)
+pnpm --filter @simkop/db db:reset  # replay migrasi + jalankan seed.sql
+pnpm --filter @simkop/db db:test   # jalankan pgTAP (supabase test db)
 ```
 
-CI runs the reset + tests on every push (see `.github/workflows/db-tests.yml`), so
-Docker is not required locally to land a change — but is needed to run the DB tests yourself.
+CI menjalankan reset + tes tiap push (`.github/workflows/db-tests.yml`), jadi Docker tak
+wajib untuk mendaratkan perubahan — tapi perlu untuk menjalankan tes DB sendiri.
 
-## Key invariants (see the plan for rationale)
+**Setup `metrics_reader` lokal** (agar `apps/backend` `/admin/*` jalan; detail di RUNBOOK §10):
+setelah `supabase start`, set password role lalu arahkan `METRICS_DB_URL` backend ke sana
+(`metrics_reader` port 54322). Kode reallife lokal ada di `seed-codes.json`.
 
-- **RLS is the security boundary.** Every `public` table has RLS enabled; user-scoped
-  tables are owner-only (`(select auth.uid()) = user_id`) with `WITH CHECK` on writes.
-- **Reallife gate codes are kept out of the DB's client surface** (defense-in-depth):
-  `mission_definition` is revoked from `anon`/`authenticated`; the public `mission_catalog`
-  view omits `redeem_code`. Note these are *soft* KDMP gate codes, not cryptographic secrets
-  (and are still shipped in the client bundle today — see DATA-MODEL.md follow-ups).
-- **Server-side integrity via `SECURITY DEFINER` RPCs** (`search_path=''`, `REVOKE EXECUTE
-  FROM public`): `claim_mission`, `redeem_voucher`, `record_session_result`, `leaderboard`.
-  `add_rewards` is a private helper (never client-callable).
-- **Level is derived, never stored** (`level_from_xp`). One-time claims are idempotent via
+## Entitas (sekilas; 15 tabel + role admin)
+
+- **User-scoped:** `profiles`, `user_progress`, `sessions`, `mission_completion`,
+  `voucher_redemption`, `user_badge`, `quiz_completion`.
+- **Katalog/definisi:** `scenario_definition`, `mission_definition`, `voucher_definition`,
+  `badge_definition`, `quiz_definition`.
+- **Leaderboard musiman:** `leaderboard_seasons`, `leaderboard_entries`.
+- **Konten:** `mading_block`. **Admin:** `public.admins` + skema `admin` (fungsi definer,
+  tak pernah diekspos ke PostgREST).
+- **View publik** (menyembunyikan kolom rahasia): `mission_catalog` (tanpa `redeem_code`),
+  `quiz_catalog` (tanpa `correct_index`/`explanation`), `mading_catalog`.
+
+## Invarian kunci
+
+- **RLS adalah batas keamanan.** Semua tabel `public` mengaktifkan RLS; tabel user-scoped
+  owner-only (`(select auth.uid()) = user_id`) dengan `WITH CHECK` pada write.
+- **Kode gate reallife tidak di permukaan klien DB** (defense-in-depth): `mission_definition`
+  di-revoke dari `anon`/`authenticated`; view publik menghilangkan `redeem_code`. Sejak SIM-9
+  kode hidup **server-only** (`seed-codes.json`), tidak lagi di bundle klien. Catatan: ini
+  gerbang *lunak*, bukan secret kriptografis.
+- **Integritas server via RPC `SECURITY DEFINER`** (`search_path=''`, EXECUTE di-revoke dari
+  public): mis. `claim_mission`, `redeem_voucher`, `record_session`, `submit_quiz`,
+  `get_my_progress`, `sync_badges`, `reconcile_local_progress`, `leaderboard`. `add_rewards`
+  = helper privat (tak client-callable). Daftar lengkap di `DATA-MODEL.md`.
+- **Level diturunkan, tak disimpan** (`level_from_xp`). Klaim sekali-pakai idempoten via
   `UNIQUE(user_id, …)` + `ON CONFLICT DO NOTHING`.
