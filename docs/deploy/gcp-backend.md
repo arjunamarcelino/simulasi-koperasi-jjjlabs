@@ -81,6 +81,12 @@ gcloud run deploy token-server \
 > ⚠️ **`--set-env-vars` MENGGANTI semua** (pakai `--update-env-vars` untuk merge).
 > Nilai berisi koma (seperti `CORS_ALLOW_ORIGINS`) harus di-escape `\,` atau pakai
 > delimiter kustom `--set-env-vars "^##^KEY=a,b##..."`.
+>
+> ⚠️ **`--startup-probe`**: verifikasi sintaks flag ini terhadap versi `gcloud` Anda
+> (`gcloud run deploy --help | grep -i probe`). Startup probe Cloud Run secara historis
+> dikonfigurasi lewat service YAML (`gcloud run services replace service.yaml`) — jika
+> flag inline tak tersedia, pakai YAML. Probe opsional; tanpa probe, Cloud Run memakai
+> default TCP-port check. (Belum diverifikasi: `gcloud` tak terpasang saat dokumen dibuat.)
 
 **Kenapa `--min/--max-instances=1`:** rate limiter `/token` **in-memory per-proses**
 (`api/ratelimit.py`). N instance = N× batas (mitigasi abuse melemah justru saat beban
