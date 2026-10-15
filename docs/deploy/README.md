@@ -59,7 +59,7 @@ DNS: `app`/`admin` = A/AAAA → IP VPS; `api` = A/CNAME → IP LB (lihat `produc
   gcloud run services describe token-server --region <REGION> --format='value(spec.template.spec.containers[].env)' | grep -i LIVEKIT_AGENT_NAME
   gcloud compute ssh voice-worker --zone <ZONE> --command 'docker exec koperasi-worker printenv LIVEKIT_AGENT_NAME'
   ```
-- [ ] Worker: `curl http://<worker>:8081/` → 200 (liveness proses, framework livekit-agents 1.6.5) **dan** log memuat registrasi job ke LiveKit (readiness). `:8081` dipakai MIG autohealing.
+- [ ] Worker: `curl http://<worker>:8081/` → 200 (liveness proses, framework livekit-agents 1.6.5) **dan** log memuat registrasi job ke LiveKit (readiness).
 - [ ] CORS preflight dari origin prod meng-echo origin itu (bukan localhost):
   ```bash
   curl -s -D - -o /dev/null -X OPTIONS $API/token \

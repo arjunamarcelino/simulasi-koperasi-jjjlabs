@@ -48,7 +48,7 @@ docker build --target worker -t koperasi-worker apps/backend
   `cli.run_app(server)` (lihat `apps/backend/CLAUDE.md` GOTCHA #1: API `AgentServer`).
   Tak ada port *job* masuk (outbound), tapi framework mengekspos **health server di
   `:8081`** pada mode `start` (liveness proses) — `EXPOSE 8081` + `HEALTHCHECK`
-  memakainya; di GCE dipakai MIG autohealing.
+  memakainya (opsi autohealing GCE: lihat `gcp-backend.md` §6).
 
 > ℹ️ **Versi `livekit-agents` di-pin `1.6.5`** di `uv.lock` (bukan 1.8.x — `~=1.6`
 > dengan lock frozen tetap 1.6.5). Subcommand `start` & `download-files` serta API

@@ -45,7 +45,7 @@ FROM base AS worker
 # file apa yang diunduh); valid di livekit-agents 1.6.5 (di-pin di uv.lock).
 RUN python voice_worker/voice_agent.py download-files
 # Framework mengekspos health server di :8081 pada mode `start` (liveness proses) —
-# dipakai HEALTHCHECK container & GCE MIG autohealing.
+# dipakai HEALTHCHECK container (opsi autohealing GCE: lihat docs/deploy/gcp-backend.md).
 EXPOSE 8081
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8081/').status==200 else 1)"
