@@ -121,6 +121,10 @@ Menambah/mengubah skenario TIDAK perlu menyentuh `voice_agent.py`.
 dengan `drift`+`auditor`+`mentor_brief`, daftarkan di `_SCENARIOS`. Selesai —
 semua wiring (observer, auditor, Petunjuk, tiga jalur akhir) sudah generik.
 
+Itu untuk sisi backend. Untuk langkah **end-to-end lintas-stack** (katalog, seed DB,
+konfig FE + skrip mock, `VALID_SCENARIOS`, CONTRACT, dan hitungan parity yang perlu
+di-bump), lihat `../../docs/how-to-add-a-scenario.md`.
+
 ## RAT (dua NPC) — pola yang dipakai
 
 Satu `RatAgent(Agent)`, dua persona (PRD §2.1: bukan proses/agent terpisah):

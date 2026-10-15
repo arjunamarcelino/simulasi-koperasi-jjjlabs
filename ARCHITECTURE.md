@@ -177,6 +177,7 @@ Dua fakta operasional yang perlu terlihat dari atas (keduanya dari
 | [`apps/web/README.md`](apps/web/README.md) | mengerjakan game/UI frontend |
 | [`apps/backend/CLAUDE.md`](apps/backend/CLAUDE.md) | mengerjakan voice worker / desain AI 3 lapis |
 | [`apps/backend/CONTRACT.md`](apps/backend/CONTRACT.md) | menyentuh kontrak FE↔BE (RPC, atribut, data shapes) |
+| [`docs/how-to-add-a-scenario.md`](docs/how-to-add-a-scenario.md) | menambah skenario baru (FE + BE + CONTRACT + katalog + DB) |
 | [`apps/db/DATA-MODEL.md`](apps/db/DATA-MODEL.md) | perlu skema/ERD database |
 | [`apps/db/RUNBOOK.md`](apps/db/RUNBOOK.md) | menjalankan migrasi/seed database |
 | [`docs/deploy/`](docs/deploy/) | men-deploy atau mengubah konfigurasi produksi |
