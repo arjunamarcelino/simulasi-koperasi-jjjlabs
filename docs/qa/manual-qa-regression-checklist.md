@@ -5,8 +5,7 @@
 > smoke, pytest, pgTAP). A tester following this doc should be able to validate a build
 > **without tribal knowledge**.
 
-Linear: [SIM-24](https://linear.app/simulasi-koperasi/issue/SIM-24/docs-manual-qa-test-plan-regression-checklist) ·
-Plan: `docs/plans/2026-10-14-docs-manual-qa-test-plan-regression-checklist-plan.md`
+Linear: [SIM-24](https://linear.app/simulasi-koperasi/issue/SIM-24/docs-manual-qa-test-plan-regression-checklist)
 
 ---
 

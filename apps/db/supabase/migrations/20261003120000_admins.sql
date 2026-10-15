@@ -2,7 +2,7 @@
 -- hook that stamps a top-level boolean `is_admin` claim into every JWT. Admin is used
 -- ONLY by the admin dashboard (apps/admin) — the game is untouched.
 --
--- Design (see docs/plans/2026-10-03-feat-admin-role-protected-area-plan.md):
+-- Design:
 -- - `public.admins` is NOT combined with profiles/user. RLS on, NO client policies;
 --   membership is managed by service_role / seed only.
 -- - The hook is GRANT-BASED (not SECURITY DEFINER): GoTrue calls it as

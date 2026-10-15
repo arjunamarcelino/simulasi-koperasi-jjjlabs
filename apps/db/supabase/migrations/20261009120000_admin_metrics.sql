@@ -3,7 +3,7 @@
 -- DEFINER entry function that aggregates public.sessions + profiles + scenario_definition,
 -- and a least-privilege `metrics_reader` login role the backend connects as.
 --
--- Design (see docs/plans/2026-10-09-feat-admin-dashboard-metrics-plan.md):
+-- Design:
 -- - The deliberately DB-free backend (apps/backend) gains ONE fail-soft, read-only DB path.
 -- - Admin-ness is enforced at the backend (require_role('admin')); the function is reachable
 --   only by `metrics_reader` (EXECUTE-only, no table access), so no is_admin() RLS helper is

@@ -2,9 +2,8 @@
 
 Bridge documentation for the project's first database. Two diagrams: **AS-IS** (what
 `localStorage` holds today) and **TARGET** (the Supabase/Postgres schema in this
-`@simkop/db` package), plus a gap/mapping table. Rationale and decisions live in the
-local plan (`docs/plans/2026-09-19-feat-supabase-data-model-schema-plan.md`, kept out of
-git per repo convention); this file is the tracked reference.
+`@simkop/db` package), plus a gap/mapping table. This file is the tracked reference for
+the schema's rationale and decisions.
 
 - **Engine:** Supabase Postgres. **Write path:** `apps/web` direct via `supabase-js`,
   guarded by RLS. The voice backend (`apps/backend`) stays database-free.

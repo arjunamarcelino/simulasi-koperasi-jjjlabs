@@ -161,8 +161,8 @@ frontend di **VPS in-house**; backend di **GCP** (token server di Cloud Run + vo
 di GCE VM); DB + auth di **Supabase**; suara via **LiveKit Cloud + Azure**; captcha via
 **Cloudflare Turnstile**.
 
-Dua fakta operasional yang perlu terlihat dari atas (keduanya dari
-[post-mortem container deploy](docs/solutions/deployment-issues/backend-container-deploy-smoke-surprises.md)):
+Dua fakta operasional yang perlu terlihat dari atas (lihat juga
+[`LIMITATIONS.md`](LIMITATIONS.md) §B — sharp edges operasional):
 
 - **Discovery agent**: `LIVEKIT_AGENT_NAME` harus sama persis di token server dan voice
   worker. Jika beda, token tetap sukses tapi worker tak pernah join room → sesi hang senyap.
@@ -181,5 +181,6 @@ Dua fakta operasional yang perlu terlihat dari atas (keduanya dari
 | [`apps/db/DATA-MODEL.md`](apps/db/DATA-MODEL.md) | perlu skema/ERD database |
 | [`apps/db/RUNBOOK.md`](apps/db/RUNBOOK.md) | menjalankan migrasi/seed database |
 | [`docs/deploy/`](docs/deploy/) | men-deploy atau mengubah konfigurasi produksi |
-| [`docs/solutions/`](docs/solutions/) | mencari post-mortem / pelajaran dari bug lampau |
 | [`docs/qa/`](docs/qa/) | menjalankan regresi QA manual |
+| [`docs/README.md`](docs/README.md) | indeks seluruh dokumentasi proyek |
+| [`LIMITATIONS.md`](LIMITATIONS.md) | keterbatasan, risiko, sharp edges operasional |
