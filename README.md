@@ -52,30 +52,15 @@ nyata, salin `apps/web/.env.example` → `.env.local`, set `VITE_TRANSPORT=livek
 
 ## Arsitektur
 
-Tiga lapis utama:
+Tiga lapis utama: **dunia game (Phaser 3)**, **antarmuka (React + Zustand)** di
+atas kanvas, dan **sesi suara** di balik satu `SessionTransport` dengan dua
+implementasi — **mock** (default, offline) dan **livekit** (backend nyata).
+Skenario adalah data, bukan kode.
 
-1. **Dunia game (Phaser 3)** — tilemap 2D, pergerakan pemain, NPC, dan deteksi
-   kedekatan (mendekati stasiun/NPC lalu tekan `E`) di `apps/web/src/game`.
-2. **Antarmuka (React + Zustand)** — overlay UI di atas kanvas (menu, dialog,
-   panel skenario, hasil). Phaser dan React tidak saling impor; keduanya
-   berkomunikasi lewat satu jembatan Zustand (`stores/game.store.ts`,
-   `stores/session.store.ts`).
-3. **Sesi suara (transport seam)** — inti percakapan NPC berjalan di balik satu
-   antarmuka `SessionTransport` (`session/transport/contract.ts`) dengan dua
-   implementasi: **mock** (default, offline, terskrip) dan **livekit** (backend
-   nyata: STT/TTS + LLM + AI Auditor). Dipilih lewat `VITE_TRANSPORT`. UI ditulis
-   hanya terhadap kontrak — tak pernah mengimpor transport konkret.
-
-**Skenario** adalah data: profil di `scenarios/scenario.config.ts` (briefing, NPC,
-dokumen bukti) + skrip percakapan mock di `session/transport/mock/scripts/`.
-Menambah skenario = menambah data, bukan menyentuh mesin. Evaluasi akhir
-(klasifikasi state + skor + narasi) dihasilkan AI Auditor di backend saat mode
-livekit; mock memakai ending terskrip dengan kunci state yang sama
-(`components/session/resultLabels.ts`).
-
-Backend (`apps/backend`) memisahkan `api/` (FastAPI, mint token LiveKit) dari
-`voice_worker/` (livekit-agents: persona NPC, observer drift, Auditor). Kontrak
-FE↔BE terinci di `apps/backend/CONTRACT.md`.
+Gambaran sistem menyeluruh — peta monorepo, diagram topologi runtime
+(FE ↔ token server ↔ LiveKit ↔ Azure ↔ Supabase), dan konsep kunci — ada di
+**[`ARCHITECTURE.md`](ARCHITECTURE.md)**. Kontrak FE↔BE terinci di
+`apps/backend/CONTRACT.md`.
 
 ## Library & Teknologi
 
