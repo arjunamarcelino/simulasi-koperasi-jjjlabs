@@ -174,7 +174,7 @@ Preconditions: single browser tab, no other session open, Supabase up, built wit
   - [ ] P2 **entry event** appears (Pak Darma threatens to pull capital).
   - [ ] Naming "Pak Darma" / "Ibu Sri" routes the reply to that speaker.
   - [ ] The end action "Ketok Palu" is available **only in P3**.
-  - [ ] GOOD → TUNTAS / SAH_DEMOKRATIS; BAD (escalate) → BUBAR / TIDAK_BERLAKU (force-quit).
+  - [ ] GOOD → TUNTAS / SAH_DEMOKRATIS. BAD → BUBAR / TIDAK_BERLAKU, reachable two ways (like the other scored scenarios): **2 net escalate words + "Ketok Palu" in P3** (level 1, no force-quit) *or* **4 net escalate words** (level 2 → force-quit).
 
 **Stubs — do NOT test:** the `EVALUATION` view is never navigated to (no `setView("EVALUATION")` exists) — `EvaluationPage` is an unreachable placeholder, distinct from the in-session `ResultPanel`. `GamePage` is likewise a stub (all rooms launch a session). Flag these to the team; don't log them as scenario failures.
 
