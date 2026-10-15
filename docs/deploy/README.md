@@ -145,8 +145,6 @@ DNS: `app`/`admin` = A/AAAA → IP VPS; `api` = A/CNAME → IP LB (lihat `produc
 - Tiket: SIM-25/26/27/28/30 (M5), SIM-33 (M6 — Documentation & Handover).
 - ⚠️ `docs/` di-gitignore repo ini → file set ini di-commit dengan `git add -f`
   (pola sama seperti `docs/qa/`).
-- Versi `livekit-agents` **di-pin 1.6.5** di `uv.lock` (bukan 1.8.x) — API `AgentServer`,
-  subcommand `start`/`download-files`, dan health server `:8081` semuanya terverifikasi
-  di 1.6.5. Host docs GCP = `docs.cloud.google.com`; Vite 7 docs = `v7.vite.dev`; semua
-  harga = tautan live.
+- `livekit-agents` **di-pin 1.6.5** (`uv.lock`) — detail & verifikasi di `backend-containers.md`.
+  Host docs GCP = `docs.cloud.google.com`; Vite 7 docs = `v7.vite.dev`; semua harga = tautan live.
 - ✅ Container backend (SIM-26) sudah di-build & dijalankan (lihat `backend-containers.md`).
