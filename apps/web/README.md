@@ -58,7 +58,7 @@ Salin `.env.example` → `.env.local`, lalu isi.
 | `VITE_TRANSPORT` | `mock` (default, offline deterministik) atau `livekit` |
 | `VITE_TOKEN_ENDPOINT` | endpoint `POST /token` backend; hanya dipakai saat `livekit` (lokal: `http://localhost:8000`) |
 | `VITE_SUPABASE_URL` | URL project Supabase (PUBLIC) |
-| `VITE_SUPABASE_ANON_KEY` | anon/publishable key (RLS-bounded, PUBLIC — **bukan** service_role); unset → mode degraded |
+| `VITE_SUPABASE_ANON_KEY` | anon/publishable key (RLS-bounded, PUBLIC — **bukan** kunci rahasia bypass-RLS); unset → mode degraded |
 | `VITE_TURNSTILE_SITE_KEY` | site key Cloudflare Turnstile (SIM-41); set → widget invisible pada anon sign-in; unset → tokenless |
 
 ## Arsitektur — React ↔ Phaser
@@ -113,6 +113,6 @@ logika tak berubah.
 ## Keterbatasan diketahui
 
 - Interior koperasi masih berbasis klik (belum ada karakter berjalan di dalam).
-- Beberapa room berstatus "Segera Hadir" / stub.
+- Beberapa room berstatus "Segera Hadir" / stub (daftar lengkap keterbatasan: `/LIMITATIONS.md`).
 - Teks canvas memakai fallback monospace bila web font belum termuat.
 - Bundel menyertakan Phaser (~400 KB gz); pemisahan chunk ditunda.

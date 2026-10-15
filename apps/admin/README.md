@@ -46,7 +46,7 @@ Semua `VITE_*` **build-time & PUBLIC**. Salin `.env.example` → `.env.local`, i
 | Var | Fungsi |
 |---|---|
 | `VITE_SUPABASE_URL` | URL project Supabase (project yang sama dgn game); kosong → UI "auth unavailable" |
-| `VITE_SUPABASE_ANON_KEY` | anon/publishable key saja — **jangan pernah** service_role di browser |
+| `VITE_SUPABASE_ANON_KEY` | anon/publishable key saja — **jangan pernah** kunci rahasia bypass-RLS di browser |
 | `VITE_ADMIN_API_ENDPOINT` | **origin** backend FastAPI (default `http://localhost:8000`); semua `/admin/*` + `Bearer` dikirim hanya ke origin ini |
 | `VITE_TURNSTILE_SITE_KEY` | site key Turnstile untuk CAPTCHA login (CAPTCHA project-global di Supabase); kosong → tanpa widget (oke lokal) |
 
@@ -62,7 +62,7 @@ sekali dan render berdasarkan `gate.status` dari `src/stores/adminAuth.store.ts`
 `serviceUnavailable` → layar retry.
 
 - **Login:** `supabase.auth.signInWithPassword` (+ Turnstile opsional). **Tanpa signup** —
-  akun admin di-provision server-side (service_role/seed), bukan dari browser.
+  akun admin di-provision server-side (seed/dashboard), bukan dari browser.
 - **Probe:** tiap event auth ber-sesi → `GET /admin/me`. Otorisasi diputuskan **oleh HTTP
   STATUS saja** (200/403/401), tak pernah oleh body.
 - **Klaim `is_admin`:** di-stamp ke JWT oleh `custom_access_token_hook` GoTrue berdasarkan
@@ -81,7 +81,7 @@ Prasyarat: Node ≥22, pnpm ≥10 (`pnpm install` dari root). Lalu:
 3. Turnstile: biarkan `VITE_TURNSTILE_SITE_KEY` kosong lokal (CAPTCHA off).
 4. `pnpm dev`.
 
-> **Provisioning admin:** keanggotaan `public.admins` dikelola manual via service_role/seed
+> **Provisioning admin:** keanggotaan `public.admins` dikelola manual server-side (seed/dashboard)
 > (tidak ada signup in-app). Prosedur seed persisnya: lihat `../db/RUNBOOK.md` + migrasi
 > `admins` di atas, atau konfirmasi dengan maintainer DB — jangan asumsikan perintah tertentu.
 
