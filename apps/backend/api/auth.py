@@ -4,7 +4,7 @@ Dependency FastAPI `verify_supabase_jwt` memvalidasi access token Supabase (GoTr
 SEBELUM `/token` mint token LiveKit. Backend tetap tanpa DB — token JWKS/ES256
 self-verifying, tak perlu query Supabase.
 
-Keputusan kunci (lihat docs/plans/2026-09-24-...-token-gating-supabase-jwt-plan.md):
+Keputusan kunci:
 - ES256 SAJA (algoritma di-pin; `alg` token TAK PERNAH dipilih dari header) →
   menutup celah alg-confusion (none / HS256-pakai-public-key / RS256).
 - Cek `exp` (leeway kecil), `aud == authenticated`, `iss == proyek Supabase`,

@@ -153,8 +153,7 @@ tak selesai); `avg_score` = rata-rata dari mean-rubrik per-sesi (nilai numerik 0
 > seiring: `admin.metrics_overview()` (SQL), `AdminMetricsResponse` (pydantic, `extra="forbid"`),
 > tipe `AdminMetrics` (TS), dan guard `isMetricsBody` (TS). Karena `extra="forbid"`, menambah
 > kunci baru TIDAK forward-compatible: tambah field dengan urutan **model+guard dulu, SQL terakhir**
-> (SQL duluan → 500 sampai model menyusul). Definisi lengkap + runbook di
-> `docs/plans/2026-10-09-feat-admin-dashboard-metrics-plan.md`.
+> (SQL duluan → 500 sampai model menyusul).
 
 ### `GET /admin/scenarios/{scenario_id}/analytics`
 Drill-down analitik per-skenario (SIM-16). **Wajib** `Authorization: Bearer <supabase-jwt>`;
@@ -211,8 +210,7 @@ Konsumen: `apps/admin` (panel drill-down dari klik baris `ScenarioTable`).
 > `extra="forbid"` di model luar), tipe `ScenarioAnalytics` (TS), dan guard
 > `isScenarioAnalyticsBody` (TS). `extra="forbid"` → tambah kunci dengan urutan **model+guard
 > dulu, SQL terakhir**. Endpoint & model TERPISAH dari `/admin/metrics` (kontrak beku itu tak
-> disentuh). Definisi lengkap + rencana di
-> `docs/plans/2026-10-09-feat-scenario-analytics-module-plan.md`.
+> disentuh).
 
 ### `GET /admin/leaderboard?season_id=<uuid?>`
 Papan peringkat XP musiman — dasbor admin (SIM-17). **Wajib** `Authorization: Bearer
@@ -293,8 +291,7 @@ belum ada musim. Board live lama `public.leaderboard()` DIBIARKAN (tak dipakai m
 > seiring: fungsi SQL (`admin.capture_leaderboard_snapshot`/`delete_leaderboard_season`/
 > `leaderboard_overview` + `public.leaderboard_current`), model pydantic (`extra="forbid"` di
 > model luar), tipe TS, dan guard TS. Fungsi tulis WAJIB `VOLATILE` (jangan salin `stable` dari
-> `scenario_analytics`). Definisi lengkap + rencana di
-> `docs/plans/2026-10-09-feat-seasonal-xp-leaderboard-snapshot-plan.md`.
+> `scenario_analytics`).
 
 ### `GET /admin/reports/sessions.csv?from=<date?>&to=<date?>`
 Ekspor CSV hasil sesi untuk pelaporan offline (SIM-19). **Wajib** `Authorization: Bearer
@@ -333,7 +330,6 @@ Status:
 
 Konsumen: admin (unduh langsung lewat URL / tombol di `apps/admin` — tombol FE adalah tiket
 terpisah; bila membaca nama file dari JS perlu `Access-Control-Expose-Headers: Content-Disposition`).
-Definisi lengkap + rencana di `docs/plans/2026-10-12-feat-admin-session-results-csv-export-plan.md`.
 
 `GET /health` → `{ "status": "ok" }` (tanpa auth). CORS diizinkan untuk origin di env
 `CORS_ALLOW_ORIGINS` (comma-split; fallback ke `CORS_ALLOW_ORIGIN` lama; default dev

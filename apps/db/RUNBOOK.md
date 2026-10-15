@@ -7,7 +7,7 @@ already exists; **this runbook is the manual/ops half** (dashboard + secrets) pl
 > **Ignition rule:** the repo variable **`SUPABASE_ENABLED=true` is set LAST**, only after the
 > project exists and every secret/var below is saved. Until then the CI workflows are dormant.
 
-Design + rationale: `docs/plans/2026-09-20-chore-provision-supabase-env-plan.md`. Schema: [`DATA-MODEL.md`](./DATA-MODEL.md).
+Schema: [`DATA-MODEL.md`](./DATA-MODEL.md).
 
 ---
 
