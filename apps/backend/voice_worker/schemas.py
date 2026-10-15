@@ -96,7 +96,7 @@ class AuditorResult(BaseModel):
             if math.isnan(f):
                 continue  # nan bukan skor → buang
             if math.isinf(f):
-                out[str(k)] = 100 if f > 0 else 0  # clamp ke batas
+                out[str(k)[:_MAX_STATE_LEN]] = 100 if f > 0 else 0  # clamp ke batas
                 continue
-            out[str(k)] = max(0, min(100, int(f)))
+            out[str(k)[:_MAX_STATE_LEN]] = max(0, min(100, int(f)))
         return out

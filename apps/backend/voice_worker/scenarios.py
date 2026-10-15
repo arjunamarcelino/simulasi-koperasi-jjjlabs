@@ -358,9 +358,9 @@ RAPAT_ANGGOTA_TAHUNAN = Scenario(
                 default_persona="darma",
                 entry_line=(
                     "darma",
-                    "Interupsi! Laporan ini omong kosong. Modal terbesar di "
+                    ("Interupsi! Laporan ini omong kosong. Modal terbesar di "
                     "koperasi ini dari saya, jadi arah kebijakan harus ikut saya. "
-                    "Jangan buang waktu dengan keluhan pedagang kecil!",
+                    "Jangan buang waktu dengan keluhan pedagang kecil!"),
                 ),
             ),
             RatPhase(
