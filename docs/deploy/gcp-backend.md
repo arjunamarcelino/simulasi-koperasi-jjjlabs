@@ -121,6 +121,11 @@ WantedBy=multi-user.target
 ```
 `sudo systemctl enable --now koperasi-worker`.
 
+> **Health & autohealing:** worker (livekit-agents 1.6.5) mengekspos health server
+> framework di **`:8081`** (liveness proses, mode `start` — terverifikasi 200).
+> Jika memakai MIG, arahkan health check autohealing ke `GET :8081/` (bind `0.0.0.0`,
+> firewall ke health-checker saja). Container juga punya `HEALTHCHECK` ke `:8081`.
+
 > **Kapasitas & SPOF:** satu VM = SPOF dengan plafon sesi-konkuren per worker. Dapat
 > diterima untuk v1 — **catat** plafonnya dan tuas skala (MIG target size /
 > `num_idle_processes`) agar pemilik berikut tak kaget saat pemanggil ke-N tak dapat agent.

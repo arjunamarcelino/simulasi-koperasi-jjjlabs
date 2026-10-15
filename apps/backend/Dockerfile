@@ -38,12 +38,17 @@ FROM base AS api
 EXPOSE 8000
 CMD ["sh", "-c", "exec uvicorn api.server:app --host 0.0.0.0 --port ${PORT:-8000}"]
 
-# ---- worker: LiveKit voice worker (outbound-only, tanpa inbound port) --------
+# ---- worker: LiveKit voice worker (outbound-only untuk job; health :8081) ----
 FROM base AS worker
-# Bake bobot VAD/turn-detector agar sesi pertama tak lambat. Butuh jaringan saat build.
-# ⚠️ Verifikasi subcommand `download-files` ada di versi livekit-agents terpasang;
-#    jika gagal/berbeda, hapus baris ini — model akan di-unduh saat sesi pertama.
+# Bake bobot VAD/turn-detector (openai/azure/silero) agar sesi pertama tak lambat.
+# Butuh jaringan saat build. Bentuk via agent-script (meng-impor plugin agar tahu
+# file apa yang diunduh); valid di livekit-agents 1.6.5 (di-pin di uv.lock).
 RUN python voice_worker/voice_agent.py download-files
-# exec-form → SIGTERM diteruskan untuk graceful drain (framework drain job aktif).
-# `start` = mode produksi (bukan `dev`); argv diteruskan via cli.run_app(server).
+# Framework mengekspos health server di :8081 pada mode `start` (liveness proses) —
+# dipakai HEALTHCHECK container & GCE MIG autohealing.
+EXPOSE 8081
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8081/').status==200 else 1)"
+# exec-form → SIGTERM diteruskan untuk graceful drain. `start` = mode produksi (bukan `dev`);
+# argv diteruskan via cli.run_app(server) (lihat apps/backend/CLAUDE.md GOTCHA #1).
 CMD ["python", "voice_worker/voice_agent.py", "start"]

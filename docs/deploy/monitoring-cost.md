@@ -27,7 +27,8 @@ Pertahankan logger `koperasi.*` (observer/fase) — itu permukaan debug live
       gcloud monitoring uptime list-configs
       ```
 - [ ] **Alert 5xx-rate** pada token server (menangkap env hilang saat runtime).
-- [ ] **Alert worker-crash** (log-based metric di journald VM / Cloud Logging).
+- [ ] **Alert worker-crash** (log-based metric di journald VM / Cloud Logging) + health
+      check `:8081` worker (liveness proses, framework livekit-agents).
 - [ ] **Alert readiness** pada `textPayload=~"BELUM dikonfigurasi"` → redeploy yang
       menjatuhkan env akan memberi tahu.
 - [ ] **Cost guardrails bersenjata (bukan sekadar alert):**

@@ -9,10 +9,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-# Semua varian .env (kredensial) KECUALI contoh non-rahasia.
+# Semua varian .env — termasuk .env.example (tak dibutuhkan saat runtime; image
+# harus bebas file env). Daftar var: lihat repo / docs/deploy/production-config.md.
 .env
 .env.*
-!.env.example
 # Build artefak & dokumen
 dist/
 build/

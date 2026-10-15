@@ -59,7 +59,7 @@ DNS: `app`/`admin` = A/AAAA → IP VPS; `api` = A/CNAME → IP LB (lihat `produc
   gcloud run services describe token-server --region <REGION> --format='value(spec.template.spec.containers[].env)' | grep -i LIVEKIT_AGENT_NAME
   gcloud compute ssh voice-worker --zone <ZONE> --command 'systemctl show koperasi-worker -p Environment | grep -i LIVEKIT_AGENT_NAME'
   ```
-- [ ] Log worker memuat `registered` ke LiveKit (satu-satunya sinyal liveness worker).
+- [ ] Worker: `curl http://<worker>:8081/` → 200 (liveness proses, framework livekit-agents 1.6.5) **dan** log memuat registrasi job ke LiveKit (readiness). `:8081` dipakai MIG autohealing.
 - [ ] CORS preflight dari origin prod meng-echo origin itu (bukan localhost):
   ```bash
   curl -s -D - -o /dev/null -X OPTIONS $API/token \
@@ -145,6 +145,8 @@ DNS: `app`/`admin` = A/AAAA → IP VPS; `api` = A/CNAME → IP LB (lihat `produc
 - Tiket: SIM-25/26/27/28/30 (M5), SIM-33 (M6 — Documentation & Handover).
 - ⚠️ `docs/` di-gitignore repo ini → file set ini di-commit dengan `git add -f`
   (pola sama seperti `docs/qa/`).
-- Kemutakhiran (verifikasi sebelum pakai): `livekit-agents ~=1.6` resolve ke 1.8.x
-  (verifikasi subcommand `start`/`download-files` + health server); host docs GCP =
-  `docs.cloud.google.com`; Vite 7 docs = `v7.vite.dev`; semua harga = tautan live.
+- Versi `livekit-agents` **di-pin 1.6.5** di `uv.lock` (bukan 1.8.x) — API `AgentServer`,
+  subcommand `start`/`download-files`, dan health server `:8081` semuanya terverifikasi
+  di 1.6.5. Host docs GCP = `docs.cloud.google.com`; Vite 7 docs = `v7.vite.dev`; semua
+  harga = tautan live.
+- ✅ Container backend (SIM-26) sudah di-build & dijalankan (lihat `backend-containers.md`).

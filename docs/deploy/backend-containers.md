@@ -43,23 +43,26 @@ docker build --target worker -t koperasi-worker apps/backend
 - **Target `api`**: `CMD ["sh","-c","exec uvicorn api.server:app --host 0.0.0.0 --port ${PORT:-8000}"]`.
   ⚠️ `$PORT` penting — Cloud Run merutekan ke port container (default **8080**); `exec`
   agar SIGTERM mencapai uvicorn.
-- **Target `worker`**: `download-files` mem-bake bobot VAD/turn-detector; `start` =
-  mode produksi (bukan `dev`), argv diteruskan lewat `cli.run_app(server)`
-  (lihat `apps/backend/CLAUDE.md` GOTCHA #1: API `AgentServer`). Outbound-only →
-  **tanpa `EXPOSE`/port masuk**.
+- **Target `worker`**: `download-files` mem-bake bobot VAD/turn-detector (openai/
+  azure/silero); `start` = mode produksi (bukan `dev`), argv diteruskan lewat
+  `cli.run_app(server)` (lihat `apps/backend/CLAUDE.md` GOTCHA #1: API `AgentServer`).
+  Tak ada port *job* masuk (outbound), tapi framework mengekspos **health server di
+  `:8081`** pada mode `start` (liveness proses) — `EXPOSE 8081` + `HEALTHCHECK`
+  memakainya; di GCE dipakai MIG autohealing.
 
-> ⚠️ **`download-files`**: butuh jaringan saat build dan subcommand harus ada di versi
-> `livekit-agents` terpasang (`~=1.6` saat ini resolve ke 1.8.x). Jika build gagal di
-> baris ini, hapus baris `RUN python voice_worker/voice_agent.py download-files` —
-> model akan di-unduh otomatis saat sesi pertama (hanya lebih lambat sekali).
+> ℹ️ **Versi `livekit-agents` di-pin `1.6.5`** di `uv.lock` (bukan 1.8.x — `~=1.6`
+> dengan lock frozen tetap 1.6.5). Subcommand `start` & `download-files` serta API
+> `AgentServer` cocok dengan 1.6.5. `download-files` butuh jaringan saat build dan
+> mencetak peringatan *deprecated* (tetap jalan di 1.6.5); jika suatu saat gagal,
+> hapus baris itu — model di-unduh otomatis saat sesi pertama (hanya lambat sekali).
 
 ## 4. Acceptance (SIM-26 "done when")
 
 - [ ] `docker compose config` valid.
 - [ ] `docker compose up --build` menjalankan **kedua** proses.
 - [ ] `curl -fsS http://localhost:8000/health` → `{"status":"ok"}`.
-- [ ] `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/token -H 'Content-Type: application/json' -d '{"scenario_id":"kredit-macet"}'` → **401** (bukan 500). 500 = `SUPABASE_JWKS_URL`/`SUPABASE_JWT_ISSUER` atau kredensial LiveKit belum di-set.
-- [ ] `docker compose logs worker` memuat baris registrasi ke LiveKit.
+- [ ] `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/token -H 'Content-Type: application/json' -d '{"scenario_id":"kredit-macet"}'` → **401** *bila `.env` terisi* (`SUPABASE_JWKS_URL`+`SUPABASE_JWT_ISSUER` di-set → gerbang missing-bearer menyala). ⚠️ Pada container TANPA `.env` (JWKS belum di-set), responsnya **500** ("Konfigurasi verifikasi JWT belum lengkap") — itu wajar untuk keadaan belum-dikonfigurasi, bukan kegagalan.
+- [ ] `docker compose logs worker` memuat baris `starting worker` + plugin registered; `curl http://localhost:8081/` → 200 (liveness framework). Registrasi job ke LiveKit butuh kredensial LiveKit nyata.
 - [ ] Paritas `LIVEKIT_AGENT_NAME` antar proses:
   ```bash
   docker compose exec api    printenv LIVEKIT_AGENT_NAME
@@ -67,10 +70,12 @@ docker build --target worker -t koperasi-worker apps/backend
   ```
 - [ ] Image bersih dari secret: `docker run --rm koperasi-api sh -c 'ls -a /app | grep -i env || echo none'` → `none`.
 
-> **Catatan lingkungan penulisan:** daemon Docker tidak tersedia saat dokumen ini
-> dibuat, sehingga `docker compose up --build` belum dieksekusi di sini. `docker
-> compose config` tervalidasi. Operator **wajib** menjalankan acceptance di atas pada
-> mesin dengan daemon aktif sebelum menandai SIM-26 selesai.
+> ✅ **Terverifikasi (2026-10-15):** kedua target di-build; `docker compose up`
+> menjalankan api + worker; `/health` 200; unauth `/token` 401 (dengan `.env` terisi
+> dummy); worker `:8081` liveness 200 + `starting worker`; paritas `LIVEKIT_AGENT_NAME`;
+> image api bebas file `.env`; berjalan sebagai user non-root `app`. Yang **belum**
+> diverifikasi (butuh kredensial nyata): registrasi job LiveKit + jalur voice E2E —
+> jalankan dengan `.env` produksi sebelum menandai SIM-26 tuntas sepenuhnya.
 
 ## Referensi
 - `apps/backend/CLAUDE.md` (dua proses, GOTCHAS), `apps/backend/pyproject.toml` (Python 3.12, uv).

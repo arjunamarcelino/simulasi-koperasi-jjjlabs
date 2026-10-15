@@ -27,5 +27,12 @@ services:
       target: worker
     env_file: .env
     restart: unless-stopped
-    # Outbound-only (tak ada port masuk). Beri waktu drain saat stop (sesi voice).
+    # Tak ada port job masuk (outbound). Health server framework di :8081 (liveness).
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8081/').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    # Beri waktu drain saat stop (sesi voice; framework drain job di mode `start`).
     stop_grace_period: 60s
