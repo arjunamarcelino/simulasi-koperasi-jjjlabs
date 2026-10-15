@@ -96,7 +96,7 @@ pnpm --filter admin build && pnpm --filter admin preview
 
 **Drift model** (verified in `apps/web/src/session/transport/mock/MockTransport.ts:283-345`):
 - Each **escalate** keyword → `driftScore += 1`; each **de-escalate** keyword → `driftScore = max(0, driftScore − 1)`.
-- Level per message: `driftScore ≥ 4 → 2`, `driftScore ≥ 2 → 1`, else `0`. **All four scenarios use `level1At = 2`, `level2At = 4`.**
+- Level per message: `driftScore ≥ 4 → 2`, `driftScore ≥ 2 → 1`, else `0`. **The three scored scenarios (kredit-macet, keanggotaan-fiktif, RAT) use `level1At = 2`, `level2At = 4`; the tutorial has no drift model** (no `drift` block → no bad path, no force-quit, `debugSetDrift` driftScore is a no-op).
 - Reaching **level 2** → **force-quit**: streams the `forceQuitLine`, then the input is **locked** (`sendText` ignored).
 - Ending: `wantBad = force_quit OR driftLevel ≥ 1` → picks the scenario's `bad` ending if defined, else `good`.
 - Debug hook `debugSetDrift(level)` can force any level (2 ⇒ force-quit).
