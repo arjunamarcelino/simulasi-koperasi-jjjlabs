@@ -53,7 +53,6 @@ Tes: `uv run pytest` (tak butuh jaringan/Supabase nyata). Lint ad hoc: `ruff che
 
 - **Game nyata:** `apps/web` dengan `VITE_TRANSPORT=livekit` + `VITE_TOKEN_ENDPOINT=http://localhost:8000`.
 - **Admin dashboard:** `apps/admin` (konsumen `/admin/*`).
-- **Harness pipeline suara:** `apps/web-sementara` (validator throwaway).
 
 ## Struktur
 

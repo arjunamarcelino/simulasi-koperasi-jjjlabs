@@ -1,8 +1,8 @@
 # CONTRACT.md — Kontrak Integrasi FE ↔ Backend
 
-Sumber kebenaran wire antara Frontend (game `apps/web` maupun harness
-`apps/web-sementara`) dan backend. Ini mengonkretkan PRD §9. Implementasi
-referensi yang bekerja: `apps/web-sementara/src/transport/livekit/LiveKitTransport.ts`.
+Sumber kebenaran wire antara Frontend (game `apps/web`) dan backend. Ini
+mengonkretkan PRD §9. Implementasi referensi yang bekerja:
+`apps/web/src/session/transport/livekit/LiveKitTransport.ts`.
 Di game `apps/web`, header `Authorization: Bearer` dilampirkan oleh
 `src/lib/authedFetch.ts` (yang juga meng-handle refresh+retry pada `401`) dan
 dipakai `src/session/transport/livekit/LiveKitTransport.ts`.

@@ -15,7 +15,6 @@ Skenario unggulan: **Rapat Anggota Tahunan (RAT)**.
 simulasi-koperasi-jjjlabs/
 ├── apps/
 │   ├── web/            # Frontend game utama (Vite + React + TS + Phaser 3 + Zustand + Tailwind v4)
-│   ├── web-sementara/  # FE validasi pipeline voice (React + Vite + @livekit/components-react)
 │   ├── backend/        # FastAPI (mint token) + voice worker (livekit-agents) + AI Auditor
 │   ├── backent-prd.md  # PRD backend & AI pipeline
 │   └── scenarios.md    # Definisi skenario

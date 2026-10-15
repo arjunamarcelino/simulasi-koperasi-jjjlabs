@@ -29,7 +29,6 @@ Python yang dikelola **uv**, bukan pnpm.
 |------|-------|---------|
 | `apps/web` | Game utama (Vite + React 19 + Phaser 3 + Zustand 5 + Tailwind v4) | [`apps/web/README.md`](apps/web/README.md) |
 | `apps/admin` | Dashboard admin (React, tanpa Phaser/LiveKit) | *(belum ada README — gap diketahui)* |
-| `apps/web-sementara` | Harness validasi pipeline suara (legacy; referensi impl `LiveKitTransport`) | [`apps/web-sementara/README.md`](apps/web-sementara/README.md) |
 | `apps/backend` | Token server (FastAPI) + voice worker (livekit-agents) | [`README.md`](apps/backend/README.md) · [`CLAUDE.md`](apps/backend/CLAUDE.md) · [`CONTRACT.md`](apps/backend/CONTRACT.md) |
 | `apps/db` | `@simkop/db`: skema/migrasi/seed/pgTAP Supabase/Postgres | [`README.md`](apps/db/README.md) · [`RUNBOOK.md`](apps/db/RUNBOOK.md) · [`DATA-MODEL.md`](apps/db/DATA-MODEL.md) |
 | `packages/catalog` | `@simkop/catalog`: konten JSON bersama (dipakai `apps/web` + seed db) | — |

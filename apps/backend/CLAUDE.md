@@ -54,7 +54,7 @@ uv run uvicorn api.server:app --port 8000 --reload    # token server
 uv run pytest
 ```
 
-Verifikasi live: jalankan `apps/web-sementara` dengan `VITE_TRANSPORT=livekit` +
+Verifikasi live: jalankan `apps/web` dengan `VITE_TRANSPORT=livekit` +
 `VITE_TOKEN_ENDPOINT=http://localhost:8000`, pilih skenario, bicara/ketik.
 Log worker (`koperasi.voice_agent`) mencetak observer & fase — pakai untuk debug.
 Input mic sulit di-headless; jalur teks bisa di-drive dengan Playwright.

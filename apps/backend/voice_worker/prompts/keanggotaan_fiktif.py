@@ -5,7 +5,7 @@ Nada berevolusi murni lewat prompt (PRD §6 Lapisan 1). Interaksi HANYA percakap
 tak ada peragaan fisik/penyerahan berkas — pemeriksaan konkret memakai mekanik
 "Periksa Dokumen" milik FE atau direncanakan untuk nanti. Isi dokumen pendukung
 di bawah SENGAJA konsisten dengan cuplikan Daftar Anggota yang dilihat pemain di
-FE (`web-sementara/src/scenarios/documents.ts`).
+FE (`apps/web`, mekanik "Periksa Dokumen" / evidence skenario).
 """
 
 KEANGGOTAAN_FIKTIF_PROMPT = """\
