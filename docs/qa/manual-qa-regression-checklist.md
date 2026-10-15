@@ -126,7 +126,7 @@ pnpm --filter admin build && pnpm --filter admin preview
 | Tutorial — Koperasi Konsumen (`tutorial-koperasi-konsumen`) | "Bayar & Daftar" | Send any 4 messages → goal fires at turn 3 (`gatesEndOnGoal`) | `good`, **no score chips** (scripted congrats) | — (no bad path in mock) | — |
 | Kredit Macet (`kredit-macet`) | "Keputusan Akhir" | bantu, paham, keringanan, restrukturisasi, perpanjang, solusi, tenang, musibah | Analisis Masalah=**BENAR**, Jalur Remedi=**SESUAI**; member_centric 88 / compliance 82 / soft_skills 79 | sita, ancam, polisi, usir, bayar sekarang, paksa, lelang, rampas | Analisis=**SALAH**, Remedi=**MELANGGAR_PROSEDUR**; 35/30/28 |
 | Keanggotaan Fiktif (`keanggotaan-fiktif`) | "Keputusan Akhir" | verifikasi, cek ulang, cocokkan, ketua rt, bereskan, hak anggota, shu, tolong, paham | Verifikasi Data=**DIBERSIHKAN**, Relasi=**TERJAGA**; integritas_data 88 / compliance 84 / soft_skills 82 | pencuri, korupsi, penjara, pidana, pecat, lapor polisi, palsu, tipu, maling | Verifikasi=**DIBIARKAN**, Relasi=**RUSAK**; 32/30/25 |
-| Rapat Anggota Tahunan (`rapat-anggota-tahunan`) | "Ketok Palu" | tata tertib, satu suara, voting, pemungutan suara, musyawarah, aturan, kuorum, adil, tenang | Rapat **TUNTAS**, **SAH_DEMOKRATIS** (good) | bodoh, diam, tutup mulut, usir, pengecut, serakah, tarik saja modalmu, silakan tarik, tantang | Rapat **BUBAR**, **TUNDUK_TEKANAN_MODAL** (bad, force-quit) |
+| Rapat Anggota Tahunan (`rapat-anggota-tahunan`) | "Ketok Palu" | tata tertib, satu suara, voting, pemungutan suara, musyawarah, aturan, kuorum, adil, tenang | Rapat **TUNTAS**, **SAH_DEMOKRATIS** (good) | bodoh, diam, tutup mulut, usir, pengecut, serakah, tarik saja modalmu, silakan tarik, tantang | Rapat **BUBAR**, **TIDAK_BERLAKU** (renders "Tidak Berlaku"; bad, force-quit) |
 
 RAT is a **3-phase state machine** (not linear): P1 "Membuka Rapat" (advance: "Ketok Palu: Buka Rapat") → P2 "Pembacaan LPJ & Interupsi" (advance: "Lanjut: Ambil Keputusan"; Pak Darma's capital-pull threat fires as an entry event) → P3 "Mengambil Keputusan" (end via "Ketok Palu"). Dual-NPC routing: mention **"Pak Darma"** or **"Ibu Sri"** to pick the speaker.
 
@@ -174,7 +174,7 @@ Preconditions: single browser tab, no other session open, Supabase up, built wit
   - [ ] P2 **entry event** appears (Pak Darma threatens to pull capital).
   - [ ] Naming "Pak Darma" / "Ibu Sri" routes the reply to that speaker.
   - [ ] The end action "Ketok Palu" is available **only in P3**.
-  - [ ] GOOD → TUNTAS / SAH_DEMOKRATIS; BAD (escalate) → BUBAR / TUNDUK_TEKANAN_MODAL (force-quit).
+  - [ ] GOOD → TUNTAS / SAH_DEMOKRATIS; BAD (escalate) → BUBAR / TIDAK_BERLAKU (force-quit).
 
 **Stubs — do NOT test:** the `EVALUATION` view is never navigated to (no `setView("EVALUATION")` exists) — `EvaluationPage` is an unreachable placeholder, distinct from the in-session `ResultPanel`. `GamePage` is likewise a stub (all rooms launch a session). Flag these to the team; don't log them as scenario failures.
 
