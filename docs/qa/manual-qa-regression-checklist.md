@@ -322,3 +322,4 @@ These are classes of bugs that have bitten before; the checks above are mapped t
 | Session orphan OPEN rows | §4 orphan check + §5 interrupted | `integration-issues/fe-triggered-session-persistence-atomic-rpc.md` |
 | Admin JWT hook / concurrent retry / asyncpg bind | §9 role gate | `integration-issues/supabase-custom-access-token-hook-local-footguns.md`, `concurrent-callers-nonreentrant-singleton-retry.md`, `asyncpg-str-uuid-definer-param-silent-503.md` |
 | E2E/Supabase CI setup footguns | §2 setup | `test-failures/playwright-e2e-vite-supabase-ci-setup.md` |
+| Oracle value is label-only in `resultLabels.ts` (not emitted by any script) | §3/§5 — derive expected outcomes from the mock scripts | `integration-issues/mock-scenario-oracle-derive-from-scripts-not-label-map.md` |
