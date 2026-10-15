@@ -12,7 +12,6 @@ import json
 import logging
 
 from openai import AsyncAzureOpenAI
-
 from scenarios import DriftSpec
 
 logger = logging.getLogger("koperasi.observer")
@@ -64,7 +63,7 @@ async def evaluate_turn(
         content = resp.choices[0].message.content or "{}"
         judgment = json.loads(content).get("judgment", "neutral")
         return judgment if judgment in _ALLOWED else "neutral"
-    except Exception:  # noqa: BLE001 — observer tak boleh menjatuhkan sesi
+    except Exception:  # fail-soft: observer tak boleh menjatuhkan sesi
         logger.exception("Observer gagal menilai giliran; anggap netral.")
         return "neutral"
 

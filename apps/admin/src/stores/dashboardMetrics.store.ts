@@ -2,6 +2,7 @@ import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import { fetchMetrics, type AdminMetrics } from "../lib/adminApi";
 import { adminAuthStore } from "./adminAuth.store";
+import { assertNever } from "../lib/assertNever";
 
 /**
  * Dashboard metrics store (SIM-15). Independent of the SIM-14 auth gate — it owns the
@@ -55,6 +56,8 @@ async function run(): Promise<void> {
     case "notAuthorized":
       handleAuthLoss(myEpoch);
       break;
+    default:
+      assertNever(outcome); // a new outcome kind must be handled, not silently ignored
   }
 }
 

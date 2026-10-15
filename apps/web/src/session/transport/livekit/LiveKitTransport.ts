@@ -21,24 +21,9 @@ import type {
   TranscriptItem,
   Unsubscribe,
 } from "../contract";
+import { Emitter } from "../emitter";
 
 type TokenResponse = { token: string; room: string; url: string };
-
-class Emitter<T> {
-  private readonly listeners = new Set<(value: T) => void>();
-  subscribe(cb: (value: T) => void): Unsubscribe {
-    this.listeners.add(cb);
-    return () => {
-      this.listeners.delete(cb);
-    };
-  }
-  emit(value: T): void {
-    for (const cb of [...this.listeners]) cb(value);
-  }
-  clear(): void {
-    this.listeners.clear();
-  }
-}
 
 const CONNECTION_MAP: Record<ConnectionState, WireConnectionState> = {
   [ConnectionState.Disconnected]: "ended",

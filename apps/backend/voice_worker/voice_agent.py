@@ -15,10 +15,10 @@ import asyncio
 import json
 import logging
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterable, Awaitable, Callable
 from pathlib import Path
-from typing import AsyncIterable
 
+from auditor import run_auditor
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
@@ -34,12 +34,10 @@ from livekit.agents import (
     llm,
 )
 from livekit.plugins import azure, openai, silero
-from openai import AsyncAzureOpenAI
-
-from auditor import run_auditor
 from mentor import generate_hint
 from observer import DriftTracker, evaluate_turn
-from scenarios import RatSpec, Scenario, get_scenario
+from openai import AsyncAzureOpenAI
+from scenarios import RatSpec, get_scenario
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
@@ -261,7 +259,7 @@ async def entrypoint(ctx: JobContext) -> None:
         if scenario.rat is not None or not scenario.goal_tool_prompt:
             return []
 
-        async def catat_kesepakatan(context: RunContext) -> str:  # noqa: ARG001
+        async def catat_kesepakatan(context: RunContext) -> str:
             await _mark_goal()
             return "Tercatat. Lanjutkan menutup percakapan secara natural."
 
@@ -364,7 +362,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     # --- RPC: Keputusan Akhir / Bayar & Daftar → hasil akhir ---
     @ctx.room.local_participant.register_rpc_method("end_session")
-    async def _end_session(data: rtc.RpcInvocationData) -> str:  # noqa: ARG001
+    async def _end_session(data: rtc.RpcInvocationData) -> str:
         nonlocal ended
         await session.interrupt(force=True)
         ended = True
@@ -373,7 +371,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     # --- RPC: Petunjuk (mentor kontekstual, menggantikan "Tanya Mentor") ---
     @ctx.room.local_participant.register_rpc_method("petunjuk")
-    async def _petunjuk(data: rtc.RpcInvocationData) -> str:  # noqa: ARG001
+    async def _petunjuk(data: rtc.RpcInvocationData) -> str:
         if ended:
             return json.dumps({"hint": "Sesi sudah berakhir."})
         # Skenario berfase (RAT): beri konteks tahap agar mentor bisa mengarahkan
@@ -419,7 +417,7 @@ async def entrypoint(ctx: JobContext) -> None:
         rat = scenario.rat
 
         @ctx.room.local_participant.register_rpc_method("advance_phase")
-        async def _advance_phase(data: rtc.RpcInvocationData) -> str:  # noqa: ARG001
+        async def _advance_phase(data: rtc.RpcInvocationData) -> str:
             if ended or rat_state.phase_index >= len(rat.phases) - 1:
                 return "noop"
             rat_state.phase_index += 1
