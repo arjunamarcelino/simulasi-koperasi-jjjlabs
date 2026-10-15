@@ -6,13 +6,6 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# docs/ is version-controlled (SIM-31). AI-trail working docs stay out of git —
-# their durable content is harvested into committed docs (ARCHITECTURE/HANDOVER/LIMITATIONS).
-docs/brainstorms/
-docs/plans/
-docs/reviews/
-docs/solutions/
-
 # env
 .env
 .env.*
