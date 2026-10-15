@@ -117,7 +117,7 @@ pnpm --filter admin build && pnpm --filter admin preview
 | `tutorial-koperasi-konsumen` | NPC **"Pelanggan"** (Ibu Rumah Tangga) station |
 | `kredit-macet` | NPC **"Pak Joko"** station |
 | `keanggotaan-fiktif` | **Ruang Rapat** room → picker card "Keanggotaan Fiktif" |
-| `rapat-anggota-tahunan` | **Ruang Rapat** room → picker card "RAT" |
+| `rapat-anggota-tahunan` | **Ruang Rapat** room → picker card "Rapat Anggota Tahunan" |
 
 **Oracle table:**
 
@@ -169,7 +169,7 @@ Preconditions: single browser tab, no other session open, Supabase up, built wit
 - [ ] **Kredit Macet** `[P0]` — GOOD path → BENAR/SESUAI + 88/82/79; both BAD routes → SALAH/MELANGGAR_PROSEDUR + 35/30/28.
 - [ ] **Keanggotaan Fiktif** `[P0]` — GOOD path → DIBERSIHKAN/TERJAGA + 88/84/82; BAD → DIBIARKAN/RUSAK + 32/30/25.
 - [ ] **RAT (expanded)** `[P0]`:
-  - [ ] Ruang Rapat **picker** shows two cards (RAT + Keanggotaan Fiktif); locked cards (if any) are visibly locked.
+  - [ ] Ruang Rapat **picker** shows two cards ("Rapat Anggota Tahunan" + "Keanggotaan Fiktif" — the cards render the full `scenario.title`); locked cards (if any) are visibly locked.
   - [ ] P1 → P2 transition fires on "Ketok Palu: Buka Rapat".
   - [ ] P2 **entry event** appears (Pak Darma threatens to pull capital).
   - [ ] Naming "Pak Darma" / "Ibu Sri" routes the reply to that speaker.
