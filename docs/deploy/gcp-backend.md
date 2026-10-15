@@ -37,11 +37,13 @@ Simpan yang rahasia (LiveKit secret, Azure keys). Default **pin versi `:N`**.
 printf '%s' '<livekit-api-secret>' | gcloud secrets create livekit-api-secret --data-file=-
 printf '%s' '<azure-openai-key>'   | gcloud secrets create azure-openai-key   --data-file=-
 printf '%s' '<azure-speech-key>'   | gcloud secrets create azure-speech-key   --data-file=-
+# DSN pooler metrics_reader (berisi password) — dipakai token server utk /admin/*:
+printf '%s' '<metrics-db-url-dsn>' | gcloud secrets create metrics-db-url     --data-file=-
 
 # SA per-service (JANGAN pakai default compute SA yang Editor-level)
 gcloud iam service-accounts create token-server-sa
 # grant secretAccessor DI RESOURCE secret (bukan project-wide):
-for S in livekit-api-secret azure-openai-key azure-speech-key; do
+for S in livekit-api-secret azure-openai-key azure-speech-key metrics-db-url; do
   gcloud secrets add-iam-policy-binding $S \
     --member="serviceAccount:token-server-sa@<PROJECT>.iam.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor"
