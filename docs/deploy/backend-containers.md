@@ -61,7 +61,7 @@ docker build --target worker -t koperasi-worker apps/backend
 - [ ] `docker compose config` valid.
 - [ ] `docker compose up --build` menjalankan **kedua** proses.
 - [ ] `curl -fsS http://localhost:8000/health` → `{"status":"ok"}`.
-- [ ] `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/token -H 'Content-Type: application/json' -d '{"scenario_id":"kredit-macet"}'` → **401** *bila `.env` terisi* (`SUPABASE_JWKS_URL`+`SUPABASE_JWT_ISSUER` di-set → gerbang missing-bearer menyala). ⚠️ Pada container TANPA `.env` (JWKS belum di-set), responsnya **500** ("Konfigurasi verifikasi JWT belum lengkap") — itu wajar untuk keadaan belum-dikonfigurasi, bukan kegagalan.
+- [ ] `curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/token -H 'Content-Type: application/json' -d '{"scenario_id":"kredit-macet"}'` → **401** *bila `.env` terisi* (`SUPABASE_JWKS_URL`+`SUPABASE_JWT_ISSUER` di-set → gerbang missing-bearer menyala). ⚠️ Pada container TANPA `.env` (JWKS belum di-set), responsnya **500** dengan body `detail:"Auth belum dikonfigurasi"` (log server: "Konfigurasi verifikasi JWT Supabase belum lengkap") — itu wajar untuk keadaan belum-dikonfigurasi, bukan kegagalan.
 - [ ] `docker compose logs worker` memuat baris `starting worker` + plugin registered; `curl http://localhost:8081/` → 200 (liveness framework). Registrasi job ke LiveKit butuh kredensial LiveKit nyata.
 - [ ] Paritas `LIVEKIT_AGENT_NAME` antar proses:
   ```bash
