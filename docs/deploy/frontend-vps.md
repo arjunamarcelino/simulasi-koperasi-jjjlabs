@@ -15,8 +15,10 @@ lihat [`gcp-backend.md`](./gcp-backend.md); env/origin: [`production-config.md`]
 
 ## 2. Build (di VPS atau CI, lalu salin `dist/`)
 
-Set env **produksi** per app sebelum build (nilai: `production-config.md` §3). Var
-`VITE_*` di-inline saat build; backend URL + CSP `connect-src` dibekukan ke HTML.
+Set env **produksi** per app sebelum build. Blok di bawah adalah **template salin-tempel**;
+daftar var + nilai otoritatif ada di [`production-config.md`](./production-config.md) §3a/§3b
+(sumber kebenaran — jika menambah/mengubah var `VITE_*`, ubah §3 juga). Var `VITE_*`
+di-inline saat build; backend URL + CSP `connect-src` dibekukan ke HTML.
 
 ```bash
 # game
