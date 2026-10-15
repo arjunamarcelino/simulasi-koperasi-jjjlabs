@@ -98,8 +98,7 @@ keras** terhadap anon-flood (lihat `production-config.md` §4).
 ## 5. `api.<domain>` → Load Balancer + serverless NEG
 
 Domain-mapping Cloud Run masih Preview dengan celah regional. Jalur produksi yang
-kokoh: **External Application Load Balancer + serverless NEG** (juga prasyarat jika
-kelak difronting Cloud Armor untuk abuse).
+kokoh: **External Application Load Balancer + serverless NEG**.
 
 ```bash
 gcloud compute network-endpoint-groups create token-neg \
@@ -165,10 +164,8 @@ WantedBy=multi-user.target
 > diterima untuk v1 — **catat** plafonnya dan tuas skala (MIG target size /
 > `num_idle_processes`) agar pemilik berikut tak kaget saat pemanggil ke-N tak dapat agent.
 >
-> *Alternatif serverless: Cloud Run worker pools (GA 2026-04) — tidak dicakup di sini;
-> grace terminasinya mungkin lebih pendek dari window drain. Worker Cloud Run, jika
-> dipakai, **JANGAN** `--allow-unauthenticated` (outbound-only, invoker publik = murni
-> attack surface).*
+> *Alternatif serverless (Cloud Run worker pools) tak dicakup. Worker Cloud Run, jika
+> dipakai, **JANGAN** `--allow-unauthenticated` (outbound-only → invoker publik = attack surface).*
 
 ## 7. DB & migrasi (Supabase)
 
