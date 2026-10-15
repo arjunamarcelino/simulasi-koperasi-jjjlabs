@@ -12,10 +12,41 @@ dependencies = [
     "fastapi~=0.115",
     "uvicorn[standard]~=0.34",
     "python-dotenv~=1.0",
+    # SIM-4: verifikasi JWT Supabase (ES256 via JWKS) sebelum mint token LiveKit.
+    # `crypto` extra menarik `cryptography` (WAJIB untuk ES256; sebelumnya pyjwt
+    # hanya dep transitif tanpa extra ini).
+    "pyjwt[crypto]~=2.10",
+    # SIM-15: satu-satunya jalur DB backend — pool fail-soft untuk GET /admin/metrics
+    # (role metrics_reader → admin.metrics_overview()). Voice/token path tetap tanpa DB.
+    "asyncpg~=0.30",
+    # SIM-21: validasi gagal-aman output JSON AI Auditor (voice_worker, tak pakai
+    # FastAPI). Sebelumnya pydantic hanya dep transitif via fastapi/openai; worker
+    # kini bergantung langsung → deklarasikan eksplisit.
+    "pydantic~=2.0",
 ]
 
 [dependency-groups]
-dev = []
+dev = [
+    "pytest~=8.3",
+    "httpx~=0.28",
+]
 
 [tool.uv]
 package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# SIM-21: modul voice_worker/ saling impor sebagai top-level (`from scenarios
+# import ...`, tanpa __init__.py), jadi root `voice_worker` wajib agar test bisa
+# mengimpornya. INVARIAN: jangan pernah pakai impor ber-dot `voice_worker.` —
+# akan membuat dua instance modul (dua `_SCENARIOS`) & merusak cross-check.
+pythonpath = [".", "voice_worker"]
+addopts = "-q"
+
+[tool.ruff]
+# Lint hanya kode SIM-4 (verifier + endpoint + tests); worker lama tak disentuh.
+target-version = "py312"
+
+[tool.ruff.lint.flake8-bugbear]
+# `Depends()` / `Security()` di argument default adalah idiom resmi FastAPI (B008).
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Security"]

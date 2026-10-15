@@ -1,23 +1,29 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { LEVELS } from "@simkop/catalog";
 import { useGameStore, gameStore } from "../../stores/game.store";
-import { KOPERASI_IDENTITAS } from "../../content/mading-info";
-import { BADGES, isEarned, type BadgeContext } from "../../content/badges";
+import { useAuth, authStore, MAX_NAME } from "../../stores/auth.store";
+import { BADGES, isEarned, buildBadgeContext } from "../../content/badges";
+import { sessionsRepo } from "../../lib/sessionsRepo";
+import { goodEndingScenarioIds } from "../../lib/sessionHistory";
+import type { SessionRecord } from "../../lib/sessionsRepo.contracts";
 import { ModalShell } from "../common/ModalShell";
+import { GameButton } from "../common/GameButton";
 import { BadgeIcon } from "./BadgeIcon";
+import { SessionHistoryTab } from "./SessionHistoryTab";
+
+// The koperasi name is admin-editable live via the mading identitas board (SIM-18); here in the
+// profile it is an incidental label, so a static fallback is kept rather than adding an async fetch
+// to this modal. The authoritative, live-editable surface is the Papan Info board.
+const KOPERASI_NAMA = "Koperasi Desa Merah Putih Sukamaju";
+
+type ProfileTab = "profil" | "badge" | "riwayat";
+const TAB_LABELS: Record<ProfileTab, string> = { profil: "Profil", badge: "Badge", riwayat: "Riwayat" };
 
 /**
- * Level tiers (title + XP threshold). Ascending; first tier MUST start at 0.
- * Co-located here because ProfileModal is the only consumer.
+ * Level derivation. Tiers (title + XP threshold, ascending, first tier at 0) are
+ * sourced from the shared `@simkop/catalog` so the FE and the DB's `level_from_xp()`
+ * stay pinned to one threshold table.
  */
-const LEVELS = [
-  { title: "Calon Anggota", minXp: 0 },
-  { title: "Anggota", minXp: 100 },
-  { title: "Anggota Aktif", minXp: 300 },
-  { title: "Pengurus", minXp: 600 },
-  { title: "Pengawas", minXp: 1000 },
-  { title: "Ketua", minXp: 1500 },
-] as const;
-
 function levelFromXp(xp: number): {
   index: number;
   title: string;
@@ -35,47 +41,121 @@ function levelFromXp(xp: number): {
   return { index, title: level.title, floor: level.minXp, nextXp: next ? next.minXp : null };
 }
 
-/** Player profile: name, level/title, XP progress, Point, koperasi membership. */
+/** Player profile: name, level/title, XP progress, Point, koperasi membership,
+ * plus the Google upgrade / sign-out affordances. */
 export function ProfileModal() {
-  const playerName = useGameStore((s) => s.playerName);
   const xp = useGameStore((s) => s.xp);
   const point = useGameStore((s) => s.point);
   const voucherCount = useGameStore((s) => s.redeemedVouchers.length);
   const completedMissionIds = useGameStore((s) => s.completedMissionIds);
-  const [tab, setTab] = useState<"profil" | "badge">("profil");
+  // Reading badges: content read this session plus ids folded in from earned badges at
+  // hydrate (that fold is how a reading badge survives reload — user_badge is the record).
+  const readContentIds = useGameStore((s) => s.readContentIds);
+  // Name + auth state come from auth.store (profiles.display_name); the game.store
+  // playerName is only a Phaser-facing mirror of the same value.
+  const displayName = useAuth((s) => s.auth.profile?.display_name ?? null);
+  const authStatus = useAuth((s) => s.auth.status);
+  const canEditName = authStatus === "guest" || authStatus === "authenticated";
+
+  const [tab, setTab] = useState<ProfileTab>("profil");
+  // Riwayat lazy-loads on first open, then stays mounted (CSS-hidden) so toggling tabs
+  // doesn't re-fetch / flicker. The modal unmounts on close, so each open re-fetches.
+  const [openedRiwayat, setOpenedRiwayat] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+
+  // Session good-endings power the scenario badges (juara-rat, pinjaman-lancar,
+  // simpanan-rutin). Fetched once on open; the per-run `active` flag drops a response
+  // that resolves after close / StrictMode's double-mount. On failure the set stays
+  // empty, so those badges render locked with their real requirement — never blank.
+  // (No render test: the toolchain is node-env with no DOM harness — see vite.config.)
+  const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  useEffect(() => {
+    let active = true;
+    void sessionsRepo
+      .listMySessions()
+      .then((res) => {
+        if (active && res.status === "ok") setSessions(res.data);
+      })
+      // Best-effort: an aborted/torn-down fetch must not surface an unhandled
+      // rejection. On failure the set stays empty → badges render locked, never blank.
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  const goodIds = useMemo(() => goodEndingScenarioIds(sessions), [sessions]);
+
+  const selectTab = (t: ProfileTab) => {
+    setTab(t);
+    if (t === "riwayat") setOpenedRiwayat(true);
+  };
 
   const close = () => gameStore.getState().clearSelection();
+  const startEdit = () => {
+    setNameDraft(displayName ?? "");
+    setEditingName(true);
+  };
+  const saveName = () => {
+    // setDisplayName is the authoritative validator (trim + clamp + empty no-op).
+    void authStore.getState().setDisplayName(nameDraft);
+    setEditingName(false);
+  };
+  const signInGoogle = () => {
+    void (async () => {
+      const result = await authStore.getState().linkGoogle();
+      // Collision: this Google account already exists → sign into it directly
+      // (guest data is dropped, per the settled decision).
+      if (!result.ok && result.reason === "collision") {
+        await authStore.getState().signInWithGoogle();
+      }
+    })();
+  };
+  const signOut = () => {
+    void authStore.getState().signOut();
+  };
+
   const { index, title, floor, nextXp } = levelFromXp(xp);
   const maxed = nextXp === null;
   const pct = maxed ? 100 : Math.round(((xp - floor) / (nextXp - floor)) * 100);
 
-  // Assembled here (owns levelFromXp) and passed to pure badge predicates.
-  const ctx: BadgeContext = { xp, level: index + 1, point, completedMissionIds, voucherCount };
+  // Shared builder derives `level` from xp; the local levelFromXp above stays for the
+  // richer progress-bar fields (title/floor/nextXp).
+  const ctx = buildBadgeContext({
+    xp,
+    point,
+    completedMissionIds,
+    voucherCount,
+    goodEndingScenarioIds: goodIds,
+    readContentIds,
+  });
 
   return (
-    <ModalShell titleId="profile-title" onClose={close} panelClassName="w-full max-w-md">
+    <ModalShell titleId="profile-title" onClose={close} panelClassName="w-full max-w-lg">
       <h2 id="profile-title" className="mb-4 text-center font-display text-sm text-forest md:text-base">
         Profil Anggota
       </h2>
 
-      <div className="mb-4 flex gap-2">
-        {(["profil", "badge"] as const).map((t) => (
+      <div role="tablist" aria-label="Bagian profil" className="mb-4 flex gap-2">
+        {(["profil", "badge", "riwayat"] as const).map((t) => (
           <button
             key={t}
             type="button"
-            onClick={() => setTab(t)}
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => selectTab(t)}
             className={`flex-1 border-3 border-border px-3 py-2 font-display text-[10px] focus-visible:pixel-focus focus-visible:outline-none ${
               tab === t
                 ? "pixel-press bg-forest text-cream"
                 : "pixel-raise bg-cream-2 text-forest hover:bg-parchment"
             }`}
           >
-            {t === "profil" ? "Profil" : "Badge"}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
-      {tab === "badge" ? (
+      {tab === "badge" && (
         <div className="grid grid-cols-3 gap-3">
           {BADGES.map((badge) => {
             const earned = isEarned(badge.criteria, ctx);
@@ -102,7 +182,8 @@ export function ProfileModal() {
             );
           })}
         </div>
-      ) : (
+      )}
+      {tab === "profil" && (
         <>
       <div className="mb-5 flex items-center gap-4 border-3 border-border bg-cream px-4 py-3">
         <span className="flex h-14 w-14 shrink-0 items-center justify-center border-3 border-border bg-mustard">
@@ -117,8 +198,46 @@ export function ProfileModal() {
             <rect x="2" y="11" width="11" height="1" fill="#1F5D3A" />
           </svg>
         </span>
-        <div className="min-w-0">
-          <p className="truncate font-display text-xs text-ink">{playerName ?? "Anggota"}</p>
+        <div className="min-w-0 flex-1">
+          {editingName ? (
+            <div className="flex items-center gap-1">
+              <input
+                autoFocus
+                value={nameDraft}
+                maxLength={MAX_NAME}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveName();
+                  else if (e.key === "Escape") setEditingName(false);
+                }}
+                aria-label="Nama pemain"
+                placeholder="Nama kamu"
+                className="w-full border-3 border-border bg-parchment px-2 py-1 font-body text-lg text-ink focus:outline-none focus-visible:pixel-focus"
+              />
+              <button
+                type="button"
+                onClick={saveName}
+                aria-label="Simpan nama"
+                className="pixel-raise active:pixel-press shrink-0 bg-forest px-2 py-1 font-display text-[9px] text-cream focus-visible:pixel-focus focus-visible:outline-none"
+              >
+                OK
+              </button>
+            </div>
+          ) : canEditName ? (
+            <button
+              type="button"
+              onClick={startEdit}
+              aria-label="Ubah nama"
+              className="group flex max-w-full items-center gap-1 focus-visible:outline-none"
+            >
+              <span className="truncate font-display text-xs text-ink">{displayName ?? "Tamu"}</span>
+              <span aria-hidden className="font-body text-base text-ink-soft group-hover:text-forest">
+                ✎
+              </span>
+            </button>
+          ) : (
+            <p className="truncate font-display text-xs text-ink">{displayName ?? "Tamu"}</p>
+          )}
           <span className="mt-2 inline-block border-2 border-border bg-forest px-2 py-0.5 font-display text-[9px] text-cream">
             Lv {index + 1} · {title}
           </span>
@@ -152,12 +271,37 @@ export function ProfileModal() {
       </div>
 
       <div className="flex items-center justify-between border-t-2 border-line pt-4 font-body text-lg">
-        <span className="min-w-0 truncate text-right text-ink">{KOPERASI_IDENTITAS.nama}</span>
+        <span className="min-w-0 truncate text-right text-ink">{KOPERASI_NAMA}</span>
       </div>
       <p className="mt-1 text-right font-body text-base text-ink-soft">
         {voucherCount} voucher ditukar
       </p>
+
+      {/* Auth: guests upgrade to Google (keeps progress); members can sign out.
+          Degraded/loading shows nothing (no Supabase env). */}
+      {authStatus === "guest" && (
+        <div className="mt-5 border-t-2 border-line pt-4">
+          <GameButton variant="primary" onClick={signInGoogle} className="w-full">
+            Masuk dengan Google
+          </GameButton>
+          <p className="mt-2 text-center font-body text-base text-ink-soft/80">
+            Simpan progres & lanjut main di perangkat lain.
+          </p>
+        </div>
+      )}
+      {authStatus === "authenticated" && (
+        <div className="mt-5 border-t-2 border-line pt-4">
+          <GameButton variant="ghost" onClick={signOut} className="w-full">
+            Keluar
+          </GameButton>
+        </div>
+      )}
         </>
+      )}
+      {openedRiwayat && (
+        <div role="tabpanel" className={tab === "riwayat" ? "" : "hidden"}>
+          <SessionHistoryTab active={tab === "riwayat"} />
+        </div>
       )}
     </ModalShell>
   );

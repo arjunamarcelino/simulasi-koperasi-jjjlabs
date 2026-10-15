@@ -1,0 +1,320 @@
+# Data Model — Koperasi Simulator (SIM-2)
+
+Bridge documentation for the project's first database. Two diagrams: **AS-IS** (what
+`localStorage` holds today) and **TARGET** (the Supabase/Postgres schema in this
+`@simkop/db` package), plus a gap/mapping table. This file is the tracked reference for
+the schema's rationale and decisions.
+
+- **Engine:** Supabase Postgres. **Write path:** `apps/web` direct via `supabase-js`,
+  guarded by RLS. The voice backend (`apps/backend`) stays database-free.
+- **Identity:** `public.profiles` is 1:1 with `auth.users` (guest via anonymous sign-in,
+  or Google OAuth; a guest upgrades in place via `linkIdentity`, id preserved).
+- **Level is derived** from XP (`level_from_xp()`), never stored.
+
+## AS-IS — localStorage (today)
+
+Anonymous, browser-local, lost across devices/clears. Keys under `koperasi.*`
+(`apps/web/src/stores/game.store.ts`).
+
+```mermaid
+erDiagram
+  PLAYER ||--o{ REDEEMED_VOUCHER : "koperasi.vouchers"
+  PLAYER ||--o{ COMPLETED_MISSION : "koperasi.missions"
+  PLAYER {
+    string playerName "koperasi.playerName — no id, no auth"
+    number xp "koperasi.xp"
+    number point "koperasi.point"
+  }
+  REDEEMED_VOUCHER {
+    string voucherId
+    string name "denormalized"
+    string code
+    number redeemedAt "epoch ms"
+  }
+  COMPLETED_MISSION { string missionId }
+```
+
+The scenario result (`AuditorResult`) is produced server-side and shown at end of
+session. It was formerly **never persisted** (transient `sessionStore` only); **SIM-6
+(PR #22)** now persists it to the `sessions` table via the atomic `record_session` RPC.
+Level and badges are **derived** in the UI from live signals, also not stored.
+
+## TARGET — Supabase schema
+
+15 tables (10 for SIM-2 + the SIM-5 `quiz_definition`/`quiz_completion` pair + the 2 SIM-17
+`leaderboard_seasons`/`leaderboard_entries` snapshot tables + the SIM-18 `mading_block`). Owner-only RLS
+on user-scoped tables; public read on `*_definition` catalogs — **except** `mission_definition`
+(reallife `redeem_code`) and `quiz_definition` (the `correct_index` answer key), both kept out of
+clients behind a plain owner-privileged view (`mission_catalog` / `quiz_catalog`) that omits the
+secret column. Session score is folded into `sessions` (written at start, finalized at end).
+
+```mermaid
+erDiagram
+  AUTH_USERS ||--|| PROFILES : "1:1 (managed by Supabase Auth)"
+  PROFILES ||--|| USER_PROGRESS : has
+  PROFILES ||--o{ SESSIONS : plays
+  SCENARIO_DEFINITION ||--o{ SESSIONS : typed_by
+  PROFILES ||--o{ MISSION_COMPLETION : claims
+  MISSION_DEFINITION ||--o{ MISSION_COMPLETION : completed_in
+  PROFILES ||--o{ VOUCHER_REDEMPTION : redeems
+  VOUCHER_DEFINITION ||--o{ VOUCHER_REDEMPTION : redeemed_as
+  PROFILES ||--o{ USER_BADGE : earns
+  BADGE_DEFINITION ||--o{ USER_BADGE : awarded_as
+  PROFILES ||--o{ QUIZ_COMPLETION : answers
+  QUIZ_DEFINITION ||--o{ QUIZ_COMPLETION : graded_against
+
+  PROFILES {
+    uuid id PK "→ auth.users.id"
+    text display_name "≤16, nullable (← playerName)"
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  USER_PROGRESS {
+    uuid user_id PK "→ profiles.id"
+    int xp "≥0 — level derived, not stored"
+    int point "≥0"
+    timestamptz reconciled_at "SIM-5: one-time local-import marker; null until migrated"
+  }
+  SESSIONS {
+    uuid id PK
+    uuid user_id FK
+    text scenario_id FK
+    timestamptz started_at "written at session start"
+    timestamptz ended_at "null until ended"
+    text trigger "CHECK manual|sinyal_level_1|force_quit_level_2; null until ended"
+    text ending_type "CHECK good|bad|neutral; null until scored"
+    jsonb scores_json "per-scenario rubric, 0-100"
+    jsonb state_json "AuditorResult.stateClassification"
+    text narrative_feedback
+  }
+  SCENARIO_DEFINITION {
+    text code PK
+    text title
+    text difficulty
+    text status "CHECK AVAILABLE|COMING_SOON"
+  }
+  MISSION_DEFINITION {
+    text code PK
+    text kind "CHECK game|reallife"
+    int reward_xp
+    int reward_point
+    text redeem_code "soft KDMP gate code; reallife only; REVOKEd from clients"
+    timestamptz redeem_code_updated_at "SIM-42 audit; nullable (NULL=never rotated)"
+    uuid redeem_code_updated_by "SIM-42 audit actor; nullable; no FK (tombstone)"
+  }
+  MISSION_COMPLETION {
+    bigint id PK
+    uuid user_id FK
+    text mission_id FK
+    timestamptz completed_at
+  }
+  VOUCHER_DEFINITION {
+    text code PK
+    text name
+    int cost
+  }
+  VOUCHER_REDEMPTION {
+    bigint id PK
+    uuid user_id FK
+    text voucher_id FK
+    text voucher_name "denormalized"
+    text minted_code UK
+    int cost_point
+  }
+  BADGE_DEFINITION {
+    text code PK
+    text title
+    text icon "CHECK (9 icon kinds)"
+    jsonb criteria "mirrors BadgeCriteria; null = teaser"
+  }
+  USER_BADGE {
+    bigint id PK
+    uuid user_id FK
+    text badge_id FK
+    timestamptz awarded_at "the new fact"
+  }
+  QUIZ_DEFINITION {
+    text code PK
+    text prompt
+    jsonb options
+    int correct_index "SIM-5: answer key — REVOKEd from clients (quiz_catalog view omits it)"
+    text explanation "revealed post-answer by submit_quiz, never in the catalog view"
+  }
+  QUIZ_COMPLETION {
+    uuid user_id PK "→ profiles.id"
+    text question_code PK "→ quiz_definition.code"
+    timestamptz first_correct_at "credit-once ledger; a question rewards at most once"
+  }
+```
+
+**Not tables:** `level_from_xp(int)` is an `IMMUTABLE` function (thresholds
+`[0,100,300,600,1000,1500]`, 1-based). `leaderboard(limit)` is a `SECURITY DEFINER`
+function that publishes a bounded `display_name + xp + level` projection (owner-only RLS
+would otherwise hide other players).
+
+**Server-side integrity RPCs** (`SECURITY DEFINER`, `search_path=''`, `REVOKE EXECUTE FROM
+public, anon` — anon gets EXECUTE via a *default privilege*, so `from public` alone is not
+enough): `claim_mission` (validates the gate code server-side, credits reward atomically, idempotent
+via `unique(user_id, mission_id)`), `redeem_voucher` (race-safe balance debit, mints a unique
+code), `record_session` (**SIM-6**: atomically inserts + finalizes a completed session in one
+txn — clamps `started_at`, size-bounds the payload; supersedes the two-step `record_session_result`,
+which remains for history but is unused by the FE). `add_rewards` is a **private**
+helper, never client-callable — as of SIM-5 it **returns the post-credit `{xp, point}`** so callers
+reconcile in one round-trip. Badges are awarded by a plain RLS-guarded insert (idempotent via
+`unique(user_id, badge_id)`); the earn rule stays client-side (cosmetic, client-trusted).
+
+**SIM-5 progress RPCs** (same hardening): `submit_quiz(answers)` grades server-side and credits
+only newly-correct questions once (answer key never leaves the DB); `get_my_progress()` returns the
+whole wallet snapshot (progress + missions + vouchers + badges) in one call for boot hydrate;
+`sync_badges(codes[])` batch-inserts newly-earned badges; `reconcile_local_progress(uid, xp,
+missions)` imports a pre-existing local wallet **once** (atomic `reconciled_at` marker) — migrating
+**xp + game-mission state only, never the spendable `point`**, since a fresh anonymous account is
+indistinguishable from a returning player and a client-supplied balance is unauthenticatable.
+
+## Gap / mapping
+
+| AS-IS (localStorage) | TARGET | Notes |
+|---|---|---|
+| `koperasi.playerName` | `profiles.display_name` | **net-new** identity/id + auth (guest or Google) |
+| `koperasi.xp` / `koperasi.point` | `user_progress.xp` / `.point` | 1:1 satellite; level derived |
+| `koperasi.vouchers[]` | `voucher_redemption` | repeatable; `voucher_name` kept denormalized |
+| `koperasi.missions[]` | `mission_completion` | `unique(user_id, mission_id)`; server-side `redeem_code` for reallife |
+| (derived in UI) level | `level_from_xp()` | never a column |
+| (derived in UI) badges | `badge_definition` + `user_badge.awarded_at` | **persisted** (SIM-5 wires it); `awarded_at` is the new fact |
+| (FE-only quiz bank + client grading) | `quiz_definition` / `quiz_completion` + `submit_quiz` | **SIM-5**: answer key server-side, credit-once per question |
+| (whole `koperasi.*` wallet, first login) | `reconcile_local_progress(uid, xp, missions)` | **SIM-5**: one-time import, xp + game-missions only (point/vouchers dropped) |
+| `AuditorResult` (session end) | `sessions` (folded score columns) | **SIM-6**: row written atomically at session **end** via `record_session`; transcript **not** persisted |
+| FE static content arrays | `*_definition` tables | seeded from `@simkop/catalog` (shared package the FE also imports, CI parity-checked) |
+
+### Net-new (no localStorage equivalent)
+Identity/auth, `sessions` + score (persisted SIM-6), `user_badge.awarded_at`, and the four `*_definition`
+catalog tables (formerly FE-only arrays; the DB is now the source of truth, with the FE
+and the seed both deriving from the shared `@simkop/catalog` package).
+
+### Admin role (SIM-14)
+`public.admins` (`user_id` PK → `auth.users` on delete cascade, `created_at`) is a membership
+table **separate from `profiles`/user** — used ONLY by the admin dashboard (`apps/admin`), never by
+the game. RLS is on with **no client policies** (clients cannot read/write it); only
+`supabase_auth_admin` has a `select` policy, needed because that role does **not** bypass RLS.
+Membership is managed by `service_role`/seed only (`seeds/dev_admins.sql`, kept out of the generated
+`seed.sql`). A **custom access token hook** (`public.custom_access_token_hook`, grant-based, fail-safe)
+reads `admins` and stamps a **top-level boolean `is_admin`** claim into every JWT at mint/refresh; the
+DB-free backend reads that claim and enforces `require_role('admin')` (`is_admin AND NOT is_anonymous`).
+
+> **Invariant:** `is_admin` is only meaningful paired with `is_anonymous = false` (an admin is never an
+> anonymous session). The backend enforces the pairing today; any future `is_admin()` RLS helper must too.
+
+### Admin analytics read path (SIM-15)
+The admin dashboard's metrics (active users, completion rate, avg scores) are served by
+`admin.metrics_overview()` — a single `SECURITY DEFINER` function in a dedicated **`admin` schema**
+that aggregates `public.sessions` + `public.profiles` + `public.scenario_definition` into one `jsonb`
+object (counts, fractions, scenario titles — **aggregate-only, no row-level PII**). It is reached ONLY by
+a dedicated login role **`metrics_reader`** (`EXECUTE`-only, no table grants, null password in git) that
+the FastAPI backend connects to via asyncpg; the game and the DB-free voice/token path are untouched.
+No new tables, no changes to game tables. **Convention for future admin analytics:** live in the `admin`
+schema, **never** add it to the PostgREST-exposed schemas, and grant `EXECUTE` only to `metrics_reader`
+(NOT `leaderboard()`'s `grant … to authenticated`). An `is_admin()` RLS helper is deliberately NOT used
+here — admin-ness is enforced at the backend and the function is role-scoped.
+
+### Seasonal leaderboard snapshots (SIM-17)
+First feature to add **tables** to the admin read path and the **first destructive (write/delete)
+functions** in the `admin` schema. Two new `public` tables hold frozen, point-in-time standings:
+- **`leaderboard_seasons`** (`id` PK, `season_number` unique+monotonic — resolves "latest" via
+  `max()`; gaps/reuse possible after deletes — `label?`, `captured_at`, `entry_count`).
+- **`leaderboard_entries`** (`season_id` FK **cascade**, `rank`, `user_id`, `display_name`, `xp`,
+  `level`; `UNIQUE(season_id, rank)`). **`user_id` is `ON DELETE SET NULL` (NOT cascade)** — the one
+  identity FK in the repo that doesn't cascade: a snapshot is frozen history, so deleting a player
+  preserves their past name/xp/level/rank and only nulls the back-reference.
+
+Ranking is by cumulative `user_progress.xp` (server-authoritative; NEVER `sessions.scores_json`). An
+admin manually **captures** current standings (`admin.capture_leaderboard_snapshot(label)` — xact
+advisory lock + `UNIQUE(season_number)` for gapless numbers, `row_number()` over a total order, top
+100), **deletes** a season (`admin.delete_leaderboard_season(id)` — returns `{deleted:false}` on
+absent, never raises), and reads list+selected (`admin.leaderboard_overview(id?)`). The in-game
+"mading" reads `public.leaderboard_current()` (`SECURITY DEFINER`, granted `anon/authenticated` like
+`public.leaderboard()`, latest season top 20) — it **never projects `user_id`**. Both tables are
+RLS-on with no client policies + explicit `revoke … from anon, authenticated, public`.
+
+> **`metrics_reader` widened (SIM-17):** it now `EXECUTE`s the `VOLATILE` capture/delete definer fns,
+> so the admin DB role does **reads + admin-gated writes** — still NO direct table privileges (writes
+> run with the postgres-owned fn's rights), but a leaked `METRICS_DB_URL` now reaches writes. The
+> require_role('admin') backend gate is the control; a dedicated writer-role split is deferred.
+
+### Admin content management (SIM-18)
+Live admin CRUD over educational content — no deploy to edit a quiz question or a bulletin.
+- **Quiz** reuses the existing `quiz_definition` (added `updated_at` for audit + a compare-and-swap
+  token, and an FK-covering `quiz_completion(question_code)` index for the delete soft-block). New
+  `admin.*` fns: `list_quiz` (exposes the hidden `correct_index`/`explanation` for editing — the
+  client still reads the `quiz_catalog` view without them), `upsert_quiz_question` (CAS create/edit),
+  `delete_quiz_question` (soft-blocks a question with existing `quiz_completion` rows via an
+  EXCEPTION handler — TOCTOU-safe, never a raw `23503`).
+- **Mading** is one generic `public.mading_block(id, board, block_key, payload jsonb, sort_order,
+  updated_at)` for all 4 board kinds (`board ∈ info|data|knowledge|identitas`; `UNIQUE(board,
+  block_key)` + a partial unique index enforcing a single `identitas` row; `(board, sort_order)`
+  hot-read index). No hidden fields → learners read the plain owner-privileged `public.mading_catalog`
+  view (granted `anon/authenticated`); admins go through `admin.list_mading/upsert_mading_block/
+  delete_mading_block`. `admin._mading_reject_reason` is a **closed, element-typed** validation floor
+  mirroring the FE/Pydantic contract (so the seed, which writes the table directly, can't persist a
+  payload the learner parser would reject).
+- **Compare-and-swap is atomic**: the `updated_at` token is in the `UPDATE … where … updated_at is
+  not distinct from p_prev_updated_at` predicate (not a prior SELECT) so concurrent edits can't both
+  win. Both upsert fns return structured `{ok,reason}` (never RAISE — the backend maps reason→status).
+- Both tables are seeded one-way from `@simkop/catalog` (`quiz.json` / `mading.json`); the DB is
+  authoritative at runtime. `metrics_reader` widened again to EXECUTE these quiz/mading writes.
+
+### Admin reporting / CSV export (SIM-19)
+Offline reporting over the same admin read path — **no new tables**, one more `SECURITY DEFINER`
+read fn: `admin.session_results_export(p_from date, p_to date)`. Returns a `jsonb` **array of
+per-session result rows** (not an aggregate) — one object per **completed** session (`ended_at is
+not null`; OPEN rows excluded), **no row-level PII** (no `user_id`/`display_name`; `session_id` is an
+opaque UUID). Optional `from`/`to` filter `started_at`, UTC-anchored, half-open `[from, to+1 day)`
+(both days inclusive; `from > to` → 0 rows). `avg_score` reuses the exact object-guarded, numeric,
+in-range (0–100), `round(…,1)` per-session formula as `metrics_overview()`/`scenario_analytics()`.
+`coalesce(jsonb_agg(…), '[]')` keeps the result non-NULL so the backend's fail-soft guard treats an
+empty export as a valid `[]` (a 200 header-only CSV), not a 503. Grant matrix unchanged in kind:
+`EXECUTE` to `metrics_reader` only (revoked from public/anon/authenticated), owner `postgres`. A
+partial index `sessions_ended_started_idx on public.sessions(started_at) where ended_at is not null`
+serves the date-range scan (inserts don't touch it — rows enter only on the finalize UPDATE). The
+CSV assembly (RFC-4180, UTF-8 BOM, formula-injection sanitization) lives in the backend, not the DB.
+`metrics_reader` gains this read-only EXECUTE; no new role, no write, no blast-radius change.
+
+### Admin-managed mission unlock codes (SIM-42)
+Runtime rotation of reallife `redeem_code`s — no redeploy/SQL. Reuses the SIM-18 shape:
+two `admin.*` fns, owner `postgres`, EXECUTE only to `metrics_reader`, backend enforces
+`require_role('admin')`. `admin.list_missions()` lists `kind='reallife'` rows **with** the
+hidden `redeem_code` + audit (clients still read `mission_catalog`, which omits it);
+`admin.set_mission_redeem_code(p_code, p_redeem_code, p_actor)` rotates the code on an
+existing reallife mission in one atomic UPDATE, returning the full row or a structured
+`{ok,reason}` (`not_found` / `empty_redeem_code` / `too_long` — never a raised CHECK → 503).
+- **Last-write-wins (no CAS):** deliberate — tiny admin set, rare rotations. No
+  `prev_updated_at`/`stale_write`.
+- **Audit columns** `redeem_code_updated_at` + `redeem_code_updated_by` are nullable with
+  **no default** (NULL = "never rotated via admin since seed"). `redeem_code_updated_by`
+  has **no FK** — it is an audit tombstone (actor integrity is enforced server-side via the
+  JWT-verified admin id). It therefore persists after an admin account is deleted and
+  right-to-erasure will not cascade to it — a conscious retention decision for the
+  admin-action trail.
+- **Rotate-only:** no create/delete of missions; `code` is the immutable key.
+- **Seed durability:** the generated `seed.sql` mission `on conflict do update` **omits**
+  `redeem_code`, so a re-seed is insert-only for codes and never clobbers a rotation (codes
+  stay in the INSERT so a fresh reallife mission still seeds its code). `claim_mission`
+  remains the runtime fail-closed validator; a rotated code takes effect on the next claim.
+- `metrics_reader` widened again to EXECUTE these two fns (no direct table privilege).
+
+> **On the reallife codes:** `redeem_code` is a *soft* gate — printed at the KDMP and typed
+> by the player. It is **not** a cryptographic secret. As of SIM-9 the codes live server-side
+> only (`apps/db/seed-codes.json` → `redeem_code`) and no longer ship in the client bundle;
+> the DB hides the column (REVOKE + `mission_catalog` view) and `claim_mission` validates the
+> code server-side. Treat gate-code claims as best-effort, not anti-cheat.
+
+## Follow-ups (out of scope for SIM-2 BE)
+- ✅ FE integration: guest + Google auth (SIM-3); progress/quiz/badges wired to the RPCs and the
+  one-time local import (SIM-5, PR #20); **session results persisted (SIM-6, PR #22)** via the
+  atomic `record_session` RPC on session end, from both the LiveKit and mock transports.
+- **Stop shipping reallife codes in the client bundle** (they are still in `@simkop/catalog`,
+  which the FE imports). If they must be non-guessable, mint high-entropy codes into an
+  untracked source and enter them only via the KDMP, never bundle them. (Contrast: SIM-5's quiz
+  `correct_index` *is* fully server-side — the pattern to follow if these codes ever need to be.)
+- Enable Auth settings in the Supabase project: anonymous sign-ins, manual linking, Google
+  provider, CAPTCHA/rate-limit on anonymous sign-in.
+- `pg_cron` cleanup of stale anonymous users.

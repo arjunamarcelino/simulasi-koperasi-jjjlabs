@@ -13,7 +13,6 @@ import json
 import logging
 
 from openai import AsyncAzureOpenAI
-
 from scenarios import Scenario
 
 logger = logging.getLogger("koperasi.mentor")
@@ -108,6 +107,6 @@ async def generate_hint(
         content = resp.choices[0].message.content or "{}"
         hint = (json.loads(content).get("hint") or "").strip()
         return hint or _FALLBACK
-    except Exception:  # noqa: BLE001 — Petunjuk tak boleh menjatuhkan sesi
+    except Exception:  # fail-soft: Petunjuk tak boleh menjatuhkan sesi
         logger.exception("Mentor gagal membuat petunjuk; kirim fallback.")
         return _FALLBACK

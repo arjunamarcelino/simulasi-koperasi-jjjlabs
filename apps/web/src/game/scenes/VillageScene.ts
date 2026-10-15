@@ -165,20 +165,9 @@ export class VillageScene extends Phaser.Scene {
     this.greetBubble = undefined;
     if (this.registry.get("greeted") === true) return;
 
-    const name = gameStore.getState().playerName;
-    if (name) {
-      this.showGreeting(name);
-      return;
-    }
-    // First play: name not set yet — greet once the welcome prompt is submitted.
-    const unsub = gameStore.subscribe(
-      (s) => s.playerName,
-      (value) => {
-        if (value && this.registry.get("greeted") !== true) this.showGreeting(value);
-      },
-    );
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsub);
-    this.events.once(Phaser.Scenes.Events.DESTROY, unsub);
+    // Play-immediately: name is optional, so greet right away, defaulting to
+    // "Tamu" (guest) when no display_name has been set yet.
+    this.showGreeting(gameStore.getState().playerName ?? "Tamu");
   }
 
   private showGreeting(name: string): void {

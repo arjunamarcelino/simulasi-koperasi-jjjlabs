@@ -6,13 +6,13 @@ import { SceneLoadingOverlay } from "../components/hub/SceneLoadingOverlay";
 import { MadingInfoBoard } from "../components/hub/MadingInfoBoard";
 import { MadingDataBoard } from "../components/hub/MadingDataBoard";
 import { MadingKnowledgeBoard } from "../components/hub/MadingKnowledgeBoard";
+import { LeaderboardMading } from "../components/hub/LeaderboardMading";
 import { QuizBoard } from "../components/hub/QuizBoard";
 import { KasirVoucherBoard } from "../components/hub/KasirVoucherBoard";
 import { ProfileModal } from "../components/hub/ProfileModal";
 import { ProfileButton } from "../components/hub/ProfileButton";
 import { MissionIcon } from "../components/hub/MissionIcon";
 import { MissionBoard } from "../components/hub/MissionBoard";
-import { NamePrompt } from "../components/hub/NamePrompt";
 import { SessionOverlay } from "../components/session/SessionOverlay";
 import { useGameStore } from "../stores/game.store";
 
@@ -22,7 +22,6 @@ import { useGameStore } from "../stores/game.store";
  * SCENARIO_SELECTION view.
  */
 export function HubPage() {
-  const needsName = useGameStore((s) => s.playerName === null);
   const activeOverlay = useGameStore((s) => s.activeOverlay);
 
   return (
@@ -43,6 +42,7 @@ export function HubPage() {
       <MadingInfoBoard />
       <MadingDataBoard />
       <MadingKnowledgeBoard />
+      <LeaderboardMading />
       {/* Conditionally mounted so local run-state resets on each open. */}
       {activeOverlay === "QUIZ" && <QuizBoard />}
       {activeOverlay === "KASIR_VOUCHER" && <KasirVoucherBoard />}
@@ -50,7 +50,6 @@ export function HubPage() {
       {activeOverlay === "MISSION" && <MissionBoard />}
       {activeOverlay === "SESSION" && <SessionOverlay />}
       <SceneLoadingOverlay />
-      {needsName && <NamePrompt />}
     </main>
   );
 }

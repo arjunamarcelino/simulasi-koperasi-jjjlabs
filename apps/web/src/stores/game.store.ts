@@ -2,14 +2,20 @@ import { createStore } from "zustand/vanilla";
 import { subscribeWithSelector } from "zustand/middleware";
 import { useStore } from "zustand";
 import { KOPERASI_ROOMS } from "../world/rooms.config";
-import { loadNumber, saveNumber, loadJson, saveJson } from "./persist";
+import { loadNumber, saveNumber, loadJson, saveJson, removeKey } from "./persist";
 import {
   VOUCHERS,
   isRedeemedVoucherArray,
   type RedeemedVoucher,
 } from "../content/vouchers";
 import { MISSIONS, isStringArray, type MissionReward } from "../content/missions";
+import { BADGES, isEarned, buildBadgeContext, readContentIdsFromEarned } from "../content/badges";
 import { SCENARIOS } from "../scenarios/scenario.config";
+import { supabase } from "../lib/supabase";
+import { progressRepo } from "../lib/progressRepo";
+import { sessionsRepo } from "../lib/sessionsRepo";
+import { goodEndingScenarioIds } from "../lib/sessionHistory";
+import type { QuizAnswer, QuizResultRow, Totals } from "../lib/progressRepo.contracts";
 
 /**
  * The four top-level views. This union is the single source of truth for
@@ -38,37 +44,48 @@ export type OverlayKind =
   | "MADING_INFO"
   | "MADING_DATA"
   | "MADING_KNOWLEDGE"
+  | "MADING_LEADERBOARD"
   | "QUIZ"
   | "KASIR_VOUCHER"
   | "PROFILE"
   | "MISSION"
   | "SESSION";
 
-/** Result of completeMission — carries the granted reward on success. */
+/** Result of completeMission — carries the granted reward on success. `degraded` = no
+ * server (offline/mock): a reallife mission can't be validated client-side (the code is
+ * server-only), so the claim is refused rather than credited. `empty-code` = a blank
+ * reallife code, rejected before any round-trip (distinct from a server `wrong-code`). */
 export type MissionResult =
   | { ok: true; reward: MissionReward }
-  | { ok: false; reason: "already" | "wrong-code" | "unknown" };
+  | { ok: false; reason: "already" | "wrong-code" | "unknown" | "degraded" | "empty-code" };
 
-const NAME_STORAGE_KEY = "koperasi.playerName";
-const XP_STORAGE_KEY = "koperasi.xp";
-const POINT_STORAGE_KEY = "koperasi.point";
-const VOUCHERS_STORAGE_KEY = "koperasi.vouchers";
-const MISSION_STORAGE_KEY = "koperasi.missions";
+/** Result of submitQuiz. `degraded` = no server (offline/mock): the quiz cannot be
+ * graded client-side because the answer key is server-only. */
+export type QuizSubmitOutcome =
+  | { ok: true; awarded: Totals; totals: Totals; results: QuizResultRow[] }
+  | { ok: false; reason: "degraded" | "error" | "invalid" | "too_many" | "unknown_question" };
 
-/** Trim + case-insensitive on both sides so "kdmp2026 " matches "KDMP2026". */
-function codeMatches(expected: string, input?: string): boolean {
-  return input != null && input.trim().toLowerCase() === expected.trim().toLowerCase();
-}
+/** Wallet cache key bases; namespaced per owner uid (koperasi.<uid>.<base>) so a
+ * shared device can't bleed one account's wallet into another. The un-namespaced
+ * `koperasi.<base>` keys are the LEGACY (pre-migration) wallet, read once by the
+ * one-time reconcile and then deleted. */
+const WALLET_BASES = ["xp", "point", "vouchers", "missions"] as const;
+const walletKey = (uid: string | null, base: string): string =>
+  uid ? `koperasi.${uid}.${base}` : `koperasi.${base}`;
 
-function loadPlayerName(): string | null {
-  try {
-    return window.localStorage.getItem(NAME_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
+/** sessionStorage key for the nav state stashed across an OAuth redirect. */
+const NAV_STASH_KEY = "koperasi.auth.viewStash";
+/** Runtime allowlist for validating a restored `currentView` (View is defined above). */
+const VALID_VIEWS: readonly View[] = [
+  "MAIN_MENU",
+  "LOADING",
+  "SCENARIO_SELECTION",
+  "GAME",
+  "EVALUATION",
+];
 
-/** Short mock voucher code, e.g. "KDMP-7X2A". Cosmetic only. */
+/** Short mock voucher code, e.g. "KDMP-7X2A". Cosmetic; used only for the degraded
+ * (offline) mint — online, redeem_voucher mints the authoritative code. */
 function genCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let s = "";
@@ -76,9 +93,36 @@ function genCode(): string {
   return `KDMP-${s}`;
 }
 
+type Wallet = {
+  xp: number;
+  point: number;
+  redeemedVouchers: RedeemedVoucher[];
+  completedMissionIds: string[];
+};
+
+function loadWallet(uid: string | null): Wallet {
+  return {
+    xp: Math.max(0, loadNumber(walletKey(uid, "xp"), 0)),
+    point: Math.max(0, loadNumber(walletKey(uid, "point"), 0)),
+    redeemedVouchers: loadJson<RedeemedVoucher[]>(walletKey(uid, "vouchers"), [], isRedeemedVoucherArray),
+    completedMissionIds: loadJson<string[]>(walletKey(uid, "missions"), [], isStringArray),
+  };
+}
+
+function saveWallet(uid: string | null, w: Wallet): void {
+  saveNumber(walletKey(uid, "xp"), w.xp);
+  saveNumber(walletKey(uid, "point"), w.point);
+  saveJson(walletKey(uid, "vouchers"), w.redeemedVouchers);
+  saveJson(walletKey(uid, "missions"), w.completedMissionIds);
+}
+
 export type GameState = {
   currentView: View;
-  /** Player name (frontend only, persisted to localStorage). Null until entered. */
+  /**
+   * Read-only mirror of `profiles.display_name`, projected by auth.store so Phaser
+   * (VillageScene/Player) keeps reading its single React↔Phaser bridge. Null until
+   * the player sets a name. Never written from the game layer — see auth.store.
+   */
   playerName: string | null;
   /** Hub room selection + overlay (serializable; Phaser owns scene transitions). */
   selectedRoomId: string | null;
@@ -99,15 +143,41 @@ export type GameState = {
    * E can't leak into a station's fire() the instant an overlay closes. 0 = free.
    */
   interactSuppressedUntil: number;
-  /** Persisted wallet: XP (drives level, never spent), Point (spent on vouchers). */
+  /** Persisted wallet: XP (drives level, never spent), Point (spent on vouchers).
+   * Server-authoritative when online (hydrated via get_my_progress, reconciled from
+   * RPC totals); optimistic + localStorage-cached in between. */
   xp: number;
   point: number;
   redeemedVouchers: RedeemedVoucher[];
-  /** Ids of missions already completed (persisted). Membership = "done". */
+  /** Ids of missions already completed. Membership = "done". */
   completedMissionIds: string[];
+  /** The account that currently owns the in-memory wallet (null = degraded/no account). */
+  walletUid: string | null;
+  /** True once the owner's async hydrate+migrate has settled. Observability only —
+   * hydrateAndMigrate sequences the load/reconcile/badge steps internally; nothing
+   * gates on this today (tests assert it; a future UI could show a loading state). */
+  hydrated: boolean;
+  /** Micro-learning content ids that count as read: reads made THIS session (via
+   * markKnowledgeRead) plus those folded in at hydrate from already-earned reading
+   * badges (user_badge is the durable record — see applyMyProgress). Owner-scoped:
+   * reset on onOwnerChanged so no previous account's reads leak. Powers `contentRead`. */
+  readContentIds: string[];
 
   setView: (view: View) => void;
-  setPlayerName: (name: string) => void;
+  /**
+   * React to the account that owns the wallet changing (called by auth.store on
+   * every uid transition, and once at boot). Resets the in-memory wallet, seeds it
+   * from the new owner's cache, then hydrates from the DB, runs the one-time
+   * legacy-wallet migration, and re-evaluates badges — all under an epoch+uid guard
+   * so a stale async result can't stomp a newer owner/edit. Degraded/no account
+   * falls back to the device-local (legacy) wallet.
+   */
+  onOwnerChanged: (uid: string | null) => void;
+  /** Persist currentView + selectedScenarioId before a full-page OAuth redirect
+   * (called by auth.store) so the player returns to where they were, not the menu. */
+  stashNavForRedirect: () => void;
+  /** Restore (once) the nav state stashed before an OAuth redirect. */
+  restoreNavAfterRedirect: () => void;
   selectRoom: (roomId: string) => void;
   clearSelection: () => void;
   enterScenario: (scenarioId: string) => void;
@@ -122,6 +192,8 @@ export type GameState = {
   openMadingData: () => void;
   /** Open the knowledge carousel at card 0 (no-op if another overlay is open). */
   openMadingKnowledge: () => void;
+  /** Open the seasonal leaderboard mading (no-op if another overlay is open). */
+  openMadingLeaderboard: () => void;
   /** Jump to an absolute carousel slide/card; wrap math lives with the caller/content. */
   setMadingIndex: (index: number) => void;
   /** Open the quiz (no-op if another overlay is already open). */
@@ -130,14 +202,20 @@ export type GameState = {
   openKasirVoucher: () => void;
   /** Open the player profile modal (no-op if another overlay is open). */
   openProfile: () => void;
-  /** Bank quiz rewards once (deltas clamped ≥ 0). Persists xp + point. */
-  addQuizRewards: (reward: { xp: number; point: number }) => void;
   /**
-   * Redeem a voucher by id. Re-reads live point/cost as the authoritative gate
-   * (the button's disabled state lags a frame). Returns the redeemed voucher
-   * (carrying its fresh code) on success, or null if unknown / not affordable.
+   * Submit quiz answers for server-side grading. Credits only newly-correct
+   * questions (server-authoritative). Returns the graded results, or a `degraded`
+   * failure when offline (the answer key is server-only, so the quiz can't grade).
    */
-  redeemVoucher: (voucherId: string) => RedeemedVoucher | null;
+  submitQuiz: (answers: QuizAnswer[]) => Promise<QuizSubmitOutcome>;
+  /**
+   * Redeem a voucher by id. Gates on the live client-known balance up front (no
+   * optimistic flash on the common insufficient case), applies the debit
+   * optimistically, then reconciles from the server (authoritative balance + minted
+   * code). Rolls back on rejection/error. Degraded → local mint. Returns the redeemed
+   * voucher on success, or null if unknown / not affordable / rejected.
+   */
+  redeemVoucher: (voucherId: string) => Promise<RedeemedVoucher | null>;
   /** Open the mission overlay (no-op if another overlay is already open). */
   openMission: () => void;
   /**
@@ -155,15 +233,40 @@ export type GameState = {
    */
   enterSessionScenario: (scenarioId: string) => void;
   /**
-   * Complete a mission (one-time). Live-reads completedMissionIds as the gate;
-   * real-life missions require a matching code. Banks the reward + persists in a
-   * single flat transaction. Returns the reward on success, else a failure reason.
+   * Complete a mission (one-time). Pre-gates locally (unknown / already / reallife
+   * wrong-code) for a flash-free reject, applies the reward optimistically, then
+   * claims it server-side and reconciles the authoritative totals. Degraded → local
+   * credit. Returns the reward on success, else a failure reason.
    */
-  completeMission: (missionId: string, code?: string) => MissionResult;
+  completeMission: (missionId: string, code?: string) => Promise<MissionResult>;
+  /**
+   * Re-derive session good-ending badges from history and persist the newly-earned
+   * codes. Best-effort + self-guarding. Called by sessionController after a good-ending
+   * session finalizes (the profile modal may never open) and internally on hydrate.
+   */
+  syncSessionBadges: () => Promise<void>;
+  /**
+   * Record that a micro-learning content board was fully read this session and persist
+   * any newly-earned reading badge. Idempotent (no-op if already recorded). Fire-and-
+   * forget persist via the existing guarded wallet-path sync. Called by the knowledge
+   * board once every card has been viewed.
+   */
+  markKnowledgeRead: (contentId: string) => void;
 };
 
 /** How long (ms) the scene ignores E after an overlay closes — see interactSuppressedUntil. */
 const INTERACT_SUPPRESS_MS = 250;
+
+// — wallet write guard (epoch + uid) ——————————————————————————————————
+// A monotonic epoch, bumped on every local edit and every owner change, plus the
+// owner uid. An async reconcile/rollback captures the guard at fire time and no-ops
+// if either changed while it was in flight — so a slow hydrate/RPC can't overwrite a
+// newer wallet or a different account's wallet.
+type WriteGuard = { epoch: number; uid: string | null };
+let walletEpoch = 0;
+const captureGuard = (): WriteGuard => ({ epoch: walletEpoch, uid: gameStore.getState().walletUid });
+const guardValid = (g: WriteGuard): boolean =>
+  walletEpoch === g.epoch && gameStore.getState().walletUid === g.uid;
 
 /**
  * Vanilla Zustand store — the single bridge between React and Phaser.
@@ -177,7 +280,7 @@ const INTERACT_SUPPRESS_MS = 250;
 export const gameStore = createStore<GameState>()(
   subscribeWithSelector((set, get) => ({
     currentView: "MAIN_MENU",
-    playerName: loadPlayerName(),
+    playerName: null, // mirror; written only by auth.store's display_name projection
     selectedRoomId: null,
     activeOverlay: "NONE",
     selectedScenarioId: null,
@@ -186,27 +289,71 @@ export const gameStore = createStore<GameState>()(
     sceneLoading: null,
     madingIndex: 0,
     interactSuppressedUntil: 0,
-    xp: Math.max(0, loadNumber(XP_STORAGE_KEY, 0)),
-    point: Math.max(0, loadNumber(POINT_STORAGE_KEY, 0)),
-    redeemedVouchers: loadJson<RedeemedVoucher[]>(
-      VOUCHERS_STORAGE_KEY,
-      [],
-      isRedeemedVoucherArray,
-    ),
-    completedMissionIds: loadJson<string[]>(MISSION_STORAGE_KEY, [], isStringArray),
+    xp: 0,
+    point: 0,
+    redeemedVouchers: [],
+    completedMissionIds: [],
+    walletUid: null,
+    hydrated: false,
+    readContentIds: [],
 
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
       set({ currentView: view, activeOverlay: "NONE", selectedRoomId: null }),
 
-    setPlayerName: (name) => {
-      const clean = name.trim().slice(0, 16);
-      try {
-        window.localStorage.setItem(NAME_STORAGE_KEY, clean);
-      } catch {
-        // ignore (storage unavailable)
+    onOwnerChanged: (uid) => {
+      walletEpoch += 1; // invalidate any in-flight reconcile for the previous owner
+      const guard: WriteGuard = { epoch: walletEpoch, uid };
+      // Clear the previous owner's in-memory wallet immediately (no cross-account flash).
+      set({
+        walletUid: uid,
+        xp: 0,
+        point: 0,
+        redeemedVouchers: [],
+        completedMissionIds: [],
+        hydrated: false,
+        // Owner-scoped: never let the previous account's reads leak.
+        readContentIds: [],
+      });
+
+      if (!supabase || !uid) {
+        // Degraded / no account: the device-local (legacy) wallet is the source.
+        set({ ...loadWallet(null), hydrated: true });
+        return;
       }
-      set({ playerName: clean });
+
+      // Online: paint this account's cache instantly, then hydrate authoritative
+      // state from the DB and run the one-time legacy migration off the microtask.
+      set({ ...loadWallet(uid) });
+      queueMicrotask(() => void hydrateAndMigrate(uid, guard));
+    },
+
+    stashNavForRedirect: () => {
+      try {
+        const { currentView, selectedScenarioId } = get();
+        sessionStorage.setItem(NAV_STASH_KEY, JSON.stringify({ currentView, selectedScenarioId }));
+      } catch {
+        // sessionStorage unavailable — the redirect still works, just returns to menu
+      }
+    },
+
+    restoreNavAfterRedirect: () => {
+      try {
+        const raw = sessionStorage.getItem(NAV_STASH_KEY);
+        if (!raw) return;
+        sessionStorage.removeItem(NAV_STASH_KEY);
+        const parsed: unknown = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return;
+        const rec = parsed as Record<string, unknown>;
+        const view = rec["currentView"];
+        if (typeof view === "string" && (VALID_VIEWS as readonly string[]).includes(view)) {
+          const scenarioId =
+            typeof rec["selectedScenarioId"] === "string" ? rec["selectedScenarioId"] : null;
+          set({ currentView: view as View, selectedScenarioId: scenarioId });
+        }
+      } catch {
+        // malformed stash — ignore, land on the default view
+      }
     },
 
     // No-op while an overlay is open (movement-later key-spam safety).
@@ -257,6 +404,10 @@ export const gameStore = createStore<GameState>()(
       if (get().activeOverlay !== "NONE") return;
       set({ activeOverlay: "MADING_KNOWLEDGE", madingIndex: 0 });
     },
+    openMadingLeaderboard: () => {
+      if (get().activeOverlay !== "NONE") return;
+      set({ activeOverlay: "MADING_LEADERBOARD" });
+    },
     setMadingIndex: (index) => set({ madingIndex: index }),
 
     // Quiz / kasir / profile overlays — guarded like the mading opens. Closed via
@@ -274,32 +425,42 @@ export const gameStore = createStore<GameState>()(
       set({ activeOverlay: "PROFILE" });
     },
 
-    // Wallet. In-memory is authoritative; persist is best-effort (try/catch).
-    addQuizRewards: ({ xp, point }) => {
-      const nextXp = get().xp + Math.max(0, xp);
-      const nextPoint = get().point + Math.max(0, point);
-      saveNumber(XP_STORAGE_KEY, nextXp);
-      saveNumber(POINT_STORAGE_KEY, nextPoint);
-      set({ xp: nextXp, point: nextPoint });
+    submitQuiz: async (answers) => {
+      if (!supabase || !get().walletUid) return { ok: false, reason: "degraded" };
+      const guard = captureGuard();
+      const res = await progressRepo.submitQuiz(answers);
+      if (res.status === "degraded") return { ok: false, reason: "degraded" };
+      if (res.status === "rpcError" || res.status === "invalid") return { ok: false, reason: "error" };
+      if (!res.data.ok) return { ok: false, reason: res.data.reason };
+      reconcileTotals(res.data.totals, guard);
+      return { ok: true, awarded: res.data.awarded, totals: res.data.totals, results: res.data.results };
     },
 
-    redeemVoucher: (voucherId) => {
+    redeemVoucher: async (voucherId) => {
       const voucher = VOUCHERS.find((v) => v.id === voucherId);
       if (!voucher) return null;
-      const { point, redeemedVouchers } = get(); // live read — the real gate
+      const { point, walletUid } = get(); // live read — the client-known gate
       if (point < voucher.cost) return null;
-      const redeemed: RedeemedVoucher = {
+      const optimistic: RedeemedVoucher = {
         voucherId,
         name: voucher.name,
         code: genCode(),
         redeemedAt: Date.now(),
       };
-      const nextPoint = point - voucher.cost;
-      const nextList = [...redeemedVouchers, redeemed];
-      saveNumber(POINT_STORAGE_KEY, nextPoint);
-      saveJson(VOUCHERS_STORAGE_KEY, nextList);
-      set({ point: nextPoint, redeemedVouchers: nextList });
-      return redeemed;
+      const effect = applyWalletEffect({ xp: 0, point: -voucher.cost, addVoucher: optimistic });
+      const guard = captureGuard(); // AFTER the apply — its epoch bump is this op's baseline
+
+      if (!supabase || !walletUid) return optimistic; // degraded: local mint stays
+
+      const res = await progressRepo.redeemVoucher(voucherId);
+      if (res.status === "ok" && res.data.ok) {
+        // reconcileAfterRedeem is guard-checked; a stale success no-ops (hydrate heals).
+        reconcileAfterRedeem(optimistic, res.data.code, res.data.balance, guard);
+        return { ...optimistic, code: res.data.code };
+      }
+      if (res.status === "degraded") return optimistic; // keep the local mint
+      rollbackWalletEffect(effect, guard); // reverses the debit + removes the optimistic voucher
+      return null;
     },
 
     openMission: () => {
@@ -327,25 +488,307 @@ export const gameStore = createStore<GameState>()(
       set({ activeOverlay: "SESSION", selectedScenarioId: scenarioId, selectedRoomId: null });
     },
 
-    completeMission: (missionId, code) => {
+    completeMission: async (missionId, code) => {
       const mission = MISSIONS.find((m) => m.id === missionId);
       if (!mission) return { ok: false, reason: "unknown" };
-      const { completedMissionIds, xp, point } = get(); // live read — the gate
+      const { completedMissionIds, walletUid } = get(); // live read — the gate
       if (completedMissionIds.includes(missionId)) return { ok: false, reason: "already" };
-      if (mission.kind === "reallife" && !codeMatches(mission.code, code)) {
-        return { ok: false, reason: "wrong-code" };
+
+      // Reallife: server-authoritative. The code lives server-side (claim_mission validates
+      // it), so there is nothing to check or credit client-side — await-first, no optimism.
+      if (mission.kind === "reallife") {
+        if (!supabase || !walletUid) return { ok: false, reason: "degraded" }; // can't validate offline
+        if (!code || !code.trim()) return { ok: false, reason: "empty-code" }; // blank → no round-trip
+        const guard = captureGuard(); // BEFORE the await — owner-flip protection
+        const res = await progressRepo.claimMission(missionId, code);
+        if (res.status === "degraded") return { ok: false, reason: "degraded" };
+        if (res.status === "ok" && res.data.ok) {
+          // Skip the local apply if the write guard was superseded mid-RPC — an owner flip
+          // (anon→Google / sign-out) or a same-owner concurrent edit that bumped the epoch.
+          // The claim is already recorded server-side, so the next hydrate reflects it; this
+          // avoids writing into a new owner's wallet or stomping a newer edit's totals.
+          if (guardValid(guard)) {
+            applyWalletEffect({ xp: 0, point: 0, addMission: missionId }); // mark done + persist
+            reconcileTotals(res.data.totals, captureGuard()); // adopt authoritative totals
+            void syncBadgesFromState();
+          }
+          return { ok: true, reward: res.data.reward };
+        }
+        return { ok: false, reason: res.status === "ok" && !res.data.ok ? res.data.reason : "unknown" };
       }
-      const nextXp = xp + Math.max(0, mission.reward.xp);
-      const nextPoint = point + Math.max(0, mission.reward.point);
-      const nextIds = [...completedMissionIds, missionId];
-      saveNumber(XP_STORAGE_KEY, nextXp);
-      saveNumber(POINT_STORAGE_KEY, nextPoint);
-      saveJson(MISSION_STORAGE_KEY, nextIds);
-      set({ xp: nextXp, point: nextPoint, completedMissionIds: nextIds });
-      return { ok: true, reward: mission.reward };
+
+      // Game: client-authoritative — optimistic local credit, reconciled online.
+      const reward = mission.reward;
+      const effect = applyWalletEffect({ xp: reward.xp, point: reward.point, addMission: missionId });
+      const guard = captureGuard(); // AFTER the apply — its epoch bump is this op's baseline
+
+      if (!supabase || !walletUid) {
+        void syncBadgesFromState();
+        return { ok: true, reward }; // degraded: local credit
+      }
+
+      const res = await progressRepo.claimMission(missionId);
+      if (res.status === "ok" && res.data.ok) {
+        reconcileTotals(res.data.totals, guard); // guard-checked; a stale success no-ops
+        return { ok: true, reward: res.data.reward };
+      }
+      if (res.status === "degraded") {
+        void syncBadgesFromState();
+        return { ok: true, reward }; // keep the local credit
+      }
+      rollbackWalletEffect(effect, guard); // reverses xp/point + removes the optimistic mission
+      const reason = res.status === "ok" && !res.data.ok ? res.data.reason : "unknown";
+      return { ok: false, reason };
+    },
+
+    syncSessionBadges: () => syncBadgesFromSessions(),
+
+    markKnowledgeRead: (contentId) => {
+      if (get().readContentIds.includes(contentId)) return; // idempotent
+      set({ readContentIds: [...get().readContentIds, contentId] });
+      // Persist any newly-earned reading badge via the existing guarded wallet path.
+      void syncBadgesFromState();
     },
   })),
 );
+
+// — wallet effect helpers (module scope; hoisted; run only post-init) ——————————
+type WalletEffect = {
+  xp: number;
+  point: number;
+  addedMission: string | null;
+  addedVoucher: RedeemedVoucher | null;
+};
+
+/** Apply an optimistic delta to state + cache; return the ACTUAL effect (for rollback:
+ * a mission already present adds nothing, so it isn't recorded as added). */
+function applyWalletEffect(intent: {
+  xp: number;
+  point: number;
+  addMission?: string;
+  addVoucher?: RedeemedVoucher;
+}): WalletEffect {
+  const st = gameStore.getState();
+  const addedMission =
+    intent.addMission && !st.completedMissionIds.includes(intent.addMission) ? intent.addMission : null;
+  const addedVoucher = intent.addVoucher ?? null;
+  const wallet: Wallet = {
+    xp: st.xp + intent.xp,
+    point: st.point + intent.point,
+    completedMissionIds: addedMission ? [...st.completedMissionIds, addedMission] : st.completedMissionIds,
+    redeemedVouchers: addedVoucher ? [...st.redeemedVouchers, addedVoucher] : st.redeemedVouchers,
+  };
+  walletEpoch += 1; // a local edit — invalidate any older in-flight reconcile
+  gameStore.setState(wallet);
+  saveWallet(st.walletUid, wallet);
+  return { xp: intent.xp, point: intent.point, addedMission, addedVoucher };
+}
+
+/** Reverse the recorded effect. Skipped entirely if the OWNER changed (the effect
+ * belonged to a prior account; hydrate owns the new owner's truth). Within the same
+ * owner, membership is always reversed — removing exactly what THIS op added is safe
+ * even if a concurrent op bumped the epoch, since a unique mission/voucher can't have
+ * been added twice — while the scalar delta is reversed only when no newer edit landed
+ * (a concurrent op may have absolute-reconciled xp/point). This prevents a phantom
+ * mission/voucher from lingering when a concurrent mutation invalidates the guard. */
+function rollbackWalletEffect(effect: WalletEffect, guard: WriteGuard): void {
+  const st = gameStore.getState();
+  if (st.walletUid !== guard.uid) return; // owner changed — leave it to hydrate
+  const scalarSafe = walletEpoch === guard.epoch;
+  const wallet: Wallet = {
+    xp: scalarSafe ? st.xp - effect.xp : st.xp,
+    point: scalarSafe ? st.point - effect.point : st.point,
+    completedMissionIds: effect.addedMission
+      ? st.completedMissionIds.filter((id) => id !== effect.addedMission)
+      : st.completedMissionIds,
+    redeemedVouchers: effect.addedVoucher
+      ? st.redeemedVouchers.filter((v) => v !== effect.addedVoucher)
+      : st.redeemedVouchers,
+  };
+  gameStore.setState(wallet);
+  saveWallet(st.walletUid, wallet);
+}
+
+/** Adopt the server's authoritative {xp, point} after a successful mutating RPC. */
+function reconcileTotals(totals: Totals, guard: WriteGuard): void {
+  if (!guardValid(guard)) return;
+  const st = gameStore.getState();
+  const wallet: Wallet = {
+    xp: totals.xp,
+    point: totals.point,
+    completedMissionIds: st.completedMissionIds,
+    redeemedVouchers: st.redeemedVouchers,
+  };
+  gameStore.setState({ xp: totals.xp, point: totals.point });
+  saveWallet(st.walletUid, wallet);
+  void syncBadgesFromState();
+}
+
+/** After a server redeem: set the authoritative balance and swap the optimistic
+ * voucher's cosmetic code for the server-minted one (matched by reference). */
+function reconcileAfterRedeem(
+  target: RedeemedVoucher,
+  code: string,
+  balance: number,
+  guard: WriteGuard,
+): void {
+  if (!guardValid(guard)) return;
+  const st = gameStore.getState();
+  const redeemedVouchers = st.redeemedVouchers.map((v) => (v === target ? { ...v, code } : v));
+  const wallet: Wallet = {
+    xp: st.xp,
+    point: balance,
+    completedMissionIds: st.completedMissionIds,
+    redeemedVouchers,
+  };
+  gameStore.setState({ point: balance, redeemedVouchers });
+  saveWallet(st.walletUid, wallet);
+  void syncBadgesFromState();
+}
+
+// Badge codes already persisted this session for `syncedBadgesUid`, so a mutation
+// that earns nothing new skips the sync RPC entirely (the earned set only grows a
+// handful of times per account). Reset lazily on an owner change.
+let syncedBadges = new Set<string>();
+let syncedBadgesUid: string | null = null;
+
+// Serialize badge persistence. Overlapping triggers (a good-ending finish racing the
+// hydrate pass) would otherwise both compute `fresh` before either writes the cache and
+// fire duplicate RPCs for the same code. Chaining makes each link recompute against the
+// updated cache, so the second dedups to a no-op instead of a redundant round-trip.
+let persistChain: Promise<void> = Promise.resolve();
+function persistEarned(good: readonly string[], guard: WriteGuard): Promise<void> {
+  const run = persistChain.then(() => persistEarnedCore(good, guard));
+  persistChain = run.catch(() => {}); // keep the chain alive if a link ever rejects
+  return run;
+}
+
+/**
+ * Single writer of the `syncedBadges` cache. Bails if the write guard was superseded
+ * while queued, builds the badge context from live wallet signals + the given session
+ * good-endings, persists only the NEWLY-earned codes (idempotent server-side), and
+ * re-checks the guard AFTER the RPC before touching the cache — so an owner flip mid-flight
+ * can't poison the next owner's dedup set. No-op when degraded / no account / nothing new.
+ */
+async function persistEarnedCore(good: readonly string[], guard: WriteGuard): Promise<void> {
+  if (!guardValid(guard)) return; // superseded while queued → a newer owner/op will sync
+  const st = gameStore.getState();
+  if (!supabase || !st.walletUid) return;
+  if (syncedBadgesUid !== st.walletUid) {
+    syncedBadges = new Set();
+    syncedBadgesUid = st.walletUid;
+  }
+  const ctx = buildBadgeContext({
+    xp: st.xp,
+    point: st.point,
+    completedMissionIds: st.completedMissionIds,
+    voucherCount: st.redeemedVouchers.length,
+    goodEndingScenarioIds: good,
+    // readContentIds already carries both this session's reads and the ids folded in
+    // from earned badges at hydrate — so this satisfies both fresh and prior reads.
+    readContentIds: st.readContentIds,
+  });
+  const fresh = BADGES.filter((b) => isEarned(b.criteria, ctx) && !syncedBadges.has(b.id)).map(
+    (b) => b.id,
+  );
+  if (fresh.length === 0) return;
+  const res = await progressRepo.syncBadges(fresh);
+  if (res.status === "ok" && guardValid(guard)) for (const code of fresh) syncedBadges.add(code);
+}
+
+/** Wallet path: re-evaluate badges from wallet signals only (no session signal). */
+function syncBadgesFromState(): Promise<void> {
+  return persistEarned([], captureGuard());
+}
+
+/**
+ * Session path: derive the scenarios whose best attempt ended "good" from history and
+ * persist any newly-earned scenario badges. Self-guarding — captures the write guard
+ * BEFORE the listMySessions fetch and bails if the owner changed during it, so user A's
+ * sessions never earn badges on user B's account. Best-effort: a non-ok fetch is a no-op.
+ */
+async function syncBadgesFromSessions(): Promise<void> {
+  const st = gameStore.getState();
+  if (!supabase || !st.walletUid) return;
+  const guard = captureGuard();
+  const res = await sessionsRepo.listMySessions();
+  if (res.status !== "ok" || !guardValid(guard)) return;
+  await persistEarned(goodEndingScenarioIds(res.data), guard);
+}
+
+/** Hydrate the owner's authoritative wallet from the DB, run the one-time migration
+ * of a pre-existing legacy (device-local) wallet, then persist earned badges — all
+ * guarded so a newer owner/edit wins. */
+async function hydrateAndMigrate(uid: string, guard: WriteGuard): Promise<void> {
+  const applyMyProgress = (data: {
+    xp: number;
+    point: number;
+    missions: string[];
+    vouchers: RedeemedVoucher[];
+    badges: string[];
+  }): void => {
+    const wallet: Wallet = {
+      xp: data.xp,
+      point: data.point,
+      completedMissionIds: data.missions,
+      redeemedVouchers: data.vouchers,
+    };
+    // Fold already-earned reading badges onto the read side (user_badge is otherwise
+    // write-only on the client) so a reading badge survives reload / cross-device.
+    // Deduped union: applyMyProgress can run twice (hydrate + post-reconcile).
+    const readContentIds = [
+      ...new Set([
+        ...gameStore.getState().readContentIds,
+        ...readContentIdsFromEarned(data.badges),
+      ]),
+    ];
+    gameStore.setState({ ...wallet, readContentIds });
+    saveWallet(uid, wallet);
+  };
+
+  // The boot hydrate can race the just-issued anon JWT's propagation and get a
+  // transient 401 (PostgREST rejects the not-yet-valid token). Retry once so a
+  // returning player's progress still loads rather than silently showing zero.
+  let hydrate = await progressRepo.getMyProgress();
+  if (hydrate.status === "rpcError") {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    if (!guardValid(guard)) return;
+    hydrate = await progressRepo.getMyProgress();
+  }
+  if (!guardValid(guard)) return;
+  if (hydrate.status === "ok") applyMyProgress(hydrate.data);
+
+  // One-time migration: push a pre-existing legacy (un-namespaced) wallet once, then
+  // delete the legacy keys so it never re-runs. The server guards double-credit via
+  // reconciled_at; we only clear the keys on a definitive server response.
+  const legacy = loadWallet(null);
+  const hasLegacy =
+    legacy.xp > 0 ||
+    legacy.point > 0 ||
+    legacy.completedMissionIds.length > 0 ||
+    legacy.redeemedVouchers.length > 0;
+  if (hasLegacy) {
+    // Only xp + game-mission state migrate; point/vouchers are intentionally dropped.
+    const rec = await progressRepo.reconcile(uid, legacy.xp, legacy.completedMissionIds);
+    if (rec.status === "ok") {
+      // The server has consumed the import (reconciled_at set, or already-reconciled).
+      // Delete the device-global legacy keys NOW, unconditionally — so no later owner
+      // can re-import them, even if the write-guard has moved on in the meantime.
+      for (const base of WALLET_BASES) removeKey(walletKey(null, base));
+      if (guardValid(guard)) {
+        const after = await progressRepo.getMyProgress();
+        if (guardValid(guard) && after.status === "ok") applyMyProgress(after.data);
+      }
+    }
+  }
+
+  if (!guardValid(guard)) return;
+  await syncBadgesFromState();
+  if (!guardValid(guard)) return;
+  await syncBadgesFromSessions();
+  if (!guardValid(guard)) return;
+  gameStore.setState({ hydrated: true });
+}
 
 /** React binding. Always call with a selector to avoid needless re-renders. */
 export function useGameStore<T>(selector: (state: GameState) => T): T {

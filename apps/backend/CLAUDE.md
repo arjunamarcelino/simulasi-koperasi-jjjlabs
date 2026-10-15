@@ -2,21 +2,42 @@
 
 Panduan untuk AI agent yang memodifikasi backend. Baca ini dulu sebelum mengubah
 kode. Untuk kontrak wire FE↔BE, lihat `CONTRACT.md`. Untuk desain produk, lihat
-`../backent-prd.md` (PRD).
+`../../docs/backend-prd.md` (PRD).
 
 ## Apa ini
 
 Backend + AI pipeline game edukasi koperasi berbasis voice. Dua proses, satu
 project `uv`:
 
-- **`api/server.py`** — FastAPI. Hanya mint LiveKit token + dispatch agent
-  (`POST /token`). Tanpa database.
+- **`api/server.py`** — FastAPI. Verifikasi JWT Supabase lalu mint LiveKit token +
+  dispatch agent (`POST /token`, digerbangi `api/auth.py`, rate-limit
+  `api/ratelimit.py`). Tanpa database.
 - **`voice_worker/voice_agent.py`** — worker `livekit-agents` v1.6.5. Satu proses
   menangani SELURUH skenario & persona (PRD §2.1). STT (Azure) → LLM dialog
   (Azure OpenAI `gpt-5-mini`) → TTS (Azure).
 
-Tidak ada database — seluruh state sesi in-memory, hidup selama room LiveKit
-aktif (PRD §2.5, §8).
+Jalur voice/token **tanpa database** — seluruh state sesi in-memory, hidup selama
+room LiveKit aktif (PRD §2.5, §8). **Pengecualian admin (SIM-15/16/17/18/19):** `GET /admin/metrics`
+(→ `admin.metrics_overview()`), `GET /admin/scenarios/{id}/analytics` (→ `admin.scenario_analytics()`),
+papan peringkat musiman SIM-17 — `GET /admin/leaderboard`, `POST /admin/leaderboard/capture`,
+`DELETE /admin/leaderboard/seasons/{id}` (→ `admin.leaderboard_overview/capture_leaderboard_snapshot/
+delete_leaderboard_season`), dan **manajemen konten SIM-18** — kuis (`GET /admin/quiz`,
+`POST /admin/quiz` create, `POST /admin/quiz/{code}` edit, `DELETE /admin/quiz/{code}`) + mading
+(`GET /admin/mading`, `POST /admin/mading` create, `POST /admin/mading/{id}` edit,
+`DELETE /admin/mading/{id}`) lewat definer fn `admin.list_quiz/upsert_quiz_question/…` &
+`admin.list_mading/upsert_mading_block/…`, dan **ekspor laporan SIM-19** — `GET /admin/reports/sessions.csv`
+(→ `admin.session_results_export()`; respons `text/csv` non-JSON pertama, baris sesi selesai tanpa PII),
+dan **kode misi SIM-42** — rotasi kode unlock reallife (`GET /admin/missions` → `admin.list_missions()`;
+`POST /admin/missions/{code}` → `admin.set_mission_redeem_code()`; rotate-only, last-write-wins, actor =
+`admin.user_id` diteruskan sebagai `$3::uuid`, nilai `redeem_code` TAK PERNAH di-log)
+— semuanya membuka pool asyncpg **fail-soft** yang SAMA ke
+Supabase sebagai role `metrics_reader` (`api/metrics_db.py`). **SIM-17/18 melebarkan `metrics_reader`
+dari read-only ke baca + TULIS admin-gated** (capture/delete + quiz/mading upsert/delete lewat definer
+fn `VOLATILE`); role tetap TANPA privilege tabel langsung, tapi blast radius `METRICS_DB_URL` naik.
+**Kontrak error SIM-18 (penting):** `_call_definer` memetakan RAISE apa pun → 503, jadi validasi input
+= 422 di boundary Pydantic (SEBELUM RPC) dan not-found/konflik = RETURN `{ok:false,reason}` terstruktur
+(bukan RAISE) yang route petakan ke 404/409. Pool gagal-aman: DB mati/salah-konfig/lambat → endpoint
+503, TAK PERNAH menjatuhkan `/token` atau `/health`. Jangan bawa DB ke jalur voice/token.
 
 ## Menjalankan & memverifikasi
 
@@ -28,9 +49,12 @@ cp .env.example .env          # isi kredензial (lihat daftar env di .env.exam
 # dua terminal:
 uv run python voice_worker/voice_agent.py dev         # worker (registrasi agent_name)
 uv run uvicorn api.server:app --port 8000 --reload    # token server
+
+# test (SIM-4: verifikasi JWT + gating /token). Tak butuh jaringan/Supabase nyata.
+uv run pytest
 ```
 
-Verifikasi live: jalankan `apps/web-sementara` dengan `VITE_TRANSPORT=livekit` +
+Verifikasi live: jalankan `apps/web` dengan `VITE_TRANSPORT=livekit` +
 `VITE_TOKEN_ENDPOINT=http://localhost:8000`, pilih skenario, bicara/ketik.
 Log worker (`koperasi.voice_agent`) mencetak observer & fase — pakai untuk debug.
 Input mic sulit di-headless; jalur teks bisa di-drive dengan Playwright.
@@ -38,19 +62,22 @@ Input mic sulit di-headless; jalur teks bisa di-drive dengan Playwright.
 ## Struktur
 
 ```
-api/server.py                 POST /token (+ /health)
+api/server.py                 POST /token (+ /health) — digerbangi JWT + rate-limit
+api/auth.py                   verifikasi JWT Supabase (JWKS/ES256) → dependency FastAPI
+api/ratelimit.py              token-bucket per-user untuk /token (429)
+tests/                        pytest: verifier + endpoint + rate-limit (uv run pytest)
 voice_worker/
   voice_agent.py              entrypoint agent + RatAgent + wiring semua lapisan
   scenarios.py                REGISTRY: semua skenario + spec drift/auditor/RAT/mentor
   observer.py                 Lapisan 2: drift (gpt-5-mini async) + DriftTracker
   auditor.py                  Lapisan 3: AI Auditor (gpt-5.4) → JSON
   mentor.py                   Fitur Petunjuk: hint kontekstual (gpt-5-mini) → JSON
-  prompts/*.py                system prompt persona, di-grounding ke ../scenarios.md
+  prompts/*.py                system prompt persona, di-grounding ke ../../docs/scenarios.md
 ```
 
 Keempat skenario (Tutorial, Kredit Macet, Keanggotaan Fiktif, RAT) sudah
 terpasang penuh di `scenarios.py`. Prompt persona di-grounding ke dokumen
-skenario `apps/scenarios.md` (bukan lagi placeholder).
+skenario `docs/scenarios.md` (bukan lagi placeholder).
 
 ## Arsitektur: model state tiga lapis (PRD §6)
 
@@ -93,6 +120,10 @@ Menambah/mengubah skenario TIDAK perlu menyentuh `voice_agent.py`.
 **Menambah skenario single-NPC**: tulis prompt di `prompts/`, tambah `Scenario`
 dengan `drift`+`auditor`+`mentor_brief`, daftarkan di `_SCENARIOS`. Selesai —
 semua wiring (observer, auditor, Petunjuk, tiga jalur akhir) sudah generik.
+
+Itu untuk sisi backend. Untuk langkah **end-to-end lintas-stack** (katalog, seed DB,
+konfig FE + skrip mock, `VALID_SCENARIOS`, CONTRACT, dan hitungan parity yang perlu
+di-bump), lihat `../../docs/how-to-add-a-scenario.md`.
 
 ## RAT (dua NPC) — pola yang dipakai
 

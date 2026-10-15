@@ -1,15 +1,19 @@
 import { createTransport } from "./transport/createTransport";
 import type {
+  AuditorResult,
   DriftLevel,
   ScenarioId,
   SessionTransport,
   Unsubscribe,
 } from "./transport/contract";
 import { sessionStore } from "../stores/session.store";
+import { gameStore } from "../stores/game.store";
+import { progressRepo } from "../lib/progressRepo";
 
 /**
  * One-way glue: Transport → store. React never reads the transport directly; it
- * only calls the actions here.
+ * only calls the actions here. (On a good-ending session finish it also pokes
+ * gameStore.syncSessionBadges — a best-effort cosmetic side-channel, see persistResult.)
  *
  * A monotonic `generation` counter makes teardown race-proof: every stop()/start()
  * bumps it, and any async work (a resolving connect()) whose captured generation
@@ -40,14 +44,52 @@ export function createSessionController(): SessionController {
   let transport: SessionTransport | null = null;
   let unsubs: Unsubscribe[] = [];
   let generation = 0;
+  // Persistence bookkeeping (SIM-6). `sessionStartedAt` is captured at start() so the
+  // atomic record_session RPC can store a real duration. `finalizing` guarantees ONE
+  // finalize per user-perceived session: set synchronously at session_ended before any
+  // await, reset in stop(). It is the SOLE dedup — record_session always INSERTs (no
+  // DB-level idempotency) — so a duplicate event / StrictMode remount relies on it.
+  let sessionStartedAt: string | null = null;
+  let finalizing = false;
 
   const fail = (cause: unknown): void => {
     sessionStore.getState().setError(toMessage(cause));
     sessionStore.getState().setConnection("error");
   };
 
+  // Persist the auditor result (SIM-6) — best-effort side-channel. One atomic RPC call;
+  // any failure is swallowed so persistence never disturbs the ended session or paints a
+  // scrim over the ResultPanel. scenarioId comes from the result payload itself.
+  const persistResult = async (result: AuditorResult): Promise<void> => {
+    try {
+      const outcome = await progressRepo.recordSession({
+        scenarioId: result.scenarioId,
+        trigger: result.trigger,
+        endingType: result.endingType,
+        scores: result.scores,
+        state: result.stateClassification,
+        feedback: result.narrativeFeedback,
+        startedAt: sessionStartedAt,
+      });
+      if (outcome.status !== "ok") {
+        console.warn("Gagal menyimpan hasil sesi:", outcome.status);
+        return;
+      }
+      if (!outcome.data.ok) {
+        console.warn("Hasil sesi ditolak:", outcome.data.reason);
+        return;
+      }
+      // A good ending may newly earn a scenario badge; re-derive + persist (best-effort,
+      // self-guarding) now that the row is committed. Assumes reads hit the primary.
+      if (result.endingType === "good") void gameStore.getState().syncSessionBadges();
+    } catch (cause: unknown) {
+      console.warn("Gagal menyimpan hasil sesi:", cause instanceof Error ? cause.message : cause);
+    }
+  };
+
   const stop = (): void => {
     generation += 1; // invalidate anything in flight
+    finalizing = false;
     for (const unsub of unsubs) unsub();
     unsubs = [];
     void transport?.disconnect();
@@ -56,6 +98,7 @@ export function createSessionController(): SessionController {
 
   const start = (): void => {
     stop();
+    sessionStartedAt = new Date().toISOString();
     const myGen = generation;
     const { getState } = sessionStore;
 
@@ -73,6 +116,11 @@ export function createSessionController(): SessionController {
           // Reset mic so the store matches the physically-released track.
           getState().setEnded(e);
           getState().setMicEnabled(false);
+          // Persist the result (best-effort). Synchronous guard BEFORE any await so a
+          // duplicate session_ended / StrictMode remount can't double-insert.
+          if (finalizing) return;
+          finalizing = true;
+          void persistResult(e.result);
         }),
       ];
       if (next.onAgentReady) {
