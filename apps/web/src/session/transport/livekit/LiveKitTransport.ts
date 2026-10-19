@@ -6,6 +6,7 @@ import {
   type Participant,
   type RemoteParticipant,
   type RemoteTrack,
+  type TextStreamReader,
   type TranscriptionSegment,
 } from "livekit-client";
 import { ENV } from "../../../config/env";
@@ -22,6 +23,11 @@ import type {
   Unsubscribe,
 } from "../contract";
 import { Emitter } from "../emitter";
+import {
+  readTranscriptStream,
+  SEGMENT_ID_ATTRIBUTE,
+  TRANSCRIPTION_TOPIC,
+} from "./transcriptStream";
 
 type TokenResponse = { token: string; room: string; url: string };
 
@@ -117,6 +123,9 @@ export class LiveKitTransport implements SessionTransport {
     });
     room.on(RoomEvent.TranscriptionReceived, (segments, participant) => {
       this.handleTranscription(segments, participant);
+    });
+    room.registerTextStreamHandler(TRANSCRIPTION_TOPIC, (reader, { identity }) => {
+      void this.handleTranscriptStream(reader, identity);
     });
     room.on(RoomEvent.ParticipantConnected, (p: RemoteParticipant) => {
       // NPC (agent) is the only remote participant — remember its identity for RPC.
@@ -368,25 +377,51 @@ export class LiveKitTransport implements SessionTransport {
     return room.localParticipant.performRpc({ destinationIdentity, method, payload });
   }
 
+  /**
+   * Legacy transcription carries the PLAYER's words only (the RAT Listener publishes
+   * them solely this way). NPC lines come from `lk.transcription` text streams — the
+   * legacy packets of RAT's second NPC connection (Pak Darma) never reach the client,
+   * so reading NPCs from here left his turns blank.
+   */
   private handleTranscription(
     segments: TranscriptionSegment[],
     participant?: Participant,
   ): void {
-    const isPlayer = participant?.isLocal ?? false;
+    if (!participant?.isLocal) return;
     for (const seg of segments) {
-      // Build without `name` first, then set it conditionally — required by
-      // exactOptionalPropertyTypes (never assign `name: undefined`).
-      const item: TranscriptItem = {
+      this.transcript.emit({
         id: seg.id,
-        speaker: isPlayer ? "player" : "npc",
+        speaker: "player",
         text: seg.text,
         streaming: !seg.final,
         at: Date.now(),
-      };
-      if (!isPlayer && this.currentSpeakerName) {
-        item.name = this.currentSpeakerName;
-      }
-      this.transcript.emit(item);
+      });
+    }
+  }
+
+  /** One NPC transcript segment, streamed as deltas from whichever connection voices it. */
+  private async handleTranscriptStream(
+    reader: TextStreamReader,
+    identity: string,
+  ): Promise<void> {
+    // The player's own stream duplicates its legacy transcription (single-NPC).
+    if (identity === this.room?.localParticipant.identity) return;
+    const id = reader.info.attributes?.[SEGMENT_ID_ATTRIBUTE] ?? reader.info.id;
+    // Bind the persona once, at stream open: the worker sends `speaker` before each
+    // NPC turn starts, and a later turn's signal must not relabel this line.
+    const name = this.currentSpeakerName;
+    const at = Date.now();
+    try {
+      await readTranscriptStream(reader, (text, final) => {
+        if (!text) return;
+        // Build without `name` first, then set it conditionally — required by
+        // exactOptionalPropertyTypes (never assign `name: undefined`).
+        const item: TranscriptItem = { id, speaker: "npc", text, streaming: !final, at };
+        if (name) item.name = name;
+        this.transcript.emit(item);
+      });
+    } catch (cause: unknown) {
+      console.error("Gagal membaca transkripsi NPC:", cause);
     }
   }
 }

@@ -373,6 +373,13 @@ masing-masing; giliran NPC diserialkan (tak pernah dua NPC bersuara bersamaan).
 Transkripsi suara **pemain** dipublish worker atas nama identity pemain (STT terpisah),
 jadi tetap tiba sebagai transkripsi milik participant lokal.
 
+**Baca transkripsi NPC dari text stream `lk.transcription`** (`registerTextStreamHandler`;
+delta per chunk, `lk.segment_id` = id segmen, stream ditutup = final), BUKAN dari
+`TranscriptionReceived`: paket legacy dari koneksi NPC kedua (`npc-pak-darma`) tak pernah
+sampai ke klien (terbukti live), jadi giliran Pak Darma kosong. `TranscriptionReceived`
+hanya dipakai untuk transkripsi pemain (participant lokal). Ikat nama persona (4d) saat
+stream dibuka, jangan di tiap chunk.
+
 ### 4b. Participant attribute `drift_level` — indikator ketegangan (Lapisan 2)
 `RoomEvent.ParticipantAttributesChanged` → `changed["drift_level"]` = `"0" | "1" | "2"`.
 - `0` netral, `1` tegang (FE **dorong** pemain klik Keputusan Akhir),
