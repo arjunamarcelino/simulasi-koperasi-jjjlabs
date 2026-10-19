@@ -101,6 +101,12 @@ skenario `docs/scenarios.md` (bukan lagi placeholder).
 3. **Lapisan 3 — AI Auditor**: `evaluation/auditor.py`. Model auditor sekali di akhir sesi,
    baca transkrip penuh + taksonomi + grounding → JSON (klasifikasi + skor +
    narasi). Hanya skenario ber-`auditor`. Tutorial pakai hasil terskrip.
+   **Feedback personal (nilai ICA):** auditor juga menilai `AuditorSpec.values` (nilai ICA
+   yang relevan, tiap indikator berjangkar ke state/skor) → `values` (status + bukti),
+   `progressFeedback`, `nextStep`, dengan membandingkan **riwayat pemain** (≤5 sesi, dari job
+   metadata `history` yang dikirim FE lewat `/token`; diparse gagal-aman `schemas.parse_history`).
+   Status dibatasi `value_caps` (tak boleh bertentangan dengan state); `trend` dihitung kode.
+   Worker tetap bebas-DB — riwayat datang dari client, bukan dibaca dari Supabase.
 
 **Tiga jalur akhir sesi** (PRD §6): `manual` (RPC `end_session`), sinyal Level 1
 (attribute `drift_level=1`, FE menonjolkan tombol), `force_quit_level_2` (agent
@@ -211,7 +217,12 @@ Telinga dipisah dari mulut, supaya NPC yang salah tak pernah menjawab duluan:
    TTS: kalimat terskrip lewat `generate_reply(instructions="Ucapkan PERSIS …")`.
 7. **Observer, Auditor & mentor gagal-aman**: kalau panggilan LLM error, observer
    → "neutral", auditor → fallback netral, mentor → hint fallback. Jangan biarkan
-   error menjatuhkan sesi.
+   error menjatuhkan sesi. **Auditor dulu langsung fallback saat Gemini sibuk (503)** — SDK
+   `google-genai` TIDAK mencoba ulang tanpa `retry_options`. Kini auditor mencoba ulang error
+   sementara (408/429/5xx, gangguan jaringan) hingga 4× (jeda 1/2/4 dtk), lalu pindah ke
+   `GEMINI_AUDITOR_FALLBACK_MODEL`, semuanya dalam anggaran `_AUDIT_BUDGET_S` (50 dtk) yang
+   WAJIB di bawah timeout RPC `end_session` FE (`END_SESSION_RPC_TIMEOUT_MS`, test paritas).
+   Hasil fallback di-stamp `evaluationFailed: true` → FE menampilkannya tapi TIDAK menyimpannya.
 8. **Mic non-fatal di FE**: kegagalan mic tak boleh menutup sesi (teks fallback).
 
 ## Kredensial

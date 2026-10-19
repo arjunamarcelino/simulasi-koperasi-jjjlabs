@@ -143,13 +143,17 @@ taksonomi/skor **§6** (scenario_id, State{nilai}, score keys, catatan NPC).
   dan apa yang BUKAN, mis. "pertanyaan investigatif yang sah bukan penyimpangan"),
   `level1_streak`, `level2_streak` (semua skenario berskor pakai `2`/`4`).
 - **`AuditorSpec`**: `taxonomy` (`State_X -> (nilai,...)`), `grounding` (regulasi),
-  `style_anchor` (contoh nada few-shot), `score_keys` (dimensi skor 0–100).
+  `style_anchor` (contoh nada few-shot), `score_keys` (dimensi skor 0–100), `values`
+  (nilai ICA yang RELEVAN saja, 1–4 key dari `ICA_VALUES` → indikator perilaku yang menyebut
+  state/skor jangkarnya), `value_caps` (`ValueCap(state, state_value, value)` — state
+  pelanggaran menurunkan status nilai terkait). Nilai tanpa jangkar di taksonomi jangan dipakai.
 
 ### Frontend skrip mock (`script.types.ts`)
 `greeting`, `npcTurns[]`, `hints?[]`, `drift?` (`DriftConfig`: `escalate[]`, `deescalate[]`,
 `level1At`, `level2At` — **berbasis keyword**), `forceQuitLine?`, `goalAtTurn?`,
 `endings.good` (+ `endings.bad?`). Ending = objek `AuditorResult` (`scores`,
-`stateClassification`, `endingType`, `narrativeFeedback`).
+`stateClassification`, `endingType`, `narrativeFeedback`, `values`, `progressFeedback`,
+`nextStep` — mock tak punya riwayat, jadi semua `trend` = `BARU_DIUJI`).
 
 > **Penting — dua model drift berbeda:** skrip mock memakai **daftar keyword**
 > (`escalate`/`deescalate`); backend memakai **penilaian LLM** atas `dimension`. Jaga agar

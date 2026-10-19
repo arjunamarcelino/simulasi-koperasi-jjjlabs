@@ -8,6 +8,11 @@ validator MENYESUAIKAN (coerce), tak pernah menolak. Lihat CLAUDE.md GOTCHA #7.
 Hanya envelope yang stabil yang divalidasi; nama key `scores`/`stateClassification`
 berbeda antar skenario → sengaja TIDAK dienumerasi (pelajaran SIM-16). `scenarioId`
 & `trigger` TIDAK ada di sini — keduanya di-stamp oleh `run_auditor` setelah parse.
+Begitu pula `trend` per nilai ICA: dihitung kode dari riwayat, bukan dari LLM.
+
+`HistoryEntry`/`parse_history` memvalidasi riwayat pemain yang datang dari job metadata
+dispatch (dikirim FE lewat `/token`) dengan filosofi yang sama: entri buruk dibuang,
+tak pernah raise.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 # Sumbu auditor (CONTRACT.md §5) — BEDA dari _ALLOWED observer
 # ({escalate,neutral,deescalate}); jangan dicampur.
@@ -25,12 +30,54 @@ _MAX_KEYS = 50  # batas jumlah key (pertahanan berlapis vs output LLM membengkak
 _MAX_NARRATIVE = 4000  # batas panjang narasi (selaras size-guard DB, SIM-15)
 _MAX_STATE_LEN = 200  # batas panjang per kunci/nilai state (hindari str() objek besar)
 
+# Nilai ICA (feedback personal). Status = penilaian LLM per sesi; tren = hitungan kode.
+VALUE_STATUSES = ("TERCERMIN", "BELUM_TAMPAK", "DIABAIKAN")
+VALUE_STATUS_RANK = {"DIABAIKAN": 0, "BELUM_TAMPAK": 1, "TERCERMIN": 2}
+VALUE_TRENDS = ("MENGUAT", "TETAP", "MELEMAH", "BARU_DIUJI")
+_DEFAULT_VALUE_STATUS = "BELUM_TAMPAK"  # status tak dikenal → netral, bukan vonis
+_MAX_EVIDENCE = 200  # satu kalimat bukti per nilai (prompt meminta ≤160)
+_MAX_PROGRESS = 2000  # narasi "Perjalanan Nilaimu" (selaras size-guard DB)
+_MAX_NEXT_STEP = 300  # satu kalimat saran sesi berikutnya
+MAX_HISTORY = 5  # sesi terakhir yang dipakai sebagai pembanding (selaras /token)
+
 
 def _as_str(v: Any) -> str:
     """Paksa nilai jadi str; None → "" (jangan buang isi yang masih berguna)."""
     if isinstance(v, str):
         return v
     return "" if v is None else str(v)
+
+
+class ValueAssessment(BaseModel):
+    """Penilaian satu nilai ICA dalam satu sesi: status + satu kalimat bukti perilaku."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    status: str = _DEFAULT_VALUE_STATUS
+    evidence: str = Field(default="", max_length=_MAX_EVIDENCE)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _coerce_status(cls, v: Any) -> str:
+        """Tak peka huruf; nilai tak dikenal / salah-tipe → BELUM_TAMPAK."""
+        status = v.strip().upper() if isinstance(v, str) else ""
+        return status if status in VALUE_STATUS_RANK else _DEFAULT_VALUE_STATUS
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _coerce_evidence(cls, v: Any) -> str:
+        return _as_str(v)[:_MAX_EVIDENCE]
+
+
+def _coerce_value_map(v: Any) -> dict[str, Any]:
+    """Salvage per-key: non-dict → {}; item yang bukan objek dibuang."""
+    if not isinstance(v, dict):
+        return {}
+    return {
+        str(k)[:_MAX_STATE_LEN]: item
+        for k, item in list(v.items())[:_MAX_KEYS]
+        if isinstance(item, dict)
+    }
 
 
 class AuditorResult(BaseModel):
@@ -50,6 +97,10 @@ class AuditorResult(BaseModel):
     scores: dict[str, int] = Field(default_factory=dict)
     endingType: str = "neutral"
     narrativeFeedback: str = Field(default="", max_length=_MAX_NARRATIVE)
+    # Feedback personal berbasis nilai ICA — kosong bila auditor gagal (FE menyembunyikan).
+    values: dict[str, ValueAssessment] = Field(default_factory=dict)
+    progressFeedback: str = Field(default="", max_length=_MAX_PROGRESS)
+    nextStep: str = Field(default="", max_length=_MAX_NEXT_STEP)
 
     @field_validator("endingType", mode="before")
     @classmethod
@@ -100,3 +151,62 @@ class AuditorResult(BaseModel):
                 continue
             out[str(k)[:_MAX_STATE_LEN]] = max(0, min(100, int(f)))
         return out
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def _coerce_values(cls, v: Any) -> dict[str, Any]:
+        return _coerce_value_map(v)
+
+    @field_validator("progressFeedback", mode="before")
+    @classmethod
+    def _coerce_progress(cls, v: Any) -> str:
+        return _as_str(v)[:_MAX_PROGRESS]
+
+    @field_validator("nextStep", mode="before")
+    @classmethod
+    def _coerce_next_step(cls, v: Any) -> str:
+        return _as_str(v)[:_MAX_NEXT_STEP]
+
+
+class HistoryEntry(BaseModel):
+    """Ringkasan satu sesi lama pemain — bahan pembanding auditor (bukan instruksi)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    scenario_id: str = Field(min_length=1, max_length=_MAX_STATE_LEN)
+    played_on: str = ""
+    values: dict[str, ValueAssessment] = Field(default_factory=dict)
+    next_step: str = ""
+
+    @field_validator("played_on", mode="before")
+    @classmethod
+    def _coerce_played_on(cls, v: Any) -> str:
+        return _as_str(v)[:32]
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def _coerce_values(cls, v: Any) -> dict[str, Any]:
+        return _coerce_value_map(v)
+
+    @field_validator("next_step", mode="before")
+    @classmethod
+    def _coerce_next_step(cls, v: Any) -> str:
+        return _as_str(v)[:_MAX_NEXT_STEP]
+
+
+def parse_history(raw: Any) -> list[HistoryEntry]:
+    """Riwayat dari job metadata → maks `MAX_HISTORY` entri valid (terbaru dulu).
+
+    Gagal-aman: non-list → []; entri yang tak bisa divalidasi dibuang satu per satu.
+    """
+    if not isinstance(raw, list):
+        return []
+    entries: list[HistoryEntry] = []
+    for item in raw:
+        if len(entries) >= MAX_HISTORY:
+            break
+        try:
+            entries.append(HistoryEntry.model_validate(item))
+        except ValidationError:
+            continue
+    return entries

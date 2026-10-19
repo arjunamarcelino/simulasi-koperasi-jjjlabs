@@ -34,6 +34,7 @@ from runtime.publisher import Publisher
 from runtime.rpc import register_rpcs
 from runtime.tasks import BackgroundTasks
 from scenarios import Scenario
+from schemas import HistoryEntry
 
 logger = logging.getLogger("koperasi.rat.runner")
 
@@ -54,7 +55,12 @@ def _phase_context(discussion: Discussion) -> str:
     return f"Fase {ph.id} — {ph.label}. {nxt}"
 
 
-async def run_rat(ctx: JobContext, scenario: Scenario, ai_client: Any) -> None:
+async def run_rat(
+    ctx: JobContext,
+    scenario: Scenario,
+    ai_client: Any,
+    history: list[HistoryEntry],
+) -> None:
     rat = scenario.rat
     assert rat is not None
     assert len(rat.personas) == 2, "arsitektur RAT mengasumsikan TEPAT dua NPC"
@@ -125,7 +131,13 @@ async def run_rat(ctx: JobContext, scenario: Scenario, ai_client: Any) -> None:
 
     async def _finalize(trigger: str) -> dict:
         return await run_auditor(
-            ai_client, models.auditor, scenario, discussion.evaluation_transcript(), trigger
+            ai_client,
+            models.auditor,
+            scenario,
+            discussion.evaluation_transcript(),
+            trigger,
+            history=history,
+            fallback_model=models.auditor_fallback,
         )
 
     lifecycle = SessionLifecycle(

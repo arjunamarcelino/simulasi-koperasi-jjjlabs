@@ -32,6 +32,7 @@ from runtime.publisher import Publisher
 from runtime.rpc import register_rpcs
 from runtime.tasks import BackgroundTasks
 from scenarios import Scenario
+from schemas import HistoryEntry
 
 logger = logging.getLogger("koperasi.single_npc")
 
@@ -56,10 +57,19 @@ def scripted_result(scenario: Scenario, trigger: str) -> dict:
         "scores": {},
         "endingType": r.ending_type,
         "narrativeFeedback": r.narrative_feedback,
+        "values": {},
+        "progressFeedback": "",
+        "nextStep": "",
+        "evaluationFailed": False,
     }
 
 
-async def run_single_npc(ctx: JobContext, scenario: Scenario, ai_client: Any) -> None:
+async def run_single_npc(
+    ctx: JobContext,
+    scenario: Scenario,
+    ai_client: Any,
+    history: list[HistoryEntry],
+) -> None:
     models = settings.models()
     publisher = Publisher(ctx.room)
     tasks = BackgroundTasks()
@@ -92,7 +102,13 @@ async def run_single_npc(ctx: JobContext, scenario: Scenario, ai_client: Any) ->
         if scenario.auditor is None:
             return scripted_result(scenario, trigger)
         return await run_auditor(
-            ai_client, models.auditor, scenario, _transcript(session), trigger
+            ai_client,
+            models.auditor,
+            scenario,
+            _transcript(session),
+            trigger,
+            history=history,
+            fallback_model=models.auditor_fallback,
         )
 
     async def _stop_speaking() -> None:

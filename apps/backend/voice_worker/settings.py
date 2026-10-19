@@ -49,6 +49,7 @@ class Models:
     observer: str  # Lapisan 2
     mentor: str  # Petunjuk
     auditor: str  # Lapisan 3
+    auditor_fallback: str | None  # cadangan Lapisan 3 bila model utama sibuk/gagal; None = tanpa
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,11 @@ def models() -> Models:
         observer=os.environ.get("GEMINI_OBSERVER_MODEL", "gemini-3.5-flash-lite"),
         mentor=os.environ.get("GEMINI_MENTOR_MODEL", "gemini-3.5-flash-lite"),
         auditor=os.environ.get("GEMINI_AUDITOR_MODEL", "gemini-3.5-flash"),
+        # Kosongkan env untuk mematikan cadangan.
+        auditor_fallback=(
+            os.environ.get("GEMINI_AUDITOR_FALLBACK_MODEL", "gemini-3.5-flash-lite").strip()
+            or None
+        ),
     )
 
 
