@@ -151,10 +151,33 @@ Telinga dipisah dari mulut, supaya NPC yang salah tak pernah menjawab duluan:
   `rat/connection.py` (dua track mic dari satu participant tidak dirender klien).
 - **Discussion** (`rat/discussion.py`): transkrip bersama, mirror ucapan ke `chat_ctx`
   NPC lain (`[Nama berbicara] …`, role user), rantai giliran, fase, giliran terjadwal.
-- **Direktur** (`rat/director.py`): LLM kecil memilih pembicara berikutnya; guard keras
-  di kode. Nama NPC disebut tepat satu → dipilih deterministik tanpa direktur.
+- **Direktur** (`rat/director.py`): LLM kecil memilih pembicara berikutnya di SETIAP batas
+  giliran — termasuk giliran pemain yang menyebut nama (tak ada pintasan nama di kode, ikut
+  kode latihan; direktur memilih NPC yang *diajak bicara*, bukan yang sekadar dibicarakan).
+  Setelah giliran NPC, direktur WAJIB memberi alasan (`<nama> <alasan>`), ditimbang kode
+  (`director.allow_followup`): `dipanggil` (pimpinan memanggil & NPC belum menyahut — dicek
+  dari transkrip) selalu boleh; `diserang` ≤ `RAT_MAX_NPC_REBUTTALS` (default 1) per giliran
+  pemain; `penting` hanya penyambung pertama; tanpa alasan = `penting`. Default `tunggu_user`.
+  `RAT_MAX_NPC_EXCHANGES` (default 4) tetap batas keras.
+  Guard keras di kode.
+- **Satu suara pada satu waktu**: `Floor` dilepas saat Gemini selesai MENGHASILKAN audio
+  (playout di room masih berjalan) → bukan penjamin. Penjaminnya `Discussion._handles`
+  (`handle.done()` = playout selesai): `_wait_voices_idle()` menghentikan & menunggu suara
+  lain sebelum tiap `generate_reply`, dan SETIAP giliran pemain (suara maupun teks)
+  memanggil `on_user_started()` → batalkan rantai + `interrupt(force=True)`.
+- **Diagnosis giliran**: `NpcAgent.spoken_audio_s` (detik audio kumulatif) → log
+  `giliran <key> selesai (… dtk, audio … dtk)`; audio 0 → WARNING `TANPA suara`.
+- **Gemini Live kadang menjawab TANPA audio** (terbukti `LK_GOOGLE_DEBUG=1`): tak ada
+  `inline_data`, `output_transcription` datang satu kalimat utuh, `usage_metadata` tanpa
+  response token. Bukan bug pipeline kita — server tak menghasilkan audio. Penanganan:
+  `on_npc_said` MENAHAN ucapan senyap (tak dicatat, tak di-mirror — dulu Sri menanggapi
+  ucapan Darma yang tak terdengar), lalu `_run_chain` mengucapkannya ulang SEKALI via
+  `REVOICE_INSTRUCTIONS` ("Ucapkan PERSIS …"); senyap lagi → dibuang, giliran ke pemain.
 - **Watak persona terkunci** (prompt): Darma selalu bela kepentingannya, Sri selalu bela
-  anggota kecil + prosedur. `domain` & `director_hint` di `scenarios.py` dibaca direktur.
+  anggota kecil + prosedur. Hanya `domain` di `scenarios.py` yang dibaca direktur —
+  tanpa petunjuk per fase (pola kode latihan; petunjuk "Ibu Sri paling relevan" dulu
+  membuat Sri mendominasi). Giliran terjadwal (sapaan, interupsi Fase 2) berdiri sendiri:
+  direktur tak dipanggil sesudahnya.
 - **Fase**: RPC `advance_phase` → `Discussion.advance_phase()` (lock, idempoten; hentikan
   suara & tunggu lantai kosong dulu) → `update_instructions` kedua NPC + attribute `phase`.
   Fase 2 = giliran terjadwal Pak Darma (`entry_line`).

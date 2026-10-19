@@ -79,6 +79,8 @@ async def run_rat(ctx: JobContext, scenario: Scenario, ai_client: Any) -> None:
         director_model=models.director,
         director_timeout=tuning.director_timeout,
         settle_delay=tuning.transcript_settle_delay,
+        max_npc_exchanges=tuning.max_npc_exchanges,
+        max_npc_rebuttals=tuning.max_npc_rebuttals,
     )
 
     extra_rooms: list[rtc.Room] = []

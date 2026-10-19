@@ -67,10 +67,6 @@ class RatPhase:
     advance_action_label: str | None  # label tombol → fase berikutnya; None di fase akhir
     default_persona: str  # pemimpin fase: fallback direktur bila ragu (key)
     entry_line: tuple[str, str] | None = None  # (persona_key, teks) auto saat masuk fase
-    # Batas NPC saling menyambung sebelum giliran wajib balik ke pemain (D6).
-    max_npc_exchanges: int = 3
-    # Petunjuk tambahan untuk DIREKTUR di fase ini (draf — review pemilik).
-    director_hint: str = ""
 
 
 @dataclass(frozen=True)
@@ -376,11 +372,6 @@ RAPAT_ANGGOTA_TAHUNAN = Scenario(
                 label="Buka Rapat",
                 advance_action_label="Baca LPJ",
                 default_persona="sri",
-                max_npc_exchanges=2,
-                director_hint=(
-                    "Tahap pembukaan: fokus kuorum dan membuka rapat. Ibu Sri paling "
-                    "relevan; Pak Darma cukup sesekali tak sabar."
-                ),
             ),
             RatPhase(
                 id=2,
@@ -393,22 +384,12 @@ RAPAT_ANGGOTA_TAHUNAN = Scenario(
                     "koperasi ini dari saya, jadi arah kebijakan harus ikut saya. "
                     "Jangan buang waktu dengan keluhan pedagang kecil!"),
                 ),
-                max_npc_exchanges=3,
-                director_hint=(
-                    "Tahap LPJ: konflik memanas. Bila salah satu NPC baru saja menyerang "
-                    "posisi yang lain secara langsung, NPC yang diserang boleh menyanggah."
-                ),
             ),
             RatPhase(
                 id=3,
                 label="Ambil Keputusan",
                 advance_action_label=None,
                 default_persona="sri",
-                max_npc_exchanges=2,
-                director_hint=(
-                    "Tahap keputusan: utamakan menjawab pimpinan; jangan biarkan kedua "
-                    "NPC berdebat sendiri tanpa arah — kembalikan giliran ke pimpinan."
-                ),
             ),
         ),
     ),
