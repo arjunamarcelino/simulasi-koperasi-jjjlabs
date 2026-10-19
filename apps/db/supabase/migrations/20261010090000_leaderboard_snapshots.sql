@@ -2,7 +2,7 @@
 -- feature introduces TWO tables that store FROZEN, point-in-time standings, plus the first
 -- DESTRUCTIVE (write/delete) functions in the `admin` schema.
 --
--- Design (see docs/plans/2026-10-09-feat-seasonal-xp-leaderboard-snapshot-plan.md):
+-- Design:
 -- - Ranking is by cumulative public.user_progress.xp (server-credited; NEVER the client-authored
 --   sessions.scores_json). An admin manually "captures" the current standings into a new season.
 -- - Admin dashboard reads admin.leaderboard_overview() (list + selected season) via metrics_reader.

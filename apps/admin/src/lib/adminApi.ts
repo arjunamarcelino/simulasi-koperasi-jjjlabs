@@ -784,6 +784,97 @@ export async function deleteQuizQuestion(
   }
 }
 
+// --- SIM-42 mission unlock codes ---------------------------------------------
+// Admin rotation of reallife mission redeem_codes. Rotate-only: a list + a single
+// POST /admin/missions/{code}. No CAS → the rotate union has NO conflict/stale_write member
+// (an unexpected 409 degrades to serviceUnavailable). ONE MissionRow shape for list + rotate.
+
+/** A full admin mission row — INCLUDES the redeem_code the game's mission_catalog hides. */
+export type MissionRow = {
+  code: string;
+  title: string | null;
+  redeem_code: string;
+  redeem_code_updated_at: string | null; // ISO8601 or null = never rotated
+  redeem_code_updated_by: string | null; // admin uuid or null
+};
+
+export type MissionListOutcome =
+  | { kind: "ok"; data: MissionRow[] }
+  | { kind: "notAuthorized" } // 403
+  | { kind: "unauthenticated" } // 401 after one refresh
+  | { kind: "serviceUnavailable" }; // 503/500/network/timeout/malformed-200/null-client
+
+export type MissionRotateOutcome =
+  | { kind: "ok"; data: MissionRow }
+  | { kind: "rejected"; reason: string } // 422 — server-side validation (defense-in-depth)
+  | { kind: "notFound" } // 404 — no such reallife mission
+  | { kind: "notAuthorized" } // 403
+  | { kind: "unauthenticated" } // 401 after one refresh
+  | { kind: "serviceUnavailable" }; // includes an unexpected 409 (there is no CAS here)
+
+/** Deep, CLOSED guard for an admin mission row — a malformed 200 is a fault, never rendered. */
+function isMissionRow(x: unknown): x is MissionRow {
+  const o = rec(x);
+  return (
+    o !== null &&
+    typeof o["code"] === "string" &&
+    isStrOrNull(o["title"]) &&
+    typeof o["redeem_code"] === "string" &&
+    isStrOrNull(o["redeem_code_updated_at"]) &&
+    isStrOrNull(o["redeem_code_updated_by"])
+  );
+}
+
+/** Fetch `GET /admin/missions` (SIM-42). Reallife rows WITH the hidden redeem_code + audit. */
+export async function listMissions(signal?: AbortSignal): Promise<MissionListOutcome> {
+  const r = await authedRequest("/admin/missions", {}, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const b: unknown = await r.res.json().catch(() => null);
+      const o = rec(b);
+      if (o === null || o["ok"] !== true || !Array.isArray(o["rows"]) || !o["rows"].every(isMissionRow)) {
+        return { kind: "serviceUnavailable" }; // malformed 200 → fault
+      }
+      return { kind: "ok", data: o["rows"] as MissionRow[] };
+    }
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
+/** Rotate a reallife mission's code via `POST /admin/missions/{code}` (SIM-42). Last-write-wins;
+ * a 503 is ambiguous (may have committed) → the store refetches. */
+export async function rotateMissionCode(
+  code: string,
+  redeemCode: string,
+  signal?: AbortSignal,
+): Promise<MissionRotateOutcome> {
+  const body = JSON.stringify({ redeem_code: redeemCode });
+  const r = await authedRequest(`/admin/missions/${encodeURIComponent(code)}`, { method: "POST", body }, signal);
+  if (r.kind !== "response") return r.kind === "authUnavailable" ? { kind: "serviceUnavailable" } : r;
+  switch (r.res.status) {
+    case 200: {
+      const b: unknown = await r.res.json().catch(() => null);
+      return isMissionRow(b) ? { kind: "ok", data: b } : { kind: "serviceUnavailable" };
+    }
+    case 422:
+      return { kind: "rejected", reason: await errorReason(r.res) };
+    case 404:
+      return { kind: "notFound" };
+    case 403:
+      return { kind: "notAuthorized" };
+    case 401:
+      return { kind: "unauthenticated" };
+    default:
+      return { kind: "serviceUnavailable" };
+  }
+}
+
 // --- SIM-18 mading content management ---------------------------------------
 // Admin CRUD over the 4 mading boards. The admin layer treats `payload` loosely (a record) — the
 // panel builds/interprets the board-specific shape and the SERVER is the authoritative validator

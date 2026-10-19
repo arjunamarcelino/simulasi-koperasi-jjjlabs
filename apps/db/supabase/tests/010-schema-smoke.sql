@@ -19,7 +19,7 @@ select tests.rls_enabled('public', 'user_badge');
 select is((select count(*) from public.scenario_definition), 4::bigint, 'seed: 4 scenarios');
 select is((select count(*) from public.mission_definition), 7::bigint, 'seed: 7 missions');
 select is((select count(*) from public.voucher_definition), 5::bigint, 'seed: 5 vouchers');
-select is((select count(*) from public.badge_definition), 9::bigint, 'seed: 9 badges');
+select is((select count(*) from public.badge_definition), 10::bigint, 'seed: 10 badges');
 
 -- Derived level boundaries (5).
 select is(public.level_from_xp(-5), 1, 'level_from_xp(-5) clamps to 1');

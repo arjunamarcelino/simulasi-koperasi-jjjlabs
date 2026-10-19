@@ -62,7 +62,7 @@ async def evaluate_turn(
         )
         judgment = json.loads(content).get("judgment", "neutral")
         return judgment if judgment in _ALLOWED else "neutral"
-    except Exception:  # noqa: BLE001 — observer tak boleh menjatuhkan sesi
+    except Exception:  # fail-soft: observer tak boleh menjatuhkan sesi
         logger.exception("Observer gagal menilai giliran; anggap netral.")
         return "neutral"
 

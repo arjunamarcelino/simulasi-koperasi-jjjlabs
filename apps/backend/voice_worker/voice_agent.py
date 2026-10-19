@@ -38,6 +38,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     # Satu klien genai per sesi untuk observer / auditor / mentor / direktur.
     ai_client = make_genai_client()
+    ctx.add_shutdown_callback(ai_client.aio.aclose)  # tutup pool httpx klien per sesi (worker long-lived)
     if scenario.rat is not None:
         await run_rat(ctx, scenario, ai_client)
     else:

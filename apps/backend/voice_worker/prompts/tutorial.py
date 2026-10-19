@@ -1,6 +1,6 @@
 """System prompt — Skenario 1 (Tutorial), NPC Ibu Rumah Tangga.
 
-Di-grounding ke dokumen skenario (`apps/scenarios.md` §Skenario 1) & PRD §7.1.
+Di-grounding ke dokumen skenario (`docs/scenarios.md` §Skenario 1) & PRD §7.1.
 Skenario linear tanpa drift/auditor — nada berevolusi murni lewat prompt
 (PRD §6 Lapisan 1), tanpa state-tracking eksplisit. Ibu adalah pihak yang
 DIEDUKASI (bertanya), bukan yang menjelaskan; porsi edukasi ada di tangan pemain.

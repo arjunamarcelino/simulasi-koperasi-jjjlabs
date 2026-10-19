@@ -9,7 +9,7 @@ import {
   type RedeemedVoucher,
 } from "../content/vouchers";
 import { MISSIONS, isStringArray, type MissionReward } from "../content/missions";
-import { BADGES, isEarned, buildBadgeContext } from "../content/badges";
+import { BADGES, isEarned, buildBadgeContext, readContentIdsFromEarned } from "../content/badges";
 import { SCENARIOS } from "../scenarios/scenario.config";
 import { supabase } from "../lib/supabase";
 import { progressRepo } from "../lib/progressRepo";
@@ -157,6 +157,11 @@ export type GameState = {
    * hydrateAndMigrate sequences the load/reconcile/badge steps internally; nothing
    * gates on this today (tests assert it; a future UI could show a loading state). */
   hydrated: boolean;
+  /** Micro-learning content ids that count as read: reads made THIS session (via
+   * markKnowledgeRead) plus those folded in at hydrate from already-earned reading
+   * badges (user_badge is the durable record — see applyMyProgress). Owner-scoped:
+   * reset on onOwnerChanged so no previous account's reads leak. Powers `contentRead`. */
+  readContentIds: string[];
 
   setView: (view: View) => void;
   /**
@@ -240,6 +245,13 @@ export type GameState = {
    * session finalizes (the profile modal may never open) and internally on hydrate.
    */
   syncSessionBadges: () => Promise<void>;
+  /**
+   * Record that a micro-learning content board was fully read this session and persist
+   * any newly-earned reading badge. Idempotent (no-op if already recorded). Fire-and-
+   * forget persist via the existing guarded wallet-path sync. Called by the knowledge
+   * board once every card has been viewed.
+   */
+  markKnowledgeRead: (contentId: string) => void;
 };
 
 /** How long (ms) the scene ignores E after an overlay closes — see interactSuppressedUntil. */
@@ -283,6 +295,7 @@ export const gameStore = createStore<GameState>()(
     completedMissionIds: [],
     walletUid: null,
     hydrated: false,
+    readContentIds: [],
 
     // Reset transient hub state on any view change so re-entering the hub is clean.
     setView: (view) =>
@@ -299,6 +312,8 @@ export const gameStore = createStore<GameState>()(
         redeemedVouchers: [],
         completedMissionIds: [],
         hydrated: false,
+        // Owner-scoped: never let the previous account's reads leak.
+        readContentIds: [],
       });
 
       if (!supabase || !uid) {
@@ -527,6 +542,13 @@ export const gameStore = createStore<GameState>()(
     },
 
     syncSessionBadges: () => syncBadgesFromSessions(),
+
+    markKnowledgeRead: (contentId) => {
+      if (get().readContentIds.includes(contentId)) return; // idempotent
+      set({ readContentIds: [...get().readContentIds, contentId] });
+      // Persist any newly-earned reading badge via the existing guarded wallet path.
+      void syncBadgesFromState();
+    },
   })),
 );
 
@@ -662,6 +684,9 @@ async function persistEarnedCore(good: readonly string[], guard: WriteGuard): Pr
     completedMissionIds: st.completedMissionIds,
     voucherCount: st.redeemedVouchers.length,
     goodEndingScenarioIds: good,
+    // readContentIds already carries both this session's reads and the ids folded in
+    // from earned badges at hydrate — so this satisfies both fresh and prior reads.
+    readContentIds: st.readContentIds,
   });
   const fresh = BADGES.filter((b) => isEarned(b.criteria, ctx) && !syncedBadges.has(b.id)).map(
     (b) => b.id,
@@ -700,6 +725,7 @@ async function hydrateAndMigrate(uid: string, guard: WriteGuard): Promise<void> 
     point: number;
     missions: string[];
     vouchers: RedeemedVoucher[];
+    badges: string[];
   }): void => {
     const wallet: Wallet = {
       xp: data.xp,
@@ -707,7 +733,16 @@ async function hydrateAndMigrate(uid: string, guard: WriteGuard): Promise<void> 
       completedMissionIds: data.missions,
       redeemedVouchers: data.vouchers,
     };
-    gameStore.setState(wallet);
+    // Fold already-earned reading badges onto the read side (user_badge is otherwise
+    // write-only on the client) so a reading badge survives reload / cross-device.
+    // Deduped union: applyMyProgress can run twice (hydrate + post-reconcile).
+    const readContentIds = [
+      ...new Set([
+        ...gameStore.getState().readContentIds,
+        ...readContentIdsFromEarned(data.badges),
+      ]),
+    ];
+    gameStore.setState({ ...wallet, readContentIds });
     saveWallet(uid, wallet);
   };
 

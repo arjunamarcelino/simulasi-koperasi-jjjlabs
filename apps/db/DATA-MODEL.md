@@ -2,9 +2,8 @@
 
 Bridge documentation for the project's first database. Two diagrams: **AS-IS** (what
 `localStorage` holds today) and **TARGET** (the Supabase/Postgres schema in this
-`@simkop/db` package), plus a gap/mapping table. Rationale and decisions live in the
-local plan (`docs/plans/2026-09-19-feat-supabase-data-model-schema-plan.md`, kept out of
-git per repo convention); this file is the tracked reference.
+`@simkop/db` package), plus a gap/mapping table. This file is the tracked reference for
+the schema's rationale and decisions.
 
 - **Engine:** Supabase Postgres. **Write path:** `apps/web` direct via `supabase-js`,
   guarded by RLS. The voice backend (`apps/backend`) stays database-free.
@@ -100,6 +99,8 @@ erDiagram
     int reward_xp
     int reward_point
     text redeem_code "soft KDMP gate code; reallife only; REVOKEd from clients"
+    timestamptz redeem_code_updated_at "SIM-42 audit; nullable (NULL=never rotated)"
+    uuid redeem_code_updated_by "SIM-42 audit actor; nullable; no FK (tombstone)"
   }
   MISSION_COMPLETION {
     bigint id PK
@@ -276,6 +277,29 @@ partial index `sessions_ended_started_idx on public.sessions(started_at) where e
 serves the date-range scan (inserts don't touch it — rows enter only on the finalize UPDATE). The
 CSV assembly (RFC-4180, UTF-8 BOM, formula-injection sanitization) lives in the backend, not the DB.
 `metrics_reader` gains this read-only EXECUTE; no new role, no write, no blast-radius change.
+
+### Admin-managed mission unlock codes (SIM-42)
+Runtime rotation of reallife `redeem_code`s — no redeploy/SQL. Reuses the SIM-18 shape:
+two `admin.*` fns, owner `postgres`, EXECUTE only to `metrics_reader`, backend enforces
+`require_role('admin')`. `admin.list_missions()` lists `kind='reallife'` rows **with** the
+hidden `redeem_code` + audit (clients still read `mission_catalog`, which omits it);
+`admin.set_mission_redeem_code(p_code, p_redeem_code, p_actor)` rotates the code on an
+existing reallife mission in one atomic UPDATE, returning the full row or a structured
+`{ok,reason}` (`not_found` / `empty_redeem_code` / `too_long` — never a raised CHECK → 503).
+- **Last-write-wins (no CAS):** deliberate — tiny admin set, rare rotations. No
+  `prev_updated_at`/`stale_write`.
+- **Audit columns** `redeem_code_updated_at` + `redeem_code_updated_by` are nullable with
+  **no default** (NULL = "never rotated via admin since seed"). `redeem_code_updated_by`
+  has **no FK** — it is an audit tombstone (actor integrity is enforced server-side via the
+  JWT-verified admin id). It therefore persists after an admin account is deleted and
+  right-to-erasure will not cascade to it — a conscious retention decision for the
+  admin-action trail.
+- **Rotate-only:** no create/delete of missions; `code` is the immutable key.
+- **Seed durability:** the generated `seed.sql` mission `on conflict do update` **omits**
+  `redeem_code`, so a re-seed is insert-only for codes and never clobbers a rotation (codes
+  stay in the INSERT so a fresh reallife mission still seeds its code). `claim_mission`
+  remains the runtime fail-closed validator; a rotated code takes effect on the next claim.
+- `metrics_reader` widened again to EXECUTE these two fns (no direct table privilege).
 
 > **On the reallife codes:** `redeem_code` is a *soft* gate — printed at the KDMP and typed
 > by the player. It is **not** a cryptographic secret. As of SIM-9 the codes live server-side

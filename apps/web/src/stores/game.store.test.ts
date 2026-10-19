@@ -507,3 +507,60 @@ describe("game.store — session good-ending badges", () => {
     expect(repo.syncBadges).not.toHaveBeenCalled();
   });
 });
+
+describe("game.store — reading badge (markKnowledgeRead)", () => {
+  it("awards the reading badge by syncing it to user_badge", async () => {
+    const { gameStore, repo } = await loadStore({ online: true });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    repo.syncBadges.mockClear();
+
+    gameStore.getState().markKnowledgeRead("knowledge");
+
+    expect(gameStore.getState().readContentIds).toContain("knowledge");
+    await vi.waitFor(() => expect(repo.syncBadges).toHaveBeenCalledWith(["pembaca-mading"]));
+  });
+
+  it("is idempotent — a second read fires no extra sync RPC", async () => {
+    const { gameStore, repo } = await loadStore({ online: true });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    repo.syncBadges.mockClear();
+
+    gameStore.getState().markKnowledgeRead("knowledge");
+    await vi.waitFor(() => expect(repo.syncBadges).toHaveBeenCalledTimes(1));
+    gameStore.getState().markKnowledgeRead("knowledge");
+
+    expect(gameStore.getState().readContentIds).toEqual(["knowledge"]);
+    expect(repo.syncBadges).toHaveBeenCalledTimes(1);
+  });
+
+  it("folds earned reading badges into the read set at hydrate (survives reload)", async () => {
+    const { gameStore } = await loadStore({
+      online: true,
+      repo: {
+        getMyProgress: vi
+          .fn()
+          .mockResolvedValue(ok({ xp: 0, point: 0, missions: [], vouchers: [], badges: ["pembaca-mading"] })),
+      },
+    });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+
+    // The earned reading badge's contentId is folded into readContentIds, so the Profile
+    // read-side evaluates it earned again after reload — no durable earnedBadgeIds field.
+    expect(gameStore.getState().readContentIds).toContain("knowledge");
+  });
+
+  it("resets reads on owner change (no cross-account leak)", async () => {
+    const { gameStore } = await loadStore({ online: true });
+    gameStore.getState().onOwnerChanged("user-A");
+    await vi.waitFor(() => expect(gameStore.getState().hydrated).toBe(true));
+    gameStore.getState().markKnowledgeRead("knowledge");
+    expect(gameStore.getState().readContentIds).toContain("knowledge");
+
+    gameStore.getState().onOwnerChanged("user-B");
+
+    expect(gameStore.getState().readContentIds).toEqual([]);
+  });
+});

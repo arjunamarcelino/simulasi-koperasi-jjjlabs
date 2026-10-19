@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isEarned, type BadgeContext } from "./badges";
+import { BADGES, isEarned, readContentIdsFromEarned, type BadgeContext } from "./badges";
 import type { BadgeCriteria } from "@simkop/catalog";
 
 const ctx = (o: Partial<BadgeContext> = {}): BadgeContext => ({
@@ -9,6 +9,7 @@ const ctx = (o: Partial<BadgeContext> = {}): BadgeContext => ({
   completedMissionIds: [],
   voucherCount: 0,
   goodEndingScenarioIds: [],
+  readContentIds: [],
   ...o,
 });
 
@@ -35,6 +36,46 @@ describe("isEarned — scenarioGoodEnding", () => {
   it("requires an exact id match (case / whitespace sensitive)", () => {
     expect(isEarned(rat, ctx({ goodEndingScenarioIds: ["Rapat-Anggota-Tahunan"] }))).toBe(false);
     expect(isEarned(rat, ctx({ goodEndingScenarioIds: [" rapat-anggota-tahunan"] }))).toBe(false);
+  });
+});
+
+describe("isEarned — contentRead", () => {
+  const knowledge: BadgeCriteria = { kind: "contentRead", contentId: "knowledge" };
+
+  it("earns when the content id has been read", () => {
+    expect(isEarned(knowledge, ctx({ readContentIds: ["knowledge"] }))).toBe(true);
+  });
+
+  it("does not earn when the content id is absent", () => {
+    expect(isEarned(knowledge, ctx({ readContentIds: ["data"] }))).toBe(false);
+  });
+
+  it("does not earn with an empty read set", () => {
+    expect(isEarned(knowledge, ctx())).toBe(false);
+  });
+
+  it("requires an exact content-id match", () => {
+    expect(isEarned(knowledge, ctx({ readContentIds: ["Knowledge"] }))).toBe(false);
+  });
+});
+
+describe("readContentIdsFromEarned", () => {
+  // The catalog ships exactly one contentRead badge today (pembaca-mading / "knowledge").
+  const readingBadge = BADGES.find((b) => b.criteria?.kind === "contentRead");
+
+  it("maps an earned contentRead badge id to its contentId", () => {
+    expect(readingBadge).toBeDefined();
+    const contentId =
+      readingBadge!.criteria?.kind === "contentRead" ? readingBadge!.criteria.contentId : "";
+    expect(readContentIdsFromEarned([readingBadge!.id])).toEqual([contentId]);
+  });
+
+  it("ignores earned ids that are not contentRead badges", () => {
+    expect(readContentIdsFromEarned(["anggota-aktif", "juara-rat"])).toEqual([]);
+  });
+
+  it("returns an empty list for no earned badges", () => {
+    expect(readContentIdsFromEarned([])).toEqual([]);
   });
 });
 

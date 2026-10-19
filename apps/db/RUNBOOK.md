@@ -7,7 +7,7 @@ already exists; **this runbook is the manual/ops half** (dashboard + secrets) pl
 > **Ignition rule:** the repo variable **`SUPABASE_ENABLED=true` is set LAST**, only after the
 > project exists and every secret/var below is saved. Until then the CI workflows are dormant.
 
-Design + rationale: `docs/plans/2026-09-20-chore-provision-supabase-env-plan.md`. Schema: [`DATA-MODEL.md`](./DATA-MODEL.md).
+Schema: [`DATA-MODEL.md`](./DATA-MODEL.md).
 
 ---
 
@@ -78,7 +78,7 @@ you want the pause risk gone entirely.
 - [ ] Job **ran** (not skipped — a skip means `SUPABASE_ENABLED` isn't set).
 - [ ] `supabase db push` reported migrations applied (**not** "no changes" on a fresh project).
 - [ ] Seed step exit 0.
-- [ ] **Smoke checks green** (`supabase/smoke/run.sh`: 10-table set, seed counts 4/7/5/9, `mission_definition` denied, `add_rewards` denied, JWKS ES256).
+- [ ] **Smoke checks green** (`supabase/smoke/run.sh`: 10-table set, seed counts 4/7/5/10, `mission_definition` denied, `add_rewards` denied, JWKS ES256).
 
 **Manual auth-flow verification** (can't run in CI once Turnstile is on — do from the app/SDK, or temporarily disable CAPTCHA to test):
 - [ ] Anonymous sign-in returns a JWT with `is_anonymous: true`.
@@ -119,6 +119,17 @@ since SIM-19, the read-only `admin.session_results_export()` CSV export).
 > this credential can now create/delete leaderboard seasons (still via definer fns only; NO direct table
 > privileges). Treat `METRICS_DB_URL` as a higher-value secret accordingly. The password/DSN setup below
 > is unchanged; the real-role `scripts/e2e-metrics.sh` now also exercises capture → overview → delete.
+>
+> **SIM-18/19/42 note:** `metrics_reader` also `EXECUTE`s the admin content writes — quiz/mading upsert+delete
+> (SIM-18) and, since **SIM-42**, `admin.set_mission_redeem_code` (rotate a reallife mission's unlock code) +
+> `admin.list_missions` (read the hidden codes). Same posture: definer fns only, NO direct table privilege.
+> **INVARIANT:** the `admin` schema must NEVER be added to PostgREST's exposed schemas — these fns are
+> reachable only through the backend as `metrics_reader`, never via the public REST API.
+>
+> **SIM-42 seed interaction:** reallife codes are seeded once from `seed-codes.json`, but the generated
+> `seed.sql` mission `on conflict do update` **omits** `redeem_code`, so codes are **rotate-only after
+> init** — a re-seed will NOT repair or overwrite a code. To change a code on an already-seeded DB, use the
+> admin rotate path (not an edit to `seed-codes.json` + re-seed, which is inert for existing rows).
 
 - **Local dev / branch previews:** after `supabase start` (or a branch reset), set a throwaway password so
   the backend can connect:

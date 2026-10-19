@@ -29,7 +29,6 @@ on conflict (code) do update set
   description = excluded.description,
   reward_xp = excluded.reward_xp,
   reward_point = excluded.reward_point,
-  redeem_code = excluded.redeem_code,
   sort_order = excluded.sort_order;
 
 -- Vouchers (5)
@@ -45,7 +44,7 @@ on conflict (code) do update set
   description = excluded.description,
   sort_order = excluded.sort_order;
 
--- Badges (9) — criteria mirrors BadgeCriteria; null = teaser (locked until its signal exists)
+-- Badges (10) — criteria mirrors BadgeCriteria; null = teaser (locked until its signal exists)
 insert into public.badge_definition (code, title, requirement, icon, criteria, sort_order) values
   ('anggota-aktif', 'Anggota Aktif', 'Capai Level 3', 'medal', '{"kind":"level","min":3}'::jsonb, 1),
   ('rajin-kuis', 'Rajin Kuis', 'Selesaikan kuis', 'book', '{"kind":"missionDone","missionId":"main-kuis"}'::jsonb, 2),
@@ -55,7 +54,8 @@ insert into public.badge_definition (code, title, requirement, icon, criteria, s
   ('misi-perdana', 'Misi Perdana', 'Selesaikan 1 misi', 'flag', '{"kind":"missionCount","min":1}'::jsonb, 6),
   ('juara-rat', 'Juara RAT', 'Raih hasil baik di RAT', 'trophy', '{"kind":"scenarioGoodEnding","scenarioId":"rapat-anggota-tahunan"}'::jsonb, 7),
   ('simpanan-rutin', 'Simpanan Rutin', 'Selesaikan tutorial simpanan', 'piggy', '{"kind":"scenarioGoodEnding","scenarioId":"tutorial-koperasi-konsumen"}'::jsonb, 8),
-  ('pinjaman-lancar', 'Pinjaman Lancar', 'Tangani kredit macet dengan baik', 'check', '{"kind":"scenarioGoodEnding","scenarioId":"kredit-macet"}'::jsonb, 9)
+  ('pinjaman-lancar', 'Pinjaman Lancar', 'Tangani kredit macet dengan baik', 'check', '{"kind":"scenarioGoodEnding","scenarioId":"kredit-macet"}'::jsonb, 9),
+  ('pembaca-mading', 'Kutu Buku Koperasi', 'Baca semua kartu Pengetahuan Koperasi', 'book', '{"kind":"contentRead","contentId":"knowledge"}'::jsonb, 10)
 on conflict (code) do update set
   title = excluded.title,
   requirement = excluded.requirement,

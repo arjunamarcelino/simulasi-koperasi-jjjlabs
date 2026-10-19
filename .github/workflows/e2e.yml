@@ -19,6 +19,17 @@ on:
       - "pnpm-lock.yaml"
       - ".github/workflows/e2e.yml"
 
+# Advisory (not a required check): still cancel superseded runs on the same PR to
+# save the slow Supabase/Docker setup.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: checkout + local Supabase + Playwright; artifact upload needs no
+# GITHUB_TOKEN scope (it uses the Actions runtime token), so contents:read suffices.
+permissions:
+  contents: read
+
 jobs:
   e2e:
     runs-on: ubuntu-latest

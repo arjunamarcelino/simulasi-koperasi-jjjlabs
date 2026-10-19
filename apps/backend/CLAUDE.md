@@ -2,7 +2,7 @@
 
 Panduan untuk AI agent yang memodifikasi backend. Baca ini dulu sebelum mengubah
 kode. Untuk kontrak wire FE↔BE, lihat `CONTRACT.md`. Untuk desain produk, lihat
-`../backent-prd.md` (PRD).
+`../../docs/backend-prd.md` (PRD).
 
 ## Apa ini
 
@@ -27,7 +27,10 @@ delete_leaderboard_season`), dan **manajemen konten SIM-18** — kuis (`GET /adm
 (`GET /admin/mading`, `POST /admin/mading` create, `POST /admin/mading/{id}` edit,
 `DELETE /admin/mading/{id}`) lewat definer fn `admin.list_quiz/upsert_quiz_question/…` &
 `admin.list_mading/upsert_mading_block/…`, dan **ekspor laporan SIM-19** — `GET /admin/reports/sessions.csv`
-(→ `admin.session_results_export()`; respons `text/csv` non-JSON pertama, baris sesi selesai tanpa PII)
+(→ `admin.session_results_export()`; respons `text/csv` non-JSON pertama, baris sesi selesai tanpa PII),
+dan **kode misi SIM-42** — rotasi kode unlock reallife (`GET /admin/missions` → `admin.list_missions()`;
+`POST /admin/missions/{code}` → `admin.set_mission_redeem_code()`; rotate-only, last-write-wins, actor =
+`admin.user_id` diteruskan sebagai `$3::uuid`, nilai `redeem_code` TAK PERNAH di-log)
 — semuanya membuka pool asyncpg **fail-soft** yang SAMA ke
 Supabase sebagai role `metrics_reader` (`api/metrics_db.py`). **SIM-17/18 melebarkan `metrics_reader`
 dari read-only ke baca + TULIS admin-gated** (capture/delete + quiz/mading upsert/delete lewat definer
@@ -54,7 +57,7 @@ uv run pytest
 Catatan: tes preflight CORS gagal bila `.env` lokal men-set `CORS_ALLOW_ORIGIN` (dibaca saat
 impor). Jalankan `CORS_ALLOW_ORIGIN= uv run pytest` untuk suite bersih.
 
-Verifikasi live: jalankan `apps/web-sementara` dengan `VITE_TRANSPORT=livekit` +
+Verifikasi live: jalankan `apps/web` dengan `VITE_TRANSPORT=livekit` +
 `VITE_TOKEN_ENDPOINT=http://localhost:8000`, pilih skenario, bicara/ketik.
 Log worker (`koperasi.*`) mencetak observer, fase, keputusan direktur (`direktur -> '<raw>'
 (dipakai: …)`), dan giliran (`giliran -> <key>`) — pakai untuk debug.
@@ -72,7 +75,8 @@ voice_worker/                 (impor top-level, TANPA prefiks `voice_worker.` �
   settings.py                 SATU-SATUNYA pembaca env Google + nama model + tuning RAT
   scenarios.py                REGISTRY: semua skenario + spec drift/auditor/RAT/mentor
   schemas.py                  validasi gagal-aman output auditor
-  prompts/*.py                prompt persona (+ rat_meja.py: aturan "satu mulut" RAT)
+  prompts/*.py                prompt persona, di-grounding ke ../../docs/scenarios.md
+                              (+ rat_meja.py: aturan "satu mulut" RAT)
   gemini/                     client.py (genai.Client, RealtimeModel) · json_call.py
   evaluation/                 observer.py (L2) · auditor.py (L3) · mentor.py (Petunjuk)
   runtime/                    publisher (sinyal ke FE) · lifecycle (akhir sesi) · drift ·
@@ -84,7 +88,7 @@ voice_worker/                 (impor top-level, TANPA prefiks `voice_worker.` �
 
 Keempat skenario (Tutorial, Kredit Macet, Keanggotaan Fiktif, RAT) sudah
 terpasang penuh di `scenarios.py`. Prompt persona di-grounding ke dokumen
-skenario `apps/scenarios.md` (bukan lagi placeholder).
+skenario `docs/scenarios.md` (bukan lagi placeholder).
 
 ## Arsitektur: model state tiga lapis (PRD §6)
 
@@ -129,6 +133,10 @@ Menambah/mengubah skenario TIDAK perlu menyentuh `voice_agent.py`.
 **Menambah skenario single-NPC**: tulis prompt di `prompts/`, tambah `Scenario`
 dengan `drift`+`auditor`+`mentor_brief`, daftarkan di `_SCENARIOS`. Selesai —
 semua wiring (observer, auditor, Petunjuk, tiga jalur akhir) sudah generik.
+
+Itu untuk sisi backend. Untuk langkah **end-to-end lintas-stack** (katalog, seed DB,
+konfig FE + skrip mock, `VALID_SCENARIOS`, CONTRACT, dan hitungan parity yang perlu
+di-bump), lihat `../../docs/how-to-add-a-scenario.md`.
 
 ## RAT (dua NPC) — arsitektur "Telinga ≠ Mulut" (`rat/`)
 

@@ -103,6 +103,6 @@ async def generate_hint(
         )
         hint = (json.loads(content).get("hint") or "").strip()
         return hint or _FALLBACK
-    except Exception:  # noqa: BLE001 — Petunjuk tak boleh menjatuhkan sesi
+    except Exception:  # fail-soft: Petunjuk tak boleh menjatuhkan sesi
         logger.exception("Mentor gagal membuat petunjuk; kirim fallback.")
         return _FALLBACK

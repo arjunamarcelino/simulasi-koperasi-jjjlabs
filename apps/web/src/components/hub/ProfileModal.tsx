@@ -48,6 +48,9 @@ export function ProfileModal() {
   const point = useGameStore((s) => s.point);
   const voucherCount = useGameStore((s) => s.redeemedVouchers.length);
   const completedMissionIds = useGameStore((s) => s.completedMissionIds);
+  // Reading badges: content read this session plus ids folded in from earned badges at
+  // hydrate (that fold is how a reading badge survives reload — user_badge is the record).
+  const readContentIds = useGameStore((s) => s.readContentIds);
   // Name + auth state come from auth.store (profiles.display_name); the game.store
   // playerName is only a Phaser-facing mirror of the same value.
   const displayName = useAuth((s) => s.auth.profile?.display_name ?? null);
@@ -124,6 +127,7 @@ export function ProfileModal() {
     completedMissionIds,
     voucherCount,
     goodEndingScenarioIds: goodIds,
+    readContentIds,
   });
 
   return (
