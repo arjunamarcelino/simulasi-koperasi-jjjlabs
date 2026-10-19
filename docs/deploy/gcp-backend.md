@@ -14,6 +14,16 @@ Placeholder: `<PROJECT>`, `<REGION>`, `<REPO>`, `<domain>`, `<project-ref>`, dll
 - `gcloud` ter-auth (`gcloud auth login`, `gcloud config set project <PROJECT>`).
 - Image backend sudah di-build (lihat [`backend-containers.md`](./backend-containers.md)).
 - DNS `api.<domain>` disiapkan (lihat `production-config.md` §2).
+- API project aktif:
+  ```bash
+  gcloud services enable artifactregistry.googleapis.com run.googleapis.com compute.googleapis.com \
+    secretmanager.googleapis.com speech.googleapis.com
+  ```
+  `speech.googleapis.com` = Cloud STT (pendengar RAT) — tanpa ini sesi RAT gagal `SERVICE_DISABLED`.
+- **API key Gemini** dibuat di Google AI Studio pada project yang sama, dengan billing aktif
+  (paid tier — rate limit free tier tidak memadai untuk produksi).
+- Operator yang menjalankan deploy butuh `roles/iam.serviceAccountUser` pada `token-server-sa` &
+  `worker-sa` — syarat memasang SA ke Cloud Run/VM (tanpa ini `run deploy` / `instances create` ditolak).
 
 ## 2. Artifact Registry — push image
 
@@ -29,14 +39,16 @@ docker push $IMG/token-server:v1
 docker push $IMG/voice-worker:v1
 ```
 
+> **Tag = jalur rollback.** Rilis berikutnya pakai tag baru (`v2`, `v3`, …) — jangan timpa tag
+> lama. Rollback worker = arahkan unit systemd (§6) kembali ke tag sebelumnya + restart.
+
 ## 3. Secret Manager (kredensial rahasia)
 
-Simpan yang rahasia (LiveKit secret, Azure keys). Default **pin versi `:N`**.
+Simpan yang rahasia (LiveKit secret, API key Gemini, DSN DB admin). Default **pin versi `:N`**.
 
 ```bash
 printf '%s' '<livekit-api-secret>' | gcloud secrets create livekit-api-secret --data-file=-
-printf '%s' '<azure-openai-key>'   | gcloud secrets create azure-openai-key   --data-file=-
-printf '%s' '<azure-speech-key>'   | gcloud secrets create azure-speech-key   --data-file=-
+printf '%s' '<gemini-api-key>'     | gcloud secrets create gemini-api-key     --data-file=-
 # DSN pooler metrics_reader (berisi password) — dipakai token server utk /admin/*:
 printf '%s' '<metrics-db-url-dsn>' | gcloud secrets create metrics-db-url     --data-file=-
 
@@ -45,18 +57,23 @@ gcloud iam service-accounts create token-server-sa
 gcloud iam service-accounts create worker-sa
 
 # grant secretAccessor DI RESOURCE secret (bukan project-wide), PER KONSUMEN:
-# token server → LiveKit (mint token) + DB admin. TIDAK pakai Azure.
+# token server → LiveKit (mint token) + DB admin. TIDAK pakai Google AI.
 for S in livekit-api-secret metrics-db-url; do
   gcloud secrets add-iam-policy-binding $S \
     --member="serviceAccount:token-server-sa@<PROJECT>.iam.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor"
 done
-# voice worker → LiveKit + Azure (konsumen Azure yang sebenarnya).
-for S in livekit-api-secret azure-openai-key azure-speech-key; do
+# voice worker → LiveKit + Gemini (satu-satunya konsumen API key Gemini).
+for S in livekit-api-secret gemini-api-key; do
   gcloud secrets add-iam-policy-binding $S \
     --member="serviceAccount:worker-sa@<PROJECT>.iam.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor"
 done
+# Cloud STT (pendengar RAT) → worker-sa memanggil Speech API dengan identitasnya sendiri
+# (ADC via metadata server, TANPA file key). Role ini diberikan di level project.
+gcloud projects add-iam-policy-binding <PROJECT> \
+  --member="serviceAccount:worker-sa@<PROJECT>.iam.gserviceaccount.com" \
+  --role="roles/speech.client"
 ```
 
 Rotasi: tambah versi baru + restart instance (redeploy / `gcloud run services update`).
@@ -126,10 +143,10 @@ gcloud compute instances create voice-worker \
 
 Kredensial worker **tidak** disimpan plaintext di disk. Buat file **non-rahasia**
 `/etc/koperasi/worker.env.base` (root, `chmod 600`) berisi var non-rahasia saja:
-`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_AGENT_NAME`, `AZURE_OPENAI_ENDPOINT`,
-`AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_DEPLOYMENT_DIALOGUE`,
-`AZURE_OPENAI_DEPLOYMENT_AUDITOR`, `AZURE_SPEECH_REGION`. Secret (LiveKit secret +
-Azure keys) diambil dari Secret Manager **saat boot** via `worker-sa` (SA terpasang
+`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_AGENT_NAME`, `GOOGLE_GENAI_USE_VERTEXAI=false`,
+`GEMINI_LIVE_MODEL`, `GEMINI_DIRECTOR_MODEL`, `GEMINI_OBSERVER_MODEL`, `GEMINI_MENTOR_MODEL`,
+`GEMINI_AUDITOR_MODEL` (+ `RAT_*` opsional; nilai di `production-config.md` §3d). Secret (LiveKit
+secret + API key Gemini) diambil dari Secret Manager **saat boot** via `worker-sa` (SA terpasang
 di VM + scope `cloud-platform`) ke env-file runtime di `/run` (tmpfs — hilang saat
 reboot, `0600`):
 
@@ -140,8 +157,7 @@ ExecStartPre=/usr/bin/docker pull <IMG>/voice-worker:v1
 # Butuh gcloud/Cloud SDK di VM (image Google menyertakannya; jika tidak: apt install google-cloud-cli).
 ExecStartPre=/bin/bash -c 'umask 077; cat /etc/koperasi/worker.env.base > /run/koperasi-worker.env; \
   { echo "LIVEKIT_API_SECRET=$(gcloud secrets versions access latest --secret=livekit-api-secret)"; \
-    echo "AZURE_OPENAI_API_KEY=$(gcloud secrets versions access latest --secret=azure-openai-key)"; \
-    echo "AZURE_SPEECH_KEY=$(gcloud secrets versions access latest --secret=azure-speech-key)"; \
+    echo "GOOGLE_API_KEY=$(gcloud secrets versions access latest --secret=gemini-api-key)"; \
   } >> /run/koperasi-worker.env'
 ExecStart=/usr/bin/docker run --rm --name koperasi-worker --env-file /run/koperasi-worker.env <IMG>/voice-worker:v1
 ExecStopPost=/bin/rm -f /run/koperasi-worker.env
@@ -153,10 +169,26 @@ WantedBy=multi-user.target
 ```
 `sudo systemctl enable --now koperasi-worker`. Secret tak pernah persist di disk VM
 (hanya tmpfs `/run`, dihapus saat stop). `worker-sa` butuh `secretAccessor` pada
-`livekit-api-secret` + `azure-*` (§3).
+`livekit-api-secret` + `gemini-api-key`, plus `roles/speech.client` (§3).
 
-> **Health & autohealing:** worker (livekit-agents 1.6.5) mengekspos health server
-> framework di **`:8081`** (liveness proses, mode `start` — terverifikasi 200).
+> **Kredensial Cloud STT — tanpa file key.** Pendengar RAT (`google.STT`) tidak memakai
+> `GOOGLE_API_KEY`; library Google mencari kredensial lewat ADC dan, di VM, mendapat token
+> sementara `worker-sa` dari **metadata server** (juga terjangkau dari container Docker — tak
+> perlu konfigurasi). Karena itu **jangan** menyalin `*-sa-key.json` ke VM dan **jangan** set
+> `GOOGLE_APPLICATION_CREDENTIALS` (ADC akan memakai file itu, bukan SA VM). Cek identitas VM:
+> ```bash
+> curl -s -H "Metadata-Flavor: Google" \
+>   http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email
+> # → worker-sa@<PROJECT>.iam.gserviceaccount.com
+> ```
+>
+> **Egress:** worker hanya membuka koneksi keluar (LiveKit Cloud, Gemini API, `*.googleapis.com`).
+> Perintah di atas memberi VM IP publik; bila di-hardening tanpa IP publik (`--no-address`),
+> tambahkan **Cloud NAT** — Private Google Access saja tak cukup karena LiveKit Cloud di luar Google.
+
+> **Health & autohealing:** worker (livekit-agents 1.8.x) mengekspos health server
+> framework di **`:8081`** (liveness proses, mode `start` — terverifikasi 200 pada 1.6.5;
+> verifikasi ulang setelah rollout 1.8.x).
 > Jika memakai MIG, arahkan health check autohealing ke `GET :8081/` (bind `0.0.0.0`,
 > firewall ke health-checker saja). Container juga punya `HEALTHCHECK` ke `:8081`.
 
@@ -213,6 +245,9 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST $API/token \
 # 500 = JWKS/issuer/LiveKit belum di-set. Worker join: lihat log registrasi di VM.
 gcloud compute ssh voice-worker --zone <ZONE> --command \
   'journalctl -u koperasi-worker -n 50 --no-pager | grep -iE "registered|agent"'
+# Setelah satu sesi RAT live: tak boleh ada error kredensial/izin Cloud STT (output kosong = OK).
+gcloud compute ssh voice-worker --zone <ZONE> --command \
+  'journalctl -u koperasi-worker -n 200 --no-pager | grep -iE "DefaultCredentialsError|PERMISSION_DENIED|SERVICE_DISABLED|Application default credentials"'
 ```
 
 Go/No-Go penuh + E2E: lihat [`README.md`](./README.md).

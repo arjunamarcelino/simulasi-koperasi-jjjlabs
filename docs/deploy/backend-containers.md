@@ -18,7 +18,7 @@ File yang di-commit (nyata, di `apps/backend/`):
 
 ```bash
 cd apps/backend
-cp .env.example .env            # isi kredensial LiveKit + Azure + Supabase
+cp .env.example .env            # isi kredensial LiveKit + Google + Supabase
 
 docker compose config           # validasi YAML (tak butuh daemon)
 docker compose up --build       # build kedua target + jalankan
@@ -29,6 +29,26 @@ Build target individual (tanpa compose):
 docker build --target api    -t koperasi-api    apps/backend
 docker build --target worker -t koperasi-worker apps/backend
 ```
+
+### Cloud STT di lokal (sesi RAT)
+
+Pendengar RAT memakai Cloud STT via ADC, **bukan** `GOOGLE_API_KEY`. Di laptop tak ada metadata
+server, jadi worker butuh kredensial eksplisit. Kunci SA **tidak** masuk image (`*-sa-key.json`
+ada di `.gitignore` + `.dockerignore`) — mount read-only saat runtime lewat file override lokal:
+
+```yaml
+# apps/backend/docker-compose.override.yml (lokal) — digabung otomatis oleh `docker compose up`
+services:
+  worker:
+    volumes: ["./gcp-sa-key.json:/secrets/sa.json:ro"]
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/sa.json
+```
+
+Alternatif tanpa kunci SA: `gcloud auth application-default login`, lalu mount
+`~/.config/gcloud/application_default_credentials.json` ke `/secrets/adc.json:ro` dan arahkan
+`GOOGLE_APPLICATION_CREDENTIALS` ke sana. Pastikan file yang di-mount bisa dibaca user non-root
+`app` di container. Di produksi (VM GCE) **tidak** dipakai — lihat `gcp-backend.md` §6.
 
 ## 3. Detail Dockerfile (kenapa begini)
 
@@ -43,18 +63,17 @@ docker build --target worker -t koperasi-worker apps/backend
 - **Target `api`**: `CMD ["sh","-c","exec uvicorn api.server:app --host 0.0.0.0 --port ${PORT:-8000}"]`.
   ⚠️ `$PORT` penting — Cloud Run merutekan ke port container (default **8080**); `exec`
   agar SIGTERM mencapai uvicorn.
-- **Target `worker`**: `download-files` mem-bake bobot VAD/turn-detector (openai/
-  azure/silero); `start` = mode produksi (bukan `dev`), argv diteruskan lewat
+- **Target `worker`**: `download-files` mem-bake bobot model lokal milik plugin (worker
+  Google tak memakai model lokal → praktis no-op, tetap aman); `start` = mode produksi (bukan `dev`), argv diteruskan lewat
   `cli.run_app(server)` (lihat `apps/backend/CLAUDE.md` GOTCHA #1: API `AgentServer`).
   Tak ada port *job* masuk (outbound), tapi framework mengekspos **health server di
   `:8081`** pada mode `start` (liveness proses) — `EXPOSE 8081` + `HEALTHCHECK`
   memakainya (opsi autohealing GCE: lihat `gcp-backend.md` §6).
 
-> ℹ️ **Versi `livekit-agents` di-pin `1.6.5`** di `uv.lock` (bukan 1.8.x — `~=1.6`
-> dengan lock frozen tetap 1.6.5). Subcommand `start` & `download-files` serta API
-> `AgentServer` cocok dengan 1.6.5. `download-files` butuh jaringan saat build dan
-> mencetak peringatan *deprecated* (tetap jalan di 1.6.5); jika suatu saat gagal,
-> hapus baris itu — model di-unduh otomatis saat sesi pertama (hanya lambat sekali).
+> ℹ️ **Versi `livekit-agents` di-pin `1.8.6`** di `uv.lock` (`livekit-agents~=1.8` +
+> `livekit-plugins-google` 1.8.6). Subcommand `start` & `download-files` serta API
+> `AgentServer` tetap sama. `download-files` butuh jaringan saat build; jika suatu saat
+> gagal, hapus baris itu dari Dockerfile — worker Google tak bergantung pada model lokal.
 
 ## 4. Acceptance (SIM-26 "done when")
 
@@ -69,8 +88,10 @@ docker build --target worker -t koperasi-worker apps/backend
   docker compose exec worker printenv LIVEKIT_AGENT_NAME   # HARUS identik
   ```
 - [ ] Image bersih dari file env: `docker run --rm koperasi-api sh -c 'ls -a /app | grep -iE "^\.env" || echo none'` → `none`. (⚠️ anchor `^\.env` — `grep -i env` tak ber-anchor akan match `.venv` dan selalu gagal.)
+- [ ] Image bebas kunci SA: `docker run --rm koperasi-worker sh -c 'ls -a /app | grep -i sa-key || echo none'` → `none`.
 
-> ✅ **Terverifikasi (2026-10-15):** kedua target di-build; `docker compose up`
+> ✅ **Terverifikasi (2026-10-15, stack Azure / livekit-agents 1.6.5 — build ulang stack Google
+> belum diverifikasi):** kedua target di-build; `docker compose up`
 > menjalankan api + worker; `/health` 200; unauth `/token` 401 (dengan `.env` terisi
 > dummy); worker `:8081` liveness 200 + `starting worker`; paritas `LIVEKIT_AGENT_NAME`;
 > image api bebas file `.env`; berjalan sebagai user non-root `app`. Yang **belum**

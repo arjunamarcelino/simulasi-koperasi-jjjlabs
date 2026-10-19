@@ -89,13 +89,18 @@ Semua var `VITE_*` **build-time, PUBLIC, di-inline ke bundle** (bukan rahasia; u
 |---|---|---|
 | `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | sama dgn token server | |
 | `LIVEKIT_AGENT_NAME` | `koperasi-agent` | ⚠️ **identik dengan token server** — mismatch = token 200 tapi worker tak pernah join (hang senyap) |
-| `AZURE_OPENAI_ENDPOINT` | `https://<resource>.openai.azure.com/` | |
-| `AZURE_OPENAI_API_KEY` | `<key>` | secret |
-| `AZURE_OPENAI_API_VERSION` | `2024-10-01-preview` | |
-| `AZURE_OPENAI_DEPLOYMENT_DIALOGUE` | `gpt-5-mini` | nama **deployment** Azure, bukan nama model |
-| `AZURE_OPENAI_DEPLOYMENT_AUDITOR` | `gpt-5.4` | |
-| `AZURE_SPEECH_KEY` | `<key>` | secret |
-| `AZURE_SPEECH_REGION` | `eastus2` | |
+| `GOOGLE_API_KEY` | `<ai-studio-api-key>` | secret → Secret Manager `gemini-api-key`. Dipakai Gemini Live + panggilan JSON |
+| `GOOGLE_GENAI_USE_VERTEXAI` | `false` | jalur AI Studio (API key) |
+| `GEMINI_LIVE_MODEL` | `gemini-3.1-flash-live-preview` | NPC suara. Nama model = env, **jangan hardcode** |
+| `GEMINI_DIRECTOR_MODEL` / `GEMINI_OBSERVER_MODEL` / `GEMINI_MENTOR_MODEL` | `gemini-3.5-flash-lite` | direktur RAT, observer drift, Petunjuk |
+| `GEMINI_AUDITOR_MODEL` | `gemini-3.5-flash` | AI Auditor (akhir sesi) |
+| `RAT_*` (`RAT_STT_LANGUAGE`, dll.) | — | opsional; default di `voice_worker/settings.py` |
+
+> ⚠️ **Cloud STT (pendengar RAT) TIDAK memakai `GOOGLE_API_KEY`** — ia memakai identitas VM
+> (`worker-sa`) lewat ADC/metadata server. Wajib: API `speech.googleapis.com` aktif + role
+> `roles/speech.client` pada `worker-sa` (lihat `gcp-backend.md` §3/§6). **Jangan** set
+> `GOOGLE_APPLICATION_CREDENTIALS` di VM (ADC akan memakai file key itu, bukan SA VM).
+> Tanpa kredensial STT, job RAT gagal di awal; skenario 1–3 tetap jalan.
 
 > **Batas koneksi DB (penting saat scale):** pool `METRICS_DB_URL` memakai
 > `max_size=5` per proses dan session-pooler memin backend per koneksi. Jaga
@@ -107,7 +112,7 @@ Semua var `VITE_*` **build-time, PUBLIC, di-inline ke bundle** (bukan rahasia; u
 Rate limiter `/token` membucket **per `user_id`**. Setiap anonymous sign-in
 menghasilkan `sub` baru → bucket baru. Dengan anon sign-in ON **tanpa CAPTCHA**,
 siapa pun bisa mint JWT guest tak terbatas → `/token` tak terbatas → dispatch agent
-LiveKit/Azure berbayar tak terbatas. **Ini jalur financial-DoS langsung.**
+LiveKit/Gemini/Cloud STT berbayar tak terbatas. **Ini jalur financial-DoS langsung.**
 
 Mitigasi (ketiganya):
 - [ ] Set **secret server-side Turnstile** di Supabase (Auth → CAPTCHA) — site key
@@ -120,7 +125,7 @@ Mitigasi (ketiganya):
 
 | Publik (boleh di bundle/FE) | Rahasia (JANGAN di repo/CI/FE) |
 |---|---|
-| Semua `VITE_*`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, Turnstile **site** key | `LIVEKIT_API_SECRET`, Azure keys, **Turnstile secret**, `METRICS_DB_URL`, Supabase `service_role` |
+| Semua `VITE_*`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, Turnstile **site** key | `LIVEKIT_API_SECRET`, `GOOGLE_API_KEY` (Gemini), file kunci service account (hanya bila dipakai di luar GCP), **Turnstile secret**, `METRICS_DB_URL`, Supabase `service_role` |
 
 - Simpan yang rahasia di **GCP Secret Manager**; referensikan dari Cloud Run
   (`--set-secrets`). Default **pin versi `:N`** (rotasi = versi baru + restart
