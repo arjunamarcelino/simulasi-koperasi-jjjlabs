@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .env
+
+# Kunci service account GCP (ADC untuk Cloud STT) — JANGAN pernah di-commit.
+*-sa-key.json
