@@ -19,3 +19,6 @@ build/
 *.md
 tests/
 .cache/
+
+# Kunci service account GCP — jangan ikut ter-COPY ke image (mount saat runtime).
+*-sa-key.json

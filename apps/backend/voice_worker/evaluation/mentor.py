@@ -1,6 +1,6 @@
 """Fitur Petunjuk — mentor kontekstual (menggantikan "Tanya Mentor", PRD §9).
 
-Panggilan gpt-5-mini sekali-jalan (di luar ChatContext dialog, seperti observer &
+Panggilan Gemini (model mentor, env) sekali-jalan (di luar ChatContext dialog, seperti observer &
 auditor) yang membaca transkrip sejauh ini + brief skenario, lalu memberi SATU
 petunjuk singkat & ramah pemula tentang apa yang sebaiknya pemain (petugas)
 lakukan berikutnya. Tidak memerankan NPC, tidak membocorkan bahwa ini AI, dan
@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
-from openai import AsyncAzureOpenAI
+from gemini.json_call import complete
 from scenarios import Scenario
 
 logger = logging.getLogger("koperasi.mentor")
@@ -66,8 +67,8 @@ def _format_transcript(transcript: list[tuple[str, str]]) -> str:
 
 
 async def generate_hint(
-    client: AsyncAzureOpenAI,
-    deployment: str,
+    client: Any,
+    model: str,
     scenario: Scenario,
     transcript: list[tuple[str, str]],
     phase_context: str | None = None,
@@ -96,15 +97,10 @@ async def generate_hint(
         phase_block=phase_block,
     )
     try:
-        resp = await client.chat.completions.create(
-            model=deployment,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": _format_transcript(transcript)},
-            ],
+        content = (
+            await complete(client, model, system=system, user=_format_transcript(transcript))
+            or "{}"
         )
-        content = resp.choices[0].message.content or "{}"
         hint = (json.loads(content).get("hint") or "").strip()
         return hint or _FALLBACK
     except Exception:  # fail-soft: Petunjuk tak boleh menjatuhkan sesi

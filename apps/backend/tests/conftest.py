@@ -167,37 +167,33 @@ def client(monkeypatch):
     server.app.dependency_overrides.clear()
 
 
-# --- SIM-21: klien Azure OpenAI palsu untuk test parser voice_worker ---------
+# --- klien Gemini (google-genai) palsu untuk test voice_worker ---------------
 # Klien disuntikkan sebagai argumen pertama ke run_auditor/evaluate_turn/
 # generate_hint, jadi tak perlu monkeypatch global. Pola stub hand-rolled
 # (bukan unittest.mock) konsisten dengan _FakeConn/_FakePool di test admin.
 
 
 @pytest.fixture
-def fake_openai() -> Callable[..., Any]:
-    """Factory → klien stub dengan `chat.completions.create` async.
+def fake_gemini() -> Callable[..., Any]:
+    """Factory → klien stub `google.genai` dengan `aio.models.generate_content` async.
 
-    `content` = string yang dikembalikan sebagai `.choices[0].message.content`.
-    `raises=<exc>` = create() melempar exc (uji jalur gagal-aman).
-    `no_choices=True` = `.choices == []` (uji IndexError → fallback).
+    `text` = string yang dikembalikan sebagai `.text` (None = tanpa kandidat, mis.
+    diblokir safety filter). `raises=<exc>` = generate_content() melempar exc (uji
+    jalur gagal-aman). Argumen panggilan terakhir tersimpan di `.calls`.
     """
 
-    def _make(
-        content: str | None = None,
-        *,
-        raises: BaseException | None = None,
-        no_choices: bool = False,
-    ) -> Any:
-        async def _create(*args: Any, **kwargs: Any) -> Any:
+    def _make(text: str | None = None, *, raises: BaseException | None = None) -> Any:
+        calls: list[dict[str, Any]] = []
+
+        async def _generate_content(**kwargs: Any) -> Any:
+            calls.append(kwargs)
             if raises is not None:
                 raise raises
-            choices = [] if no_choices else [
-                SimpleNamespace(message=SimpleNamespace(content=content))
-            ]
-            return SimpleNamespace(choices=choices)
+            return SimpleNamespace(text=text)
 
         return SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=_create))
+            aio=SimpleNamespace(models=SimpleNamespace(generate_content=_generate_content)),
+            calls=calls,
         )
 
     return _make

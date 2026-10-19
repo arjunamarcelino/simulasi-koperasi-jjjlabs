@@ -1,6 +1,6 @@
 """AI Auditor — Lapisan 3 (PRD §6).
 
-Satu panggilan gpt-5.4 di akhir sesi: baca transkrip penuh + taksonomi +
+Satu panggilan Gemini (model auditor, env) di akhir sesi: baca transkrip penuh + taksonomi +
 grounding, kembalikan JSON (klasifikasi state + skor + narasi). Narasi
 di-generate untuk kombinasi state apa pun (keputusan tim, PRD §10.6).
 """
@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
-from openai import AsyncAzureOpenAI
+from gemini.json_call import complete
 from scenarios import Scenario
 from schemas import AuditorResult
 
@@ -66,13 +67,13 @@ def _format_transcript(transcript: list[tuple[str, str]]) -> str:
 
 
 async def run_auditor(
-    client: AsyncAzureOpenAI,
-    deployment: str,
+    client: Any,
+    model: str,
     scenario: Scenario,
     transcript: list[tuple[str, str]],
     trigger: str,
 ) -> dict:
-    """Panggil gpt-5.4, kembalikan dict berbentuk `AuditorResult` untuk FE."""
+    """Panggil model auditor, kembalikan dict berbentuk `AuditorResult` untuk FE."""
     spec = scenario.auditor
     assert spec is not None, "run_auditor dipanggil untuk skenario tanpa auditor"
 
@@ -95,18 +96,12 @@ async def run_auditor(
 
     result: dict
     try:
-        resp = await client.chat.completions.create(
-            model=deployment,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": _format_transcript(transcript)},
-            ],
+        content = await complete(
+            client, model, system=system, user=_format_transcript(transcript)
         )
         # Validasi gagal-aman: input non-object / salah-tipe akan raise di sini
         # (ditangkap except → fallback), bukan crash di luar try. model_dump()
         # menjamin `result` dict berisi keempat field (default dari model).
-        content = resp.choices[0].message.content
         if not content:
             # Completion kosong (content-filter / refusal / empty finish) adalah
             # KEGAGALAN, bukan hasil valid → lempar agar jatuh ke fallback bernarasi

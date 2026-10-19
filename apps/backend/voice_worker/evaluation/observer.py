@@ -1,6 +1,6 @@
 """Observer drift — Lapisan 2 (PRD §6).
 
-Panggilan gpt-5-mini asinkron & non-blocking yang menilai tiap giliran pemain:
+Panggilan Gemini (model observer, env) asinkron & non-blocking yang menilai tiap giliran pemain:
 apakah ia menyimpang (escalate), netral, atau membaik (deescalate) terhadap
 dimensi drift skenario. `DriftTracker` mengubah rentetan penilaian itu jadi
 level 0/1/2 dengan bias longgar — butuh beberapa giliran konsisten untuk naik.
@@ -11,7 +11,9 @@ from __future__ import annotations
 import json
 import logging
 
-from openai import AsyncAzureOpenAI
+from typing import Any
+
+from gemini.json_call import complete
 from scenarios import DriftSpec
 
 logger = logging.getLogger("koperasi.observer")
@@ -38,29 +40,26 @@ Balas HANYA JSON: {{"judgment": "escalate|neutral|deescalate"}}
 
 
 async def evaluate_turn(
-    client: AsyncAzureOpenAI,
-    deployment: str,
+    client: Any,
+    model: str,
     spec: DriftSpec,
     player_text: str,
     npc_context: str,
 ) -> str:
     """Kembalikan 'escalate' | 'neutral' | 'deescalate' untuk giliran pemain."""
     try:
-        resp = await client.chat.completions.create(
-            model=deployment,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": _SYSTEM.format(dimension=spec.dimension)},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Ucapan NPC sebelumnya: {npc_context or '(tidak ada)'}\n"
-                        f"Giliran pemain: {player_text}"
-                    ),
-                },
-            ],
+        content = (
+            await complete(
+                client,
+                model,
+                system=_SYSTEM.format(dimension=spec.dimension),
+                user=(
+                    f"Ucapan NPC sebelumnya: {npc_context or '(tidak ada)'}\n"
+                    f"Giliran pemain: {player_text}"
+                ),
+            )
+            or "{}"
         )
-        content = resp.choices[0].message.content or "{}"
         judgment = json.loads(content).get("judgment", "neutral")
         return judgment if judgment in _ALLOWED else "neutral"
     except Exception:  # fail-soft: observer tak boleh menjatuhkan sesi

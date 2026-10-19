@@ -1,7 +1,7 @@
 # Koperasi Backend — token server + voice agent
 
-Backend & AI pipeline untuk Koperasi Simulator. Voice penuh (Azure STT + Azure OpenAI
-`gpt-5-mini` + Azure TTS). **Keempat skenario** terpasang: Tutorial, Kredit Macet,
+Backend & AI pipeline untuk Koperasi Simulator. Voice penuh di atas Google: Gemini Live
+(NPC) + Cloud STT (pendengar RAT). **Keempat skenario** terpasang: Tutorial, Kredit Macet,
 Keanggotaan Fiktif, dan RAT (dua NPC + state machine fase) — dengan observer drift
 (Lapisan 2), AI Auditor (Lapisan 3), dan fitur **Petunjuk** (mentor kontekstual).
 
@@ -15,8 +15,9 @@ Keanggotaan Fiktif, dan RAT (dua NPC + state machine fase) — dengan observer d
 - **`api/server.py`** — FastAPI. Verifikasi JWT Supabase (`api/auth.py`), lalu mint
   LiveKit token + dispatch agent (`POST /token`), rate-limited per-user (`api/ratelimit.py`).
   Juga `GET /health` dan seluruh `GET/POST/DELETE /admin/*`.
-- **`voice_worker/voice_agent.py`** — worker `livekit-agents` **1.6.5**. Satu proses
-  menangani SEMUA skenario & persona: STT → LLM dialog → TTS.
+- **`voice_worker/voice_agent.py`** — worker `livekit-agents` **1.8** + Google. Satu proses
+  menangani SEMUA skenario & persona: Gemini Live per NPC (speech-to-speech); RAT = dua
+  NPC + pendengar Cloud STT + direktur.
 
 Keduanya tidak saling bicara langsung — bertemu lewat **LiveKit Cloud** berdasarkan
 `LIVEKIT_AGENT_NAME` (worker & token server **wajib** memakai nama yang sama). Jalur
@@ -63,11 +64,14 @@ api/
   ratelimit.py    token-bucket per-user untuk /token (429)
   metrics_db.py   pool asyncpg fail-soft ke Supabase sebagai metrics_reader (jalur DB admin)
 voice_worker/
-  voice_agent.py  entrypoint agent + RatAgent + wiring semua lapisan
+  voice_agent.py  entry tipis: AgentServer → pilih runner per skenario
+  settings.py     satu-satunya pembaca env Google + nama model + tuning RAT
   scenarios.py    REGISTRY tunggal: skenario + spec drift/auditor/RAT/mentor
-  observer.py     Lapisan 2 drift (gpt-5-mini async) + DriftTracker
-  auditor.py      Lapisan 3 AI Auditor (gpt-5.4) → JSON
-  mentor.py       fitur Petunjuk: hint kontekstual (gpt-5-mini) → JSON
+  gemini/         genai.Client + RealtimeModel · panggilan JSON sekali-jalan
+  evaluation/     observer.py (L2 drift) · auditor.py (L3) · mentor.py (Petunjuk)
+  runtime/        publisher · lifecycle (akhir sesi) · drift · rpc · tasks
+  single_npc/     skenario 1–3: satu AgentSession Gemini Live
+  rat/            skenario 4: dua NPC "Telinga ≠ Mulut" + listener STT + direktur
   schemas.py      skema pydantic (validasi fail-safe JSON Auditor)
   prompts/*.py    system prompt persona (di-grounding ke ../../docs/scenarios.md)
 tests/            pytest (13 file): auth, token, rate-limit, auditor-parse, admin/*, dll
@@ -81,8 +85,9 @@ Menambah skenario single-NPC: tulis prompt di `prompts/`, tambah `Scenario`
 ## Env & kredensial
 
 Semua di `.env` (gitignored); daftar lengkap + catatan di `.env.example`. Garis besar:
-LiveKit Cloud (`LIVEKIT_*`, termasuk `LIVEKIT_AGENT_NAME`), Azure OpenAI (2 deployment:
-`gpt-5-mini` dialog + `gpt-5.4` auditor), Azure Speech (`eastus2`), `CORS_ALLOW_ORIGINS`,
+LiveKit Cloud (`LIVEKIT_*`, termasuk `LIVEKIT_AGENT_NAME`), Google (`GOOGLE_API_KEY` atau
+Vertex AI; Cloud STT untuk RAT wajib ADC / `GOOGLE_APPLICATION_CREDENTIALS`), nama model
+`GEMINI_*_MODEL`, `CORS_ALLOW_ORIGINS`,
 verifikasi JWT Supabase (`SUPABASE_JWKS_URL`/`_ISSUER`/`_AUD` — PUBLIC), dan admin DB
 (`METRICS_DB_URL` sebagai `metrics_reader`, `METRICS_DB_SSL`). Kebijakan secret + rotasi
 produksi: `../../docs/deploy/production-config.md`.
