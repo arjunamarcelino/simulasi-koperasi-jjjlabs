@@ -8,6 +8,7 @@ import type { ScenarioId } from "../../session/transport/contract";
 import { PixelPanel } from "../common/PixelPanel";
 import { GameButton } from "../common/GameButton";
 import { ResultPanel } from "./ResultPanel";
+import { EvaluatingPanel } from "./EvaluatingPanel";
 import { BigCharacter } from "./BigCharacter";
 import { DialogueBox } from "./DialogueBox";
 import { ActionRail } from "./ActionRail";
@@ -32,6 +33,7 @@ export function SessionOverlay() {
   const goalReached = useSessionStore((s) => s.goalReached);
   const micEnabled = useSessionStore((s) => s.micEnabled);
   const ended = useSessionStore((s) => s.ended);
+  const evaluating = useSessionStore((s) => s.evaluating);
   const error = useSessionStore((s) => s.error);
   const transcript = useSessionStore((s) => s.transcript);
   const driftLevel = useSessionStore((s) => s.driftLevel);
@@ -151,6 +153,16 @@ export function SessionOverlay() {
             </GameButton>
           </div>
         </PixelPanel>
+      </Scrim>
+    );
+  }
+
+  // The session is ending and the auditor is assessing it. A pipe that drops meanwhile
+  // falls through to the error / "terputus" doors below instead of waiting forever.
+  if (evaluating && connection !== "ended" && connection !== "error") {
+    return (
+      <Scrim>
+        <EvaluatingPanel />
       </Scrim>
     );
   }

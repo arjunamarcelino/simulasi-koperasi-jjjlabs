@@ -27,7 +27,32 @@ describe("parseSessionRow", () => {
       scores: { member_centric: 80, compliance: 60 },
       stateClassification: { State_Jalur_Remedi: "BENAR" },
       narrativeFeedback: "Bagus.",
+      values: {},
+      progressFeedback: "",
+      nextStep: "",
     });
+  });
+
+  it("parses the personal-feedback columns", () => {
+    const values = {
+      kepedulian: { status: "TERCERMIN", evidence: "Bertanya dulu.", trend: "MENGUAT" },
+    };
+    const r = parseSessionRow({
+      ...fullRow,
+      values_json: values,
+      progress_feedback: "Saran sesi lalu Anda jalankan.",
+      next_step: "Tetap santun saat ditekan.",
+    });
+    expect(r?.values).toEqual(values);
+    expect(r?.progressFeedback).toBe("Saran sesi lalu Anda jalankan.");
+    expect(r?.nextStep).toBe("Tetap santun saat ditekan.");
+  });
+
+  it("coerces null personal-feedback columns to empty (legacy rows keep rendering)", () => {
+    const r = parseSessionRow({ ...fullRow, values_json: null, progress_feedback: null, next_step: null });
+    expect(r?.values).toEqual({});
+    expect(r?.progressFeedback).toBe("");
+    expect(r?.nextStep).toBe("");
   });
 
   it("parses a tutorial row with empty maps", () => {

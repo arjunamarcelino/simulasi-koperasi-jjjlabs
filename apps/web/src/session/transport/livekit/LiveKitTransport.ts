@@ -12,6 +12,7 @@ import {
 import { ENV } from "../../../config/env";
 import { authedFetch } from "../../../lib/authedFetch";
 import type {
+  ConnectOptions,
   ConnectionState as WireConnectionState,
   DriftLevel,
   FinalDecisionTrigger,
@@ -28,6 +29,7 @@ import {
   SEGMENT_ID_ATTRIBUTE,
   TRANSCRIPTION_TOPIC,
 } from "./transcriptStream";
+import { END_SESSION_RPC_TIMEOUT_MS, parseAuditorResult, tokenRequestBody } from "./wire";
 
 type TokenResponse = { token: string; room: string; url: string };
 
@@ -41,18 +43,6 @@ const CONNECTION_MAP: Record<ConnectionState, WireConnectionState> = {
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
-}
-
-/** Narrow an untrusted LiveKit payload to AuditorResult before emitting it. */
-function isAuditorResult(x: unknown): x is SessionEnded["result"] {
-  return (
-    isRecord(x) &&
-    typeof x["trigger"] === "string" &&
-    typeof x["endingType"] === "string" &&
-    typeof x["narrativeFeedback"] === "string" &&
-    isRecord(x["scores"]) &&
-    isRecord(x["stateClassification"])
-  );
 }
 
 function isPhaseState(x: unknown): x is PhaseState {
@@ -87,7 +77,7 @@ export class LiveKitTransport implements SessionTransport {
   private currentSpeakerName: string | undefined;
   private readonly audioEls = new Set<HTMLMediaElement>();
 
-  async connect(scenarioId: ScenarioId): Promise<void> {
+  async connect(scenarioId: ScenarioId, opts?: ConnectOptions): Promise<void> {
     this.connection.emit("connecting");
 
     // authedFetch attaches the Supabase JWT (once SIM-4 verifies it) and does a
@@ -95,7 +85,7 @@ export class LiveKitTransport implements SessionTransport {
     const res = await authedFetch(`${ENV.tokenEndpoint}/token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ scenario_id: scenarioId }),
+      body: JSON.stringify(tokenRequestBody(scenarioId, opts?.history ?? [])),
     });
     if (this.aborted) return;
     if (!res.ok) {
@@ -326,11 +316,12 @@ export class LiveKitTransport implements SessionTransport {
     this.endingInFlight = true;
     void this.room?.localParticipant.setMicrophoneEnabled(false).catch(() => {});
     try {
-      const raw = await this.rpc("end_session", "");
-      const parsed: unknown = JSON.parse(raw);
+      const raw = await this.rpc("end_session", "", END_SESSION_RPC_TIMEOUT_MS);
+      const payload: unknown = JSON.parse(raw);
       if (this.ended) return; // force-quit slipped in between awaits
-      if (!isAuditorResult(parsed)) {
-        console.error("Hasil end_session tidak valid:", parsed);
+      const parsed = parseAuditorResult(payload);
+      if (!parsed) {
+        console.error("Hasil end_session tidak valid:", payload);
         this.ended = true;
         this.connection.emit("error");
         return;
@@ -352,9 +343,10 @@ export class LiveKitTransport implements SessionTransport {
   private handleSessionEndedData(payload: Uint8Array): void {
     if (this.ended) return;
     try {
-      const parsed: unknown = JSON.parse(new TextDecoder().decode(payload));
-      if (!isAuditorResult(parsed)) {
-        console.error("Payload session_ended tidak valid, diabaikan:", parsed);
+      const data: unknown = JSON.parse(new TextDecoder().decode(payload));
+      const parsed = parseAuditorResult(data);
+      if (!parsed) {
+        console.error("Payload session_ended tidak valid, diabaikan:", data);
         return;
       }
       this.ended = true;
@@ -367,14 +359,19 @@ export class LiveKitTransport implements SessionTransport {
     }
   }
 
-  private async rpc(method: string, payload: string): Promise<string> {
+  private async rpc(method: string, payload: string, responseTimeout?: number): Promise<string> {
     const room = this.room;
     const destinationIdentity =
       this.agentIdentity ?? room?.remoteParticipants.values().next().value?.identity;
     if (!room || !destinationIdentity) {
       throw new Error("Agent NPC belum tersambung ke room.");
     }
-    return room.localParticipant.performRpc({ destinationIdentity, method, payload });
+    return room.localParticipant.performRpc({
+      destinationIdentity,
+      method,
+      payload,
+      ...(responseTimeout !== undefined ? { responseTimeout } : {}),
+    });
   }
 
   /**

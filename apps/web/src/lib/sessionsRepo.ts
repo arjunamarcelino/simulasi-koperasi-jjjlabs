@@ -8,7 +8,7 @@ import { settle, type RepoResult } from "./repoResult";
 import { parseSessionList, type SessionRecord } from "./sessionsRepo.contracts";
 
 const COLUMNS =
-  "id, scenario_id, started_at, ended_at, trigger, ending_type, scores_json, state_json, narrative_feedback";
+  "id, scenario_id, started_at, ended_at, trigger, ending_type, scores_json, state_json, narrative_feedback, values_json, progress_feedback, next_step";
 
 export const sessionsRepo = {
   /** Finalized attempts (ended_at not null), newest-first. RLS scopes to the caller. */

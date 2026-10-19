@@ -27,6 +27,15 @@ const GOOD_ENDING = {
   endingType: "good",
   narrativeFeedback:
     "Selamat! Anda memimpin RAT dengan adil dan berwibawa. Dengan menegakkan Tata Tertib — satu orang satu suara, terlepas dari besar modal — dan mengarahkan perbedaan pendapat ke pemungutan suara, program beras lokal menang secara sah. Pak Darma tak bisa membantah keputusan demokratis, dan hak suara anggota kecil seperti Ibu Sri terlindungi. Sesuai UU 25/1992 Pasal 22(1) & Pasal 5(1) huruf b.",
+  values: {
+    demokrasi: { status: "TERCERMIN", evidence: "Anda membawa usulan Pak Darma ke pemungutan suara sesuai Tata Tertib.", trend: "BARU_DIUJI" },
+    kesetaraan: { status: "TERCERMIN", evidence: "Anda menegaskan bahwa besar modal tidak menambah hak suara.", trend: "BARU_DIUJI" },
+    kepedulian: { status: "TERCERMIN", evidence: "Anda menolak usulan Pak Darma tanpa menyerang pribadinya.", trend: "BARU_DIUJI" },
+  },
+  progressFeedback:
+    "Ini titik awal perjalanan nilai Anda. Demokrasi dan kesetaraan Anda tegakkan sekaligus: forum memutuskan lewat suara, bukan lewat modal. Ketegasan Anda tetap santun sehingga rapat tuntas.",
+  nextStep: "Saat ada anggota yang menekan, sebut aturan mainnya lebih dulu, baru tanggapi isi usulannya.",
+  evaluationFailed: false,
 } satisfies AuditorResult;
 
 const BAD_ENDING = {
@@ -40,6 +49,15 @@ const BAD_ENDING = {
   endingType: "bad",
   narrativeFeedback:
     "Misi gagal. Forum pecah karena konfrontasi personal yang tak terkendali. Pak Darma menarik modal dan rapat bubar tanpa keputusan yang sah. Sebagai Ketua, tugas Anda menegakkan aturan main dengan tenang — menghadapi tekanan modal lewat Tata Tertib dan pemungutan suara, bukan lewat serangan pribadi. Rapat yang bubar tidak menghasilkan keputusan yang bisa dinilai sah maupun tidak.",
+  values: {
+    demokrasi: { status: "DIABAIKAN", evidence: "Rapat bubar sebelum forum sempat memutuskan lewat musyawarah atau voting.", trend: "BARU_DIUJI" },
+    kesetaraan: { status: "BELUM_TAMPAK", evidence: "Prinsip satu anggota satu suara belum sempat Anda tegakkan.", trend: "BARU_DIUJI" },
+    kepedulian: { status: "DIABAIKAN", evidence: "Anda menantang Pak Darma menarik modalnya saat itu juga.", trend: "BARU_DIUJI" },
+  },
+  progressFeedback:
+    "Ini titik awal perjalanan nilai Anda. Tekanan Pak Darma membuat Anda terpancing membalas secara pribadi, sehingga forum pecah sebelum keputusan diambil bersama.",
+  nextStep: "Saat diserang, kembalikan pembicaraan ke Tata Tertib, bukan ke pribadi orangnya.",
+  evaluationFailed: false,
 } satisfies AuditorResult;
 
 export const RAT_SCRIPT = {

@@ -44,6 +44,9 @@ export type Database = {
           scores_json: Json;
           state_json: Json;
           narrative_feedback: string | null;
+          values_json: Json;
+          progress_feedback: string | null;
+          next_step: string | null;
         };
         // All writes go through the record_session RPC (SECURITY DEFINER); clients never
         // INSERT or UPDATE sessions directly. Row is kept for the SIM-7 read side.
@@ -87,6 +90,9 @@ export type Database = {
           p_state?: Json;
           p_feedback?: string | null;
           p_started_at?: string | null;
+          p_values?: Json;
+          p_progress?: string | null;
+          p_next_step?: string | null;
         };
         Returns: Json;
       };

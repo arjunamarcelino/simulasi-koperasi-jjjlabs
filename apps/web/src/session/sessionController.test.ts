@@ -11,20 +11,50 @@ const h = vi.hoisted(() => ({
   sessionEndedCb: null as ((e: SessionEnded) => void) | null,
   recordSession: vi.fn(),
   syncSessionBadges: vi.fn(),
+  listMySessions: vi.fn(),
+  driftCb: null as ((level: 0 | 1 | 2) => void) | null,
+  connectionCb: null as ((state: string) => void) | null,
+  endSessionCalls: [] as unknown[][],
+  connectArgs: [] as unknown[][],
+  transport: "mock" as "mock" | "livekit",
 }));
 
 vi.mock("./transport/createTransport", () => ({
   createTransport: () => ({
-    onConnectionState: () => () => {},
+    onConnectionState: (cb: (state: string) => void) => {
+      h.connectionCb = cb;
+      return () => {};
+    },
     onTranscript: () => () => {},
-    onDriftLevel: () => () => {},
+    onDriftLevel: (cb: (level: 0 | 1 | 2) => void) => {
+      h.driftCb = cb;
+      return () => {};
+    },
+    endSession: (...args: unknown[]) => {
+      h.endSessionCalls.push(args);
+    },
     onSessionEnded: (cb: (e: SessionEnded) => void) => {
       h.sessionEndedCb = cb;
       return () => {};
     },
-    connect: () => Promise.resolve(),
+    connect: (...args: unknown[]) => {
+      h.connectArgs.push(args);
+      return Promise.resolve();
+    },
     disconnect: () => Promise.resolve(),
   }),
+}));
+
+vi.mock("../config/env", () => ({
+  ENV: {
+    get transport() {
+      return h.transport;
+    },
+  },
+}));
+
+vi.mock("../lib/sessionsRepo", () => ({
+  sessionsRepo: { listMySessions: h.listMySessions },
 }));
 
 vi.mock("../lib/progressRepo", () => ({
@@ -39,6 +69,7 @@ vi.mock("../stores/game.store", () => ({
 
 import { createSessionController } from "./sessionController";
 import { sessionStore } from "../stores/session.store";
+import type { SessionRecord } from "../lib/sessionsRepo.contracts";
 
 const RESULT: AuditorResult = {
   scenarioId: "kredit-macet",
@@ -47,6 +78,10 @@ const RESULT: AuditorResult = {
   scores: { compliance: 80 },
   endingType: "good",
   narrativeFeedback: "Bagus",
+  values: { kepedulian: { status: "TERCERMIN", evidence: "Bertanya dulu.", trend: "MENGUAT" } },
+  progressFeedback: "Berkembang.",
+  nextStep: "Tetap santun.",
+  evaluationFailed: false,
 };
 const ENDED: SessionEnded = { trigger: "manual", result: RESULT };
 const ENDED_NEUTRAL: SessionEnded = {
@@ -64,6 +99,13 @@ beforeEach(() => {
   h.recordSession.mockReset();
   h.recordSession.mockResolvedValue({ status: "ok", data: { ok: true } });
   h.syncSessionBadges.mockReset();
+  h.listMySessions.mockReset();
+  h.listMySessions.mockResolvedValue({ status: "ok", data: [] });
+  h.connectArgs = [];
+  h.endSessionCalls = [];
+  h.driftCb = null;
+  h.connectionCb = null;
+  h.transport = "mock";
   sessionStore.getState().reset();
 });
 
@@ -88,6 +130,9 @@ describe("sessionController persistence", () => {
       scores: { compliance: 80 },
       state: { foo: "BENAR" },
       feedback: "Bagus",
+      values: RESULT.values,
+      progressFeedback: "Berkembang.",
+      nextStep: "Tetap santun.",
       startedAt: expect.any(String), // captured at start()
     });
   });
@@ -221,5 +266,195 @@ describe("sessionController — session-badge sync trigger", () => {
     // The badge sync piggybacks on the same `finalizing` guard that dedups recordSession.
     expect(h.recordSession).toHaveBeenCalledTimes(1);
     expect(h.syncSessionBadges).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("sessionController — personal-feedback history for the auditor", () => {
+  const ASSESSED: SessionRecord = {
+    id: "s1",
+    scenarioId: "kredit-macet",
+    startedAt: Date.parse("2026-10-18T09:00:00.000Z"),
+    endingType: "bad",
+    trigger: "manual",
+    scores: {},
+    stateClassification: {},
+    narrativeFeedback: "",
+    values: { kepedulian: { status: "DIABAIKAN", evidence: "Langsung menagih.", trend: "BARU_DIUJI" } },
+    progressFeedback: "",
+    nextStep: "Tanyakan sebab kesulitannya dulu.",
+  };
+
+  it("livekit: passes the player's value history to connect", async () => {
+    h.transport = "livekit";
+    h.listMySessions.mockResolvedValue({ status: "ok", data: [ASSESSED] });
+    createSessionController().startScenario("keanggotaan-fiktif");
+    await flush();
+
+    expect(h.connectArgs).toEqual([
+      [
+        "keanggotaan-fiktif",
+        {
+          history: [
+            {
+              scenario_id: "kredit-macet",
+              played_on: "2026-10-18",
+              values: { kepedulian: { status: "DIABAIKAN", evidence: "Langsung menagih." } },
+              next_step: "Tanyakan sebab kesulitannya dulu.",
+            },
+          ],
+        },
+      ],
+    ]);
+  });
+
+  it("mock transport: never loads history (offline-first)", async () => {
+    createSessionController().startScenario("kredit-macet");
+    await flush();
+
+    expect(h.listMySessions).not.toHaveBeenCalled();
+    expect(h.connectArgs).toEqual([["kredit-macet", { history: [] }]]);
+  });
+
+  it("tutorial: never loads history (it has no auditor)", async () => {
+    h.transport = "livekit";
+    createSessionController().startScenario("tutorial-koperasi-konsumen");
+    await flush();
+
+    expect(h.listMySessions).not.toHaveBeenCalled();
+    expect(h.connectArgs).toEqual([["tutorial-koperasi-konsumen", { history: [] }]]);
+  });
+
+  it("a failed history read still starts the session, without history", async () => {
+    h.transport = "livekit";
+    h.listMySessions.mockRejectedValue(new Error("offline"));
+    createSessionController().startScenario("kredit-macet");
+    await flush();
+
+    expect(h.connectArgs).toEqual([["kredit-macet", { history: [] }]]);
+    expect(sessionStore.getState().error).toBeNull();
+  });
+
+  it("a slow history read never holds the session start past the timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      h.transport = "livekit";
+      h.listMySessions.mockReturnValue(new Promise(() => {})); // never settles
+      createSessionController().startScenario("kredit-macet");
+      await flush();
+      expect(h.connectArgs).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(h.connectArgs).toEqual([["kredit-macet", { history: [] }]]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not connect a transport superseded while history was loading", async () => {
+    h.transport = "livekit";
+    let release: (v: unknown) => void = () => {};
+    h.listMySessions.mockReturnValue(new Promise((r) => (release = r)));
+    const controller = createSessionController();
+    controller.startScenario("kredit-macet");
+    controller.stop(); // player left before the history read returned
+
+    release({ status: "ok", data: [ASSESSED] });
+    await flush();
+    expect(h.connectArgs).toEqual([]);
+  });
+});
+
+describe("sessionController — 'sedang menyusun evaluasi' state", () => {
+  const started = async () => {
+    const controller = createSessionController();
+    controller.startScenario("kredit-macet");
+    await flush();
+    return controller;
+  };
+
+  it("ending the session shows the evaluating state right away", async () => {
+    const controller = await started();
+    controller.endSession();
+
+    expect(h.endSessionCalls).toEqual([["manual"]]);
+    expect(sessionStore.getState().evaluating).toBe(true);
+  });
+
+  it("a force-quit (drift level 2) also shows the evaluating state", async () => {
+    await started();
+    h.driftCb?.(2);
+
+    expect(sessionStore.getState().driftLevel).toBe(2);
+    expect(sessionStore.getState().evaluating).toBe(true);
+  });
+
+  it("a drift warning (level 1) does not", async () => {
+    await started();
+    h.driftCb?.(1);
+
+    expect(sessionStore.getState().evaluating).toBe(false);
+  });
+
+  it("the result replaces the evaluating state", async () => {
+    const controller = await started();
+    controller.endSession();
+    h.sessionEndedCb?.(ENDED);
+
+    expect(sessionStore.getState().evaluating).toBe(false);
+    expect(sessionStore.getState().ended).toEqual(ENDED);
+  });
+
+  it("a dropped connection while evaluating surfaces an error instead of hanging", async () => {
+    const controller = await started();
+    controller.endSession();
+    h.connectionCb?.("error");
+
+    expect(sessionStore.getState().evaluating).toBe(false);
+    expect(sessionStore.getState().error).toMatch(/evaluasi/i);
+  });
+
+  it("a connection error outside evaluation keeps today's behavior (no error message)", async () => {
+    await started();
+    h.connectionCb?.("error");
+
+    expect(sessionStore.getState().connection).toBe("error");
+    expect(sessionStore.getState().error).toBeNull();
+  });
+});
+
+describe("sessionController — failed evaluation", () => {
+  const FAILED: SessionEnded = {
+    trigger: "manual",
+    result: {
+      ...RESULT,
+      stateClassification: {},
+      scores: {},
+      endingType: "neutral",
+      narrativeFeedback: "Evaluasi otomatis tidak dapat diselesaikan.",
+      values: {},
+      progressFeedback: "",
+      nextStep: "",
+      evaluationFailed: true,
+    },
+  };
+
+  it("still shows the fallback result panel", async () => {
+    createSessionController().startScenario("kredit-macet");
+    await flush();
+    h.sessionEndedCb?.(FAILED);
+    await flush();
+
+    expect(sessionStore.getState().ended).toEqual(FAILED);
+    expect(sessionStore.getState().evaluating).toBe(false);
+  });
+
+  it("never stores it in the database (nor syncs badges)", async () => {
+    createSessionController().startScenario("kredit-macet");
+    await flush();
+    h.sessionEndedCb?.(FAILED);
+    await flush();
+
+    expect(h.recordSession).not.toHaveBeenCalled();
+    expect(h.syncSessionBadges).not.toHaveBeenCalled();
   });
 });

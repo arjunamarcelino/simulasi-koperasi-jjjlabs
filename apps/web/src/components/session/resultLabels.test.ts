@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { scoreTone, resolveScoreLabel, resolveStateChip, ENDING_STYLE } from "./resultLabels";
+import {
+  describeValueTrend,
+  ENDING_STYLE,
+  resolveScoreLabel,
+  resolveStateChip,
+  resolveValueLabel,
+  scoreTone,
+  valueTone,
+} from "./resultLabels";
+import type { ValueAssessment } from "../../session/transport/contract";
 
 describe("scoreTone — threshold triad", () => {
   // >=70 good, >=40 warn, else bad (resultLabels.ts)
@@ -90,5 +99,59 @@ describe("ENDING_STYLE — every ending has a complete, correctly-labeled token 
     expect(ENDING_STYLE.good.badgeLabel).toBe("Berhasil");
     expect(ENDING_STYLE.neutral.badgeLabel).toBe("Selesai");
     expect(ENDING_STYLE.bad.badgeLabel).toBe("Berakhir");
+  });
+});
+
+const value = (o: Partial<ValueAssessment> = {}): ValueAssessment => ({
+  status: "TERCERMIN",
+  evidence: "",
+  trend: "MENGUAT",
+  ...o,
+});
+
+describe("resolveValueLabel — ICA value keys", () => {
+  it("maps a known value key", () => {
+    expect(resolveValueLabel("kepedulian")).toBe("Kepedulian terhadap Sesama");
+  });
+
+  it("prettifies an unknown key", () => {
+    expect(resolveValueLabel("nilai_baru")).toBe("nilai baru");
+  });
+});
+
+describe("describeValueTrend — words, not numbers", () => {
+  it.each([
+    ["MENGUAT", "▲ menguat"],
+    ["MELEMAH", "▼ melemah"],
+  ] as const)("%s reads as a direction only", (trend, text) => {
+    expect(describeValueTrend(value({ trend }))).toBe(text);
+  });
+
+  it("a first assessment also says how the value showed up", () => {
+    expect(describeValueTrend(value({ trend: "BARU_DIUJI", status: "DIABAIKAN" }))).toBe(
+      "○ baru diuji · diabaikan",
+    );
+  });
+
+  it("an unchanged value says at which level it held", () => {
+    expect(describeValueTrend(value({ trend: "TETAP", status: "BELUM_TAMPAK" }))).toBe(
+      "● tetap · belum tampak",
+    );
+  });
+});
+
+describe("valueTone", () => {
+  it("follows the direction when the value moved", () => {
+    expect(valueTone(value({ trend: "MENGUAT", status: "BELUM_TAMPAK" }))).toBe("good");
+    expect(valueTone(value({ trend: "MELEMAH", status: "BELUM_TAMPAK" }))).toBe("bad");
+  });
+
+  it.each([
+    ["TERCERMIN", "good"],
+    ["BELUM_TAMPAK", "warn"],
+    ["DIABAIKAN", "bad"],
+  ] as const)("follows the status when it did not move (%s → %s)", (status, tone) => {
+    expect(valueTone(value({ trend: "TETAP", status }))).toBe(tone);
+    expect(valueTone(value({ trend: "BARU_DIUJI", status }))).toBe(tone);
   });
 });

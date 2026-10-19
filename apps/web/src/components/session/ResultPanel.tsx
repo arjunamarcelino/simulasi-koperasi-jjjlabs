@@ -1,5 +1,6 @@
 import { PixelPanel } from "../common/PixelPanel";
 import { GameButton } from "../common/GameButton";
+import { ValueJourney } from "./ValueJourney";
 import type { EndingType, SessionEnded } from "../../session/transport/contract";
 import {
   ENDING_STYLE,
@@ -50,7 +51,8 @@ export function ResultPanel({
   backLabel?: string;
   overlayClassName?: string;
 }) {
-  const { endingType, stateClassification, scores, narrativeFeedback } = ended.result;
+  const { endingType, stateClassification, scores, narrativeFeedback, values, progressFeedback, nextStep } =
+    ended.result;
 
   const chips: StateChip[] = Object.entries(stateClassification).map(([k, v]) =>
     resolveStateChip(k, v),
@@ -123,6 +125,8 @@ export function ResultPanel({
         <p className="whitespace-pre-wrap text-left font-body text-xl leading-snug text-ink">
           {narrativeFeedback}
         </p>
+
+        <ValueJourney values={values} progressFeedback={progressFeedback} nextStep={nextStep} />
 
         <div className="flex justify-center pt-2">
           <GameButton variant="primary" onClick={onBack}>
