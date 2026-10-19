@@ -10,7 +10,12 @@
  */
 import { supabase } from "./supabase";
 import { settle, type RepoResult } from "./repoResult";
-import type { EndingType, FinalDecisionTrigger, ScenarioId } from "../session/transport/contract";
+import type {
+  EndingType,
+  FinalDecisionTrigger,
+  ScenarioId,
+  ValueAssessment,
+} from "../session/transport/contract";
 import {
   parseClaimMission,
   parseMyProgress,
@@ -105,6 +110,9 @@ export const progressRepo = {
     scores: Record<string, number>;
     state: Record<string, string>;
     feedback: string;
+    values: Record<string, ValueAssessment>;
+    progressFeedback: string;
+    nextStep: string;
     startedAt?: string | null;
   }): Promise<RepoResult<RecordSessionResult>> {
     if (!supabase) return { status: "degraded" };
@@ -116,6 +124,9 @@ export const progressRepo = {
       p_state: input.state,
       p_feedback: input.feedback,
       p_started_at: input.startedAt ?? null,
+      p_values: input.values,
+      p_progress: input.progressFeedback,
+      p_next_step: input.nextStep,
     });
     return settle(data, error, parseRecordSession);
   },

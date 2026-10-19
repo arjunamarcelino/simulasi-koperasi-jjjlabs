@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildValueHistory,
   goodEndingScenarioIds,
   groupByScenario,
   rankBestResult,
@@ -16,8 +17,18 @@ const rec = (o: Partial<SessionRecord> = {}): SessionRecord => ({
   scores: {},
   stateClassification: {},
   narrativeFeedback: "",
+  values: {},
+  progressFeedback: "",
+  nextStep: "",
   ...o,
 });
+
+const assessed = (o: Partial<SessionRecord> = {}): SessionRecord =>
+  rec({
+    values: { kepedulian: { status: "DIABAIKAN", evidence: "Langsung menagih.", trend: "BARU_DIUJI" } },
+    nextStep: "Tanyakan sebab kesulitannya dulu.",
+    ...o,
+  });
 
 describe("rankBestResult", () => {
   it("prefers a better ending even with a lower score", () => {
@@ -156,13 +167,72 @@ describe("toSessionEnded", () => {
         scores: { x: 80 },
         endingType: "good",
         narrativeFeedback: "ok",
+        values: {},
+        progressFeedback: "",
+        nextStep: "",
+        evaluationFailed: false,
       },
     });
+  });
+
+  it("carries the personal feedback so the history detail shows it too", () => {
+    const r = assessed({ progressFeedback: "Titik awal Anda." });
+    const { result } = toSessionEnded(r);
+    expect(result.values).toEqual(r.values);
+    expect(result.progressFeedback).toBe("Titik awal Anda.");
+    expect(result.nextStep).toBe("Tanyakan sebab kesulitannya dulu.");
   });
 
   it("reassembles a tutorial record (empty maps) without throwing", () => {
     const ended = toSessionEnded(rec({ scores: {}, stateClassification: {} }));
     expect(ended.result.scores).toEqual({});
     expect(ended.result.stateClassification).toEqual({});
+  });
+});
+
+describe("buildValueHistory", () => {
+  const DAY = Date.parse("2026-10-18T09:00:00.000Z");
+
+  it("summarizes an assessed attempt into the /token wire shape (no trend, no narrative)", () => {
+    expect(buildValueHistory([assessed({ startedAt: DAY, progressFeedback: "narasi" })])).toEqual([
+      {
+        scenario_id: "kredit-macet",
+        played_on: "2026-10-18",
+        values: { kepedulian: { status: "DIABAIKAN", evidence: "Langsung menagih." } },
+        next_step: "Tanyakan sebab kesulitannya dulu.",
+      },
+    ]);
+  });
+
+  it("skips attempts without value assessments (legacy rows, failed audits)", () => {
+    expect(buildValueHistory([rec({ id: "old" })])).toEqual([]);
+  });
+
+  it("skips tutorial attempts", () => {
+    const tutorial = assessed({ scenarioId: "tutorial-koperasi-konsumen" });
+    expect(buildValueHistory([tutorial])).toEqual([]);
+  });
+
+  it("keeps the five newest assessed attempts, newest first", () => {
+    const attempts = [1, 7, 3, 6, 2, 5, 4].map((d) =>
+      assessed({ id: `s${d}`, startedAt: DAY + d * 86_400_000 }),
+    );
+    expect(buildValueHistory(attempts).map((e) => e.played_on)).toEqual([
+      "2026-10-25",
+      "2026-10-24",
+      "2026-10-23",
+      "2026-10-22",
+      "2026-10-21",
+    ]);
+  });
+
+  it("bounds the free text to the /token limits", () => {
+    const long = assessed({
+      values: { kepedulian: { status: "TERCERMIN", evidence: "x".repeat(500), trend: "TETAP" } },
+      nextStep: "y".repeat(900),
+    });
+    const [entry] = buildValueHistory([long]);
+    expect(entry?.values["kepedulian"]?.evidence).toHaveLength(200);
+    expect(entry?.next_step).toHaveLength(300);
   });
 });

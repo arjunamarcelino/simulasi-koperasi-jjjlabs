@@ -1,7 +1,7 @@
 -- RLS isolation: owners see their own rows, non-owners see nothing, writes can't
 -- forge another owner, catalogs are public-read-only, and secret codes stay hidden.
 begin;
-select plan(12);
+select plan(13);
 
 select tests.create_user('u1');
 select tests.create_user('u2');
@@ -37,6 +37,10 @@ select throws_ok(
   $$ insert into public.sessions (user_id, scenario_id, ended_at, trigger, ending_type)
      values (tests.get_uid('u1'), 'kredit-macet', now(), 'manual', 'good') $$,
   '42501', null, 'cannot insert a pre-finalized session (finalize is RPC-only)');
+select throws_ok(
+  $$ insert into public.sessions (user_id, scenario_id, values_json)
+     values (tests.get_uid('u1'), 'kredit-macet', '{"kepedulian": {"status": "TERCERMIN"}}'::jsonb) $$,
+  '42501', null, 'cannot insert an open session carrying forged value assessments');
 
 -- Catalogs are public-read for anonymous guests.
 select tests.login_as_anon();

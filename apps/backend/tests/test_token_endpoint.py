@@ -76,6 +76,78 @@ def test_invalid_scenario_does_not_consume_quota(client, monkeypatch):
     assert client.post("/token", json={"scenario_id": "kredit-macet"}).status_code == 200
 
 
+# ------------- riwayat nilai pemain → job metadata dispatch -------------
+
+
+def _dispatch_metadata(token: str) -> dict:
+    (agent,) = _decode_livekit(token)["roomConfig"]["agents"]
+    return json.loads(agent["metadata"])
+
+
+def _history_entry(**overrides) -> dict:
+    entry = {
+        "scenario_id": "kredit-macet",
+        "played_on": "2026-10-18",
+        "values": {"kepedulian": {"status": "DIABAIKAN", "evidence": "Langsung menagih."}},
+        "next_step": "Tanyakan sebab kesulitannya dulu.",
+    }
+    entry.update(overrides)
+    return entry
+
+
+def test_history_is_forwarded_to_dispatch_metadata(client):
+    _override_user(AuthedUser(user_id="u", is_anonymous=False))
+    resp = client.post(
+        "/token", json={"scenario_id": "keanggotaan-fiktif", "history": [_history_entry()]}
+    )
+    assert resp.status_code == 200
+    meta = _dispatch_metadata(resp.json()["token"])
+    assert meta == {"scenario_id": "keanggotaan-fiktif", "history": [_history_entry()]}
+
+
+def test_missing_history_dispatches_empty_list(client):
+    _override_user(AuthedUser(user_id="u", is_anonymous=False))
+    resp = client.post("/token", json={"scenario_id": "kredit-macet"})
+    assert resp.status_code == 200
+    assert _dispatch_metadata(resp.json()["token"])["history"] == []
+
+
+def test_more_than_five_history_entries_is_422(client):
+    _override_user(AuthedUser(user_id="u", is_anonymous=False))
+    history = [_history_entry() for _ in range(6)]
+    resp = client.post("/token", json={"scenario_id": "kredit-macet", "history": history})
+    assert resp.status_code == 422
+
+
+def test_history_with_unknown_status_is_422(client):
+    _override_user(AuthedUser(user_id="u", is_anonymous=False))
+    bad = _history_entry(values={"kepedulian": {"status": "HEBAT", "evidence": "x"}})
+    resp = client.post("/token", json={"scenario_id": "kredit-macet", "history": [bad]})
+    assert resp.status_code == 422
+
+
+def test_history_from_tutorial_is_422(client):
+    # Tutorial tak punya penilaian nilai → tak pernah jadi pembanding.
+    _override_user(AuthedUser(user_id="u", is_anonymous=False))
+    bad = _history_entry(scenario_id="tutorial-koperasi-konsumen")
+    resp = client.post("/token", json={"scenario_id": "kredit-macet", "history": [bad]})
+    assert resp.status_code == 422
+
+
+def test_history_with_oversized_evidence_is_422(client):
+    _override_user(AuthedUser(user_id="u", is_anonymous=False))
+    bad = _history_entry(values={"kepedulian": {"status": "TERCERMIN", "evidence": "x" * 201}})
+    resp = client.post("/token", json={"scenario_id": "kredit-macet", "history": [bad]})
+    assert resp.status_code == 422
+
+
+def test_history_with_unexpected_field_is_422(client):
+    _override_user(AuthedUser(user_id="u", is_anonymous=False))
+    bad = _history_entry(narrative_feedback="narasi lengkap tak boleh ikut")
+    resp = client.post("/token", json={"scenario_id": "kredit-macet", "history": [bad]})
+    assert resp.status_code == 422
+
+
 def test_livekit_unconfigured_is_500(client, monkeypatch):
     monkeypatch.setattr(server, "LIVEKIT_API_KEY", "")
     _override_user(AuthedUser(user_id="u", is_anonymous=False))

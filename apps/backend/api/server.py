@@ -2,7 +2,8 @@
 
 `POST /token` mint LiveKit access token dan meng-embed dispatch agent lewat
 RoomConfiguration, sehingga worker (agent_name sama) otomatis bergabung ke room
-baru dengan membawa `scenario_id` di job metadata (PRD §5).
+baru dengan membawa `scenario_id` di job metadata (PRD §5) — plus `history`
+(ringkasan nilai ICA sesi-sesi lama pemain) untuk AI Auditor. Tetap tanpa DB.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from pydantic import (
     Field,
     TypeAdapter,
     ValidationError,
+    field_validator,
     model_validator,
 )
 
@@ -114,8 +116,44 @@ app.add_middleware(
 )
 
 
+# Riwayat nilai pemain (feedback personal). Dikirim FE dari baris `sessions` miliknya
+# sendiri, divalidasi KETAT di sini lalu diteruskan ke job metadata dispatch; hanya AI
+# Auditor yang membacanya. Batas selaras `voice_worker/schemas.py` (MAX_HISTORY,
+# _MAX_EVIDENCE, _MAX_NEXT_STEP) — menjaga metadata kecil. Trust boundary sama dengan
+# `scores_json`: user hanya bisa memengaruhi feedback dirinya sendiri.
+HISTORY_SCENARIOS = VALID_SCENARIOS - {"tutorial-koperasi-konsumen"}  # tutorial tanpa nilai
+
+
+class HistoryValueIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["TERCERMIN", "BELUM_TAMPAK", "DIABAIKAN"]
+    evidence: Annotated[str, Field(max_length=200)] = ""
+
+
+class HistoryEntryIn(BaseModel):
+    # Hanya ringkasan: narasi lengkap, skor, dan transkrip TIDAK boleh ikut (kunci asing → 422).
+    model_config = ConfigDict(extra="forbid")
+
+    scenario_id: str
+    played_on: date
+    values: Annotated[
+        dict[Annotated[str, Field(min_length=1, max_length=40)], HistoryValueIn],
+        Field(max_length=6),
+    ]
+    next_step: Annotated[str, Field(max_length=300)] = ""
+
+    @field_validator("scenario_id")
+    @classmethod
+    def _known_scenario(cls, v: str) -> str:
+        if v not in HISTORY_SCENARIOS:
+            raise ValueError("scenario_id riwayat tidak dikenal")
+        return v
+
+
 class TokenRequest(BaseModel):
     scenario_id: str
+    history: Annotated[list[HistoryEntryIn], Field(max_length=5)] = []
 
 
 class TokenResponse(BaseModel):
@@ -969,7 +1007,12 @@ def create_token(
                 agents=[
                     api.RoomAgentDispatch(
                         agent_name=AGENT_NAME,
-                        metadata=json.dumps({"scenario_id": req.scenario_id}),
+                        metadata=json.dumps(
+                            {
+                                "scenario_id": req.scenario_id,
+                                "history": [h.model_dump(mode="json") for h in req.history],
+                            }
+                        ),
                     )
                 ],
             )

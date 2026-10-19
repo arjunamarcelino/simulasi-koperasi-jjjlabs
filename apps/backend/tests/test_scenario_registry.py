@@ -9,7 +9,8 @@ hidup di interpreter yang sama. Semua test ini sinkron (data murni, tanpa LLM).
 from __future__ import annotations
 
 import pytest
-from scenarios import _SCENARIOS, get_scenario
+from scenarios import _SCENARIOS, ICA_VALUES, get_scenario
+from schemas import VALUE_STATUSES
 
 
 def test_registry_keys_match_scenario_id():
@@ -67,3 +68,37 @@ def test_rat_persona_references_resolve():
         assert phase.default_persona in persona_keys
         if phase.entry_line is not None:
             assert phase.entry_line[0] in persona_keys
+
+
+def test_ica_registry_is_complete_and_self_keyed():
+    # 10 nilai ICA (Statement on the Cooperative Identity): 6 nilai dasar + 4 nilai etis.
+    assert len(ICA_VALUES) == 10
+    for key, value in ICA_VALUES.items():
+        assert key == value.key
+        assert value.label and value.description
+
+
+def test_auditor_values_are_relevant_ica_values():
+    audited = [s for s in _SCENARIOS.values() if s.auditor is not None]
+    assert audited  # fail-loud
+    for scenario in audited:
+        spec = scenario.auditor
+        # Hanya nilai yang relevan (bukan semua); batas atas menjaga ukuran riwayat /token.
+        assert 0 < len(spec.values) <= 4, scenario.scenario_id
+        for key, indicator in spec.values.items():
+            assert key in ICA_VALUES, f"{scenario.scenario_id}: nilai {key} bukan nilai ICA"
+            assert indicator.strip(), f"{scenario.scenario_id}: indikator {key} kosong"
+
+
+def test_value_caps_reference_existing_states_and_values():
+    # Cap menjangkarkan nilai ke taksonomi auditor: state & nilai state harus ADA,
+    # dan nilai ICA yang dibatasi harus dinilai di skenario itu.
+    for scenario in _SCENARIOS.values():
+        spec = scenario.auditor
+        if spec is None:
+            continue
+        for cap in spec.value_caps:
+            assert cap.state in spec.taxonomy, f"{scenario.scenario_id}: {cap.state}"
+            assert cap.state_value in spec.taxonomy[cap.state], cap
+            assert cap.value in spec.values, cap
+            assert cap.max_status in VALUE_STATUSES, cap

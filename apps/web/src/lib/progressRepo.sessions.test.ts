@@ -36,6 +36,9 @@ const INPUT = {
   scores: { compliance: 80 },
   state: { foo: "BENAR" },
   feedback: "Bagus",
+  values: { kepedulian: { status: "TERCERMIN", evidence: "Bertanya dulu.", trend: "MENGUAT" } },
+  progressFeedback: "Berkembang.",
+  nextStep: "Tetap santun.",
   startedAt: "2026-10-01T00:00:00.000Z",
 } as const;
 
@@ -46,6 +49,9 @@ const NO_START = {
   scores: {},
   state: {},
   feedback: "x",
+  values: {},
+  progressFeedback: "",
+  nextStep: "",
 } as const;
 
 describe("progressRepo.recordSession", () => {
@@ -70,6 +76,9 @@ describe("progressRepo.recordSession", () => {
       p_state: { foo: "BENAR" },
       p_feedback: "Bagus",
       p_started_at: "2026-10-01T00:00:00.000Z",
+      p_values: { kepedulian: { status: "TERCERMIN", evidence: "Bertanya dulu.", trend: "MENGUAT" } },
+      p_progress: "Berkembang.",
+      p_next_step: "Tetap santun.",
     });
   });
 

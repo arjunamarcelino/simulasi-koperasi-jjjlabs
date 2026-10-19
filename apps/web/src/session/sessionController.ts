@@ -5,10 +5,38 @@ import type {
   ScenarioId,
   SessionTransport,
   Unsubscribe,
+  ValueHistoryEntry,
 } from "./transport/contract";
+import { ENV } from "../config/env";
 import { sessionStore } from "../stores/session.store";
 import { gameStore } from "../stores/game.store";
 import { progressRepo } from "../lib/progressRepo";
+import { sessionsRepo } from "../lib/sessionsRepo";
+import { buildValueHistory, UNASSESSED_SCENARIOS } from "../lib/sessionHistory";
+
+/** Upper bound the history read may delay a session start before we go without it. */
+const HISTORY_TIMEOUT_MS = 1500;
+
+/**
+ * The player's recent value history for the auditor's personal feedback — best-effort.
+ * Only the LiveKit auditor reads it (mock stays offline-first; the tutorial has no
+ * auditor). Any failure or a slow read yields [] so the session always starts.
+ */
+async function loadValueHistory(scenarioId: ScenarioId): Promise<ValueHistoryEntry[]> {
+  if (ENV.transport !== "livekit" || UNASSESSED_SCENARIOS.has(scenarioId)) return [];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), HISTORY_TIMEOUT_MS);
+  });
+  try {
+    const res = await Promise.race([sessionsRepo.listMySessions(), timeout]);
+    return res?.status === "ok" ? buildValueHistory(res.data) : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * One-way glue: Transport → store. React never reads the transport directly; it
@@ -61,6 +89,12 @@ export function createSessionController(): SessionController {
   // any failure is swallowed so persistence never disturbs the ended session or paints a
   // scrim over the ResultPanel. scenarioId comes from the result payload itself.
   const persistResult = async (result: AuditorResult): Promise<void> => {
+    // A failed evaluation is shown (fallback panel) but never stored: it is not a real
+    // assessment and must not appear in history or feed the next session's comparison.
+    if (result.evaluationFailed) {
+      console.warn("Evaluasi sesi gagal; hasil tidak disimpan.");
+      return;
+    }
     try {
       const outcome = await progressRepo.recordSession({
         scenarioId: result.scenarioId,
@@ -69,6 +103,9 @@ export function createSessionController(): SessionController {
         scores: result.scores,
         state: result.stateClassification,
         feedback: result.narrativeFeedback,
+        values: result.values,
+        progressFeedback: result.progressFeedback,
+        nextStep: result.nextStep,
         startedAt: sessionStartedAt,
       });
       if (outcome.status !== "ok") {
@@ -109,12 +146,26 @@ export function createSessionController(): SessionController {
       transport = next;
 
       unsubs = [
-        next.onConnectionState(getState().setConnection),
+        next.onConnectionState((state) => {
+          getState().setConnection(state);
+          // The pipe died while the result was being prepared (e.g. the end_session RPC
+          // failed or timed out): say so instead of leaving "menyusun evaluasi" hanging.
+          if (state === "error" && getState().evaluating && !getState().ended) {
+            getState().setEvaluating(false);
+            getState().setError("Evaluasi sesi belum berhasil diterima. Silakan coba lagi.");
+          }
+        }),
         next.onTranscript(getState().upsertTranscript),
-        next.onDriftLevel(getState().setDriftLevel),
+        next.onDriftLevel((level) => {
+          getState().setDriftLevel(level);
+          // Level 2 = the worker force-quits and runs the auditor itself: show the same
+          // "being assessed" wait as a manual end.
+          if (level === 2 && !getState().ended) getState().setEvaluating(true);
+        }),
         next.onSessionEnded((e) => {
           // Reset mic so the store matches the physically-released track.
           getState().setEnded(e);
+          getState().setEvaluating(false);
           getState().setMicEnabled(false);
           // Persist the result (best-effort). Synchronous guard BEFORE any await so a
           // duplicate session_ended / StrictMode remount can't double-insert.
@@ -131,11 +182,15 @@ export function createSessionController(): SessionController {
       }
       if (next.onPhase) unsubs.push(next.onPhase(getState().setPhase));
 
-      next
-        .connect(getState().scenarioId)
-        .then(() => {
-          // Connected after we were superseded/torn down? Undo it.
-          if (myGen !== generation) void next.disconnect();
+      const scenarioId = getState().scenarioId;
+      loadValueHistory(scenarioId)
+        .then((history) => {
+          // Superseded while the history loaded? Never connect this transport at all.
+          if (myGen !== generation) return;
+          return next.connect(scenarioId, { history }).then(() => {
+            // Connected after we were superseded/torn down? Undo it.
+            if (myGen !== generation) void next.disconnect();
+          });
         })
         .catch((cause: unknown) => {
           if (myGen === generation) fail(cause);
@@ -199,7 +254,12 @@ export function createSessionController(): SessionController {
       guarded((t) => t.unlockAudio?.())();
     },
 
-    endSession: guarded((t) => t.endSession("manual")),
+    endSession: guarded((t) => {
+      // From the click on: the auditor needs a while (retries + fallback model), so the
+      // player should see the session is being assessed, not a frozen scene.
+      sessionStore.getState().setEvaluating(true);
+      t.endSession("manual");
+    }),
 
     advancePhase: guarded((t) => t.advancePhase?.()),
 

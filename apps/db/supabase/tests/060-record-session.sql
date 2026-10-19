@@ -1,6 +1,6 @@
 -- record_session: atomic insert-and-finalize in one txn (PR #22 review P2-1/P2-2/P3-3).
 begin;
-select plan(9);
+select plan(15);
 
 select tests.create_user('rsplayer');
 
@@ -42,6 +42,42 @@ select is(
 select is(
   (public.record_session(p_scenario_id => 'does-not-exist', p_trigger => 'manual', p_ending_type => 'good') ->> 'reason'),
   'invalid', 'unknown scenario_id (FK) → {ok:false, reason:invalid}');
+
+-- personal feedback (ICA values): values / progress / next_step persisted as sent
+select tests.login_as('rsplayer');
+select is(
+  (public.record_session(p_scenario_id => 'keanggotaan-fiktif', p_trigger => 'manual',
+     p_ending_type => 'good',
+     p_values => '{"kepedulian": {"status": "TERCERMIN", "evidence": "Bertanya dulu.", "trend": "MENGUAT"}}'::jsonb,
+     p_progress => 'Saran sesi lalu Anda jalankan.',
+     p_next_step => 'Tetap santun saat ditekan.') ->> 'ok'),
+  'true', 'record_session accepts the personal-feedback fields');
+select tests.login_as_service();
+select is(
+  (select (values_json -> 'kepedulian' ->> 'status') || '|' || progress_feedback || '|' || next_step
+     from public.sessions
+    where user_id = tests.get_uid('rsplayer') and scenario_id = 'keanggotaan-fiktif'),
+  'TERCERMIN|Saran sesi lalu Anda jalankan.|Tetap santun saat ditekan.',
+  'values_json, progress_feedback, next_step are persisted');
+select ok(
+  (select bool_and(values_json = '{}'::jsonb and progress_feedback is null and next_step is null)
+     from public.sessions
+    where user_id = tests.get_uid('rsplayer') and scenario_id = 'kredit-macet'),
+  'omitted personal-feedback params default to empty (older callers unaffected)');
+
+select tests.login_as('rsplayer');
+select is(
+  (public.record_session(p_scenario_id => 'kredit-macet', p_trigger => 'manual',
+     p_ending_type => 'good', p_values => jsonb_build_object('k', repeat('x', 5000))) ->> 'reason'),
+  'too_large', 'oversized values → {ok:false, reason:too_large}');
+select is(
+  (public.record_session(p_scenario_id => 'kredit-macet', p_trigger => 'manual',
+     p_ending_type => 'good', p_progress => repeat('x', 2001)) ->> 'reason'),
+  'too_large', 'oversized progress_feedback → {ok:false, reason:too_large}');
+select is(
+  (public.record_session(p_scenario_id => 'kredit-macet', p_trigger => 'manual',
+     p_ending_type => 'good', p_next_step => repeat('x', 501)) ->> 'reason'),
+  'too_large', 'oversized next_step → {ok:false, reason:too_large}');
 
 -- anon (no JWT) cannot execute — EXECUTE revoked
 select tests.login_as_anon();

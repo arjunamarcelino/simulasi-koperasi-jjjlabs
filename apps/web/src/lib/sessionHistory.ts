@@ -1,10 +1,15 @@
 /**
  * Pure domain logic for the session-history tab: reassembling a stored row into the
  * shape ResultPanel wants, ranking a scenario's best attempt, and grouping attempts by
- * scenario. No supabase / store / React imports — kept pure so its tests need no mocks.
+ * scenario — plus summarizing past attempts into the value history the auditor compares
+ * against. No supabase / store / React imports — kept pure so its tests need no mocks.
  */
 import { SCENARIOS } from "@simkop/catalog";
-import type { SessionEnded } from "../session/transport/contract";
+import type {
+  ScenarioId,
+  SessionEnded,
+  ValueHistoryEntry,
+} from "../session/transport/contract";
 import type { SessionRecord } from "./sessionsRepo.contracts";
 
 export type ScenarioHistory = {
@@ -38,8 +43,46 @@ export function toSessionEnded(r: SessionRecord): SessionEnded {
       scores: r.scores,
       endingType: r.endingType,
       narrativeFeedback: r.narrativeFeedback,
+      values: r.values,
+      progressFeedback: r.progressFeedback,
+      nextStep: r.nextStep,
+      evaluationFailed: false, // failed evaluations are never persisted
     },
   };
+}
+
+// — value history for the auditor (personal feedback) ——————————————————————————
+// Bounds mirror the /token validator (apps/backend/api/server.py HistoryEntryIn) so a
+// long LLM sentence is trimmed here rather than 422-ing the whole session start.
+export const VALUE_HISTORY_LIMIT = 5;
+const MAX_EVIDENCE = 200;
+const MAX_NEXT_STEP = 300;
+
+/** Scenarios without an auditor: never assessed, so never compared against. */
+export const UNASSESSED_SCENARIOS: ReadonlySet<ScenarioId | (string & {})> = new Set([
+  "tutorial-koperasi-konsumen",
+]);
+
+/**
+ * The player's last few ASSESSED attempts (newest-first) as the /token `history` wire
+ * shape. Only status + evidence + next step travel — no narrative, scores or trend.
+ */
+export function buildValueHistory(records: readonly SessionRecord[]): ValueHistoryEntry[] {
+  return records
+    .filter((r) => !UNASSESSED_SCENARIOS.has(r.scenarioId) && Object.keys(r.values).length > 0)
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, VALUE_HISTORY_LIMIT)
+    .map((r) => ({
+      scenario_id: r.scenarioId,
+      played_on: new Date(r.startedAt).toISOString().slice(0, 10),
+      values: Object.fromEntries(
+        Object.entries(r.values).map(([key, v]) => [
+          key,
+          { status: v.status, evidence: v.evidence.slice(0, MAX_EVIDENCE) },
+        ]),
+      ),
+      next_step: r.nextStep.slice(0, MAX_NEXT_STEP),
+    }));
 }
 
 /**

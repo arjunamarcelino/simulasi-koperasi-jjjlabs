@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import backendSource from "../../../../apps/backend/voice_worker/scenarios.py?raw";
 import { SCENARIOS as FE_SCENARIOS } from "./scenario.config";
 import { SCENARIOS as CATALOG_SCENARIOS } from "@simkop/catalog";
-import { SCORE_KEY_LABELS } from "../components/session/resultLabels";
+import { SCORE_KEY_LABELS, VALUE_LABELS } from "../components/session/resultLabels";
 
 /**
  * Extracts the backend's scenario ids by matching the `scenario_id="..."` assignment
@@ -87,5 +87,30 @@ describe("backend score_keys ↔ FE score labels", () => {
   it("every backend score_key has an FE label (no prettify fallback)", () => {
     const unlabeled = [...new Set(scoreKeys)].filter((k) => !labeled.has(k));
     expect(unlabeled).toEqual([]);
+  });
+});
+
+/**
+ * Extracts `IcaValue("<key>", "<label>", ...)` constructor calls — the ICA cooperative
+ * values the auditor assesses (personal feedback). The class declaration
+ * (`class IcaValue:`) has no quoted args, so it never matches.
+ */
+function parseBackendIcaValues(src: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of src.matchAll(/\bIcaValue\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']/g)) {
+    if (m[1] !== undefined && m[2] !== undefined) out[m[1]] = m[2];
+  }
+  return out;
+}
+
+describe("backend ICA_VALUES ↔ FE value labels", () => {
+  const ica = parseBackendIcaValues(backendSource);
+
+  it("fail-loud guard: parse found the 10 ICA values", () => {
+    expect(Object.keys(ica)).toHaveLength(10);
+  });
+
+  it("FE value labels match the backend labels exactly", () => {
+    expect(VALUE_LABELS).toEqual(ica);
   });
 });

@@ -6,7 +6,12 @@
  * enum shows up rather than silently vanishing.
  * ------------------------------------------------------------------------- */
 
-import type { EndingType } from "../../session/transport/contract";
+import type {
+  EndingType,
+  ValueAssessment,
+  ValueStatus,
+  ValueTrend,
+} from "../../session/transport/contract";
 
 /** Visual tone for a classification chip. We own this union; the wire does not. */
 export type Tone = "good" | "bad" | "warn" | "neutral";
@@ -105,4 +110,54 @@ export function scoreTone(score: number): Tone {
   if (score >= 70) return "good";
   if (score >= 40) return "warn";
   return "bad";
+}
+
+// — ICA values ("Perjalanan Nilaimu") — words, never numbers ——————————————————————
+
+/** Human label per ICA value key. Mirrors backend `ICA_VALUES` (scenarios.py) exactly —
+ *  pinned by scenario.config.parity.test.ts. */
+export const VALUE_LABELS: Record<string, string> = {
+  swadaya: "Swadaya",
+  tanggung_jawab_pribadi: "Tanggung Jawab Pribadi",
+  demokrasi: "Demokrasi",
+  kesetaraan: "Kesetaraan",
+  keadilan: "Keadilan",
+  solidaritas: "Solidaritas",
+  kejujuran: "Kejujuran",
+  keterbukaan: "Keterbukaan",
+  tanggung_jawab_sosial: "Tanggung Jawab Sosial",
+  kepedulian: "Kepedulian terhadap Sesama",
+};
+
+export function resolveValueLabel(key: string): string {
+  return VALUE_LABELS[key] ?? prettifyKey(key);
+}
+
+const VALUE_STATUS_TEXT: Record<ValueStatus, { label: string; tone: Tone }> = {
+  TERCERMIN: { label: "tercermin", tone: "good" },
+  BELUM_TAMPAK: { label: "belum tampak", tone: "warn" },
+  DIABAIKAN: { label: "diabaikan", tone: "bad" },
+};
+
+const VALUE_TREND_TEXT: Record<ValueTrend, string> = {
+  MENGUAT: "▲ menguat",
+  TETAP: "● tetap",
+  MELEMAH: "▼ melemah",
+  BARU_DIUJI: "○ baru diuji",
+};
+
+/** "▲ menguat" — and, when the value did not move (or is new), at which level it sits,
+ *  since "tetap" alone can't tell steadily good from steadily neglected. */
+export function describeValueTrend(v: ValueAssessment): string {
+  const trend = VALUE_TREND_TEXT[v.trend];
+  return v.trend === "TETAP" || v.trend === "BARU_DIUJI"
+    ? `${trend} · ${VALUE_STATUS_TEXT[v.status].label}`
+    : trend;
+}
+
+/** Direction drives the tone when the value moved; otherwise its current status does. */
+export function valueTone(v: ValueAssessment): Tone {
+  if (v.trend === "MENGUAT") return "good";
+  if (v.trend === "MELEMAH") return "bad";
+  return VALUE_STATUS_TEXT[v.status].tone;
 }

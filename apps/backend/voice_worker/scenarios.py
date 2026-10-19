@@ -8,7 +8,7 @@ arsitektur "Telinga ≠ Mulut" (lihat `rat/`).
 Pilihan suara adalah USULAN — validasi dengan mendengarkan langsung.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from prompts.keanggotaan_fiktif import KEANGGOTAAN_FIKTIF_PROMPT
 from prompts.kredit_macet import KREDIT_MACET_PROMPT
@@ -35,6 +35,64 @@ class DriftSpec:
 
 
 @dataclass(frozen=True)
+class IcaValue:
+    """Satu nilai koperasi ICA (Statement on the Cooperative Identity, 1995)."""
+
+    key: str
+    label: str
+    description: str  # makna umum; indikator khusus skenario ada di AuditorSpec.values
+
+
+# 6 nilai dasar + 4 nilai etis ICA. Skenario hanya menilai nilai yang RELEVAN baginya.
+ICA_VALUES: dict[str, IcaValue] = {
+    v.key: v
+    for v in (
+        IcaValue("swadaya", "Swadaya", "Anggota mengatasi masalahnya bersama lewat koperasi."),
+        IcaValue(
+            "tanggung_jawab_pribadi",
+            "Tanggung Jawab Pribadi",
+            "Setiap anggota memikul kewajibannya sendiri terhadap koperasi.",
+        ),
+        IcaValue("demokrasi", "Demokrasi", "Anggota mengendalikan koperasi dan memutuskan bersama."),
+        IcaValue(
+            "kesetaraan",
+            "Kesetaraan",
+            "Hak setiap anggota sama — satu anggota satu suara, berapa pun modalnya.",
+        ),
+        IcaValue(
+            "keadilan",
+            "Keadilan",
+            "Perlakuan dan pembagian manfaat yang adil bagi setiap anggota sesuai jasanya.",
+        ),
+        IcaValue("solidaritas", "Solidaritas", "Anggota saling menopang demi kepentingan bersama."),
+        IcaValue("kejujuran", "Kejujuran", "Bersikap dan mencatat apa adanya, tanpa menutupi."),
+        IcaValue("keterbukaan", "Keterbukaan", "Transparan kepada anggota soal informasi dan keputusan."),
+        IcaValue(
+            "tanggung_jawab_sosial",
+            "Tanggung Jawab Sosial",
+            "Memperhatikan dampak koperasi bagi masyarakat sekitar.",
+        ),
+        IcaValue(
+            "kepedulian",
+            "Kepedulian terhadap Sesama",
+            "Memperhatikan kesulitan dan menjaga martabat orang lain.",
+        ),
+    )
+}
+
+
+@dataclass(frozen=True)
+class ValueCap:
+    """Jangkar konsistensi: bila `state` auditor = `state_value`, status nilai `value`
+    tak boleh melebihi `max_status` (label nilai tak pernah bertentangan dengan state)."""
+
+    state: str
+    state_value: str
+    value: str  # key ICA_VALUES yang dinilai skenario ini
+    max_status: str = "DIABAIKAN"
+
+
+@dataclass(frozen=True)
 class AuditorSpec:
     """Konfigurasi AI Auditor (PRD §6 Lapisan 3)."""
 
@@ -42,6 +100,10 @@ class AuditorSpec:
     grounding: str  # regulasi terkait untuk prompt auditor
     style_anchor: str  # contoh gaya & nada narasi (few-shot)
     score_keys: tuple[str, ...]  # dimensi skor 0–100
+    # Nilai ICA yang RELEVAN (key ICA_VALUES → indikator perilaku di skenario ini). Tiap
+    # indikator berjangkar ke state/skor/grounding di atas — bukan penilaian lepas.
+    values: dict[str, str] = field(default_factory=dict)
+    value_caps: tuple[ValueCap, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -67,10 +129,6 @@ class RatPhase:
     advance_action_label: str | None  # label tombol → fase berikutnya; None di fase akhir
     default_persona: str  # pemimpin fase: fallback direktur bila ragu (key)
     entry_line: tuple[str, str] | None = None  # (persona_key, teks) auto saat masuk fase
-    # Batas NPC saling menyambung sebelum giliran wajib balik ke pemain (D6).
-    max_npc_exchanges: int = 3
-    # Petunjuk tambahan untuk DIREKTUR di fase ini (draf — review pemilik).
-    director_hint: str = ""
 
 
 @dataclass(frozen=True)
@@ -208,6 +266,28 @@ KREDIT_MACET = Scenario(
             "grounding regulasi bila relevan."
         ),
         score_keys=("member_centric", "compliance", "soft_skills"),
+        values={
+            "kepedulian": (
+                "Menggali sebab tunggakan dengan empati — memberi Pak Joko ruang bercerita "
+                "(akses jalan tertutup proyek, omzet anjlok) sebelum menilai, dan menjaga "
+                "martabatnya. Selaras dengan State_Analisis_Masalah & skor member_centric."
+            ),
+            "keadilan": (
+                "Menawarkan jalan keluar yang adil sesuai prosedur (3R: jadwal ulang, "
+                "keringanan syarat, atau penataan ulang) tanpa ancaman, intimidasi, atau "
+                "penyitaan sepihak. Selaras dengan State_Jalur_Remedi (SESUAI vs "
+                "MELANGGAR_PROSEDUR)."
+            ),
+            "tanggung_jawab_pribadi": (
+                "Keringanan tetap disertai komitmen Pak Joko memenuhi kewajibannya; tidak "
+                "membebaskan utang tanpa dasar. Selaras dengan State_Jalur_Remedi (SESUAI "
+                "vs NAIF)."
+            ),
+        },
+        value_caps=(
+            ValueCap("State_Jalur_Remedi", "MELANGGAR_PROSEDUR", "keadilan"),
+            ValueCap("State_Jalur_Remedi", "NAIF", "tanggung_jawab_pribadi"),
+        ),
     ),
 )
 
@@ -270,6 +350,24 @@ KEANGGOTAAN_FIKTIF = Scenario(
             "regulasi bila relevan."
         ),
         score_keys=("integritas_data", "compliance", "soft_skills"),
+        values={
+            "kejujuran": (
+                "Menyebut kejanggalan Daftar Anggota apa adanya (nomor ganda, baris tanpa "
+                "NIK/alamat, tanpa Simpanan Pokok) dan tidak membiarkan data fiktif karena "
+                "sungkan. Selaras dengan State_Verifikasi_Data & skor integritas_data."
+            ),
+            "keadilan": (
+                "Mengaitkan pembersihan data dengan hak SHU dan hak suara anggota asli yang "
+                "terdilusi nama fiktif. Selaras dengan grounding Pasal 5(1)(c) & "
+                "State_Verifikasi_Data."
+            ),
+            "kepedulian": (
+                "Menjaga kehormatan dan relasi dengan Pak Bambang — mengklarifikasi baik-baik, "
+                "bukan menuduh, mempermalukan, atau mengancam. Selaras dengan "
+                "State_Relasi_NPC & skor soft_skills."
+            ),
+        },
+        value_caps=(ValueCap("State_Relasi_NPC", "RUSAK", "kepedulian"),),
     ),
 )
 
@@ -339,6 +437,28 @@ RAPAT_ANGGOTA_TAHUNAN = Scenario(
             "regulasi bila relevan."
         ),
         score_keys=("kepemimpinan", "compliance", "soft_skills"),
+        values={
+            "demokrasi": (
+                "Membawa perbedaan pendapat ke musyawarah/voting sesuai Tata Tertib hingga "
+                "rapat tuntas dan keputusan diambil oleh forum. Selaras dengan "
+                "State_Keabsahan_Keputusan & State_Proses_Rapat."
+            ),
+            "kesetaraan": (
+                "Menegakkan satu anggota satu suara — besar modal Pak Darma tidak membeli "
+                "suara atau arah kebijakan. Selaras dengan State_Keabsahan_Keputusan (vs "
+                "TUNDUK_TEKANAN_MODAL)."
+            ),
+            "kepedulian": (
+                "Menghadapi interupsi Pak Darma dengan tegas tapi santun, tanpa menyerang "
+                "pribadinya, sambil menenangkan forum. Selaras dengan State_Proses_Rapat & "
+                "skor soft_skills."
+            ),
+        },
+        value_caps=(
+            ValueCap("State_Proses_Rapat", "BUBAR", "demokrasi"),
+            ValueCap("State_Keabsahan_Keputusan", "TUNDUK_TEKANAN_MODAL", "demokrasi"),
+            ValueCap("State_Keabsahan_Keputusan", "TUNDUK_TEKANAN_MODAL", "kesetaraan"),
+        ),
     ),
     rat=RatSpec(
         personas=(
@@ -376,11 +496,6 @@ RAPAT_ANGGOTA_TAHUNAN = Scenario(
                 label="Buka Rapat",
                 advance_action_label="Baca LPJ",
                 default_persona="sri",
-                max_npc_exchanges=2,
-                director_hint=(
-                    "Tahap pembukaan: fokus kuorum dan membuka rapat. Ibu Sri paling "
-                    "relevan; Pak Darma cukup sesekali tak sabar."
-                ),
             ),
             RatPhase(
                 id=2,
@@ -393,22 +508,12 @@ RAPAT_ANGGOTA_TAHUNAN = Scenario(
                     "koperasi ini dari saya, jadi arah kebijakan harus ikut saya. "
                     "Jangan buang waktu dengan keluhan pedagang kecil!"),
                 ),
-                max_npc_exchanges=3,
-                director_hint=(
-                    "Tahap LPJ: konflik memanas. Bila salah satu NPC baru saja menyerang "
-                    "posisi yang lain secara langsung, NPC yang diserang boleh menyanggah."
-                ),
             ),
             RatPhase(
                 id=3,
                 label="Ambil Keputusan",
                 advance_action_label=None,
                 default_persona="sri",
-                max_npc_exchanges=2,
-                director_hint=(
-                    "Tahap keputusan: utamakan menjawab pimpinan; jangan biarkan kedua "
-                    "NPC berdebat sendiri tanpa arah — kembalikan giliran ke pimpinan."
-                ),
             ),
         ),
     ),

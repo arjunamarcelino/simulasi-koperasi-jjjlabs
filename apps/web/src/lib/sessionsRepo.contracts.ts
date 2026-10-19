@@ -13,8 +13,13 @@
 // Derived from the transport contract so the persistence path can't silently drift from
 // the live session vocabulary. The runtime guard tables below (Record<…, true>) then fail
 // to compile if the contract adds a member — the drift guard is structural.
-import type { EndingType, FinalDecisionTrigger } from "../session/transport/contract";
+import type {
+  EndingType,
+  FinalDecisionTrigger,
+  ValueAssessment,
+} from "../session/transport/contract";
 import { isRecord, str } from "./parseGuards";
+import { parseValueAssessments } from "./valueAssessment";
 export type { EndingType };
 export type SessionTrigger = FinalDecisionTrigger;
 
@@ -28,6 +33,9 @@ export type SessionRecord = {
   scores: Record<string, number>; // numeric-finite entries only
   stateClassification: Record<string, string>; // string entries only
   narrativeFeedback: string; // null coerced to ""
+  values: Record<string, ValueAssessment>; // {} for legacy rows / tutorial / failed audit
+  progressFeedback: string; // null coerced to ""
+  nextStep: string; // null coerced to ""
 };
 
 // — narrowing helpers ————————————————————————————————————————————————
@@ -83,6 +91,7 @@ export function parseSessionRow(u: unknown): SessionRecord | null {
 
   const narrative = u["narrative_feedback"];
   // One complete literal — no conditional/spread props (exactOptionalPropertyTypes).
+  // Personal-feedback columns arrived later: absent/null coerce to empty, never skip the row.
   return {
     id,
     scenarioId,
@@ -92,6 +101,9 @@ export function parseSessionRow(u: unknown): SessionRecord | null {
     scores: numericEntries(u["scores_json"]),
     stateClassification: stringEntries(u["state_json"]),
     narrativeFeedback: narrative === null || narrative === undefined ? "" : (str(narrative) ?? ""),
+    values: parseValueAssessments(u["values_json"]),
+    progressFeedback: str(u["progress_feedback"]) ?? "",
+    nextStep: str(u["next_step"]) ?? "",
   };
 }
 

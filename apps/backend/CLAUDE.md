@@ -101,6 +101,12 @@ skenario `docs/scenarios.md` (bukan lagi placeholder).
 3. **Lapisan 3 — AI Auditor**: `evaluation/auditor.py`. Model auditor sekali di akhir sesi,
    baca transkrip penuh + taksonomi + grounding → JSON (klasifikasi + skor +
    narasi). Hanya skenario ber-`auditor`. Tutorial pakai hasil terskrip.
+   **Feedback personal (nilai ICA):** auditor juga menilai `AuditorSpec.values` (nilai ICA
+   yang relevan, tiap indikator berjangkar ke state/skor) → `values` (status + bukti),
+   `progressFeedback`, `nextStep`, dengan membandingkan **riwayat pemain** (≤5 sesi, dari job
+   metadata `history` yang dikirim FE lewat `/token`; diparse gagal-aman `schemas.parse_history`).
+   Status dibatasi `value_caps` (tak boleh bertentangan dengan state); `trend` dihitung kode.
+   Worker tetap bebas-DB — riwayat datang dari client, bukan dibaca dari Supabase.
 
 **Tiga jalur akhir sesi** (PRD §6): `manual` (RPC `end_session`), sinyal Level 1
 (attribute `drift_level=1`, FE menonjolkan tombol), `force_quit_level_2` (agent
@@ -151,10 +157,33 @@ Telinga dipisah dari mulut, supaya NPC yang salah tak pernah menjawab duluan:
   `rat/connection.py` (dua track mic dari satu participant tidak dirender klien).
 - **Discussion** (`rat/discussion.py`): transkrip bersama, mirror ucapan ke `chat_ctx`
   NPC lain (`[Nama berbicara] …`, role user), rantai giliran, fase, giliran terjadwal.
-- **Direktur** (`rat/director.py`): LLM kecil memilih pembicara berikutnya; guard keras
-  di kode. Nama NPC disebut tepat satu → dipilih deterministik tanpa direktur.
+- **Direktur** (`rat/director.py`): LLM kecil memilih pembicara berikutnya di SETIAP batas
+  giliran — termasuk giliran pemain yang menyebut nama (tak ada pintasan nama di kode, ikut
+  kode latihan; direktur memilih NPC yang *diajak bicara*, bukan yang sekadar dibicarakan).
+  Setelah giliran NPC, direktur WAJIB memberi alasan (`<nama> <alasan>`), ditimbang kode
+  (`director.allow_followup`): `dipanggil` (pimpinan memanggil & NPC belum menyahut — dicek
+  dari transkrip) selalu boleh; `diserang` ≤ `RAT_MAX_NPC_REBUTTALS` (default 1) per giliran
+  pemain; `penting` hanya penyambung pertama; tanpa alasan = `penting`. Default `tunggu_user`.
+  `RAT_MAX_NPC_EXCHANGES` (default 4) tetap batas keras.
+  Guard keras di kode.
+- **Satu suara pada satu waktu**: `Floor` dilepas saat Gemini selesai MENGHASILKAN audio
+  (playout di room masih berjalan) → bukan penjamin. Penjaminnya `Discussion._handles`
+  (`handle.done()` = playout selesai): `_wait_voices_idle()` menghentikan & menunggu suara
+  lain sebelum tiap `generate_reply`, dan SETIAP giliran pemain (suara maupun teks)
+  memanggil `on_user_started()` → batalkan rantai + `interrupt(force=True)`.
+- **Diagnosis giliran**: `NpcAgent.spoken_audio_s` (detik audio kumulatif) → log
+  `giliran <key> selesai (… dtk, audio … dtk)`; audio 0 → WARNING `TANPA suara`.
+- **Gemini Live kadang menjawab TANPA audio** (terbukti `LK_GOOGLE_DEBUG=1`): tak ada
+  `inline_data`, `output_transcription` datang satu kalimat utuh, `usage_metadata` tanpa
+  response token. Bukan bug pipeline kita — server tak menghasilkan audio. Penanganan:
+  `on_npc_said` MENAHAN ucapan senyap (tak dicatat, tak di-mirror — dulu Sri menanggapi
+  ucapan Darma yang tak terdengar), lalu `_run_chain` mengucapkannya ulang SEKALI via
+  `REVOICE_INSTRUCTIONS` ("Ucapkan PERSIS …"); senyap lagi → dibuang, giliran ke pemain.
 - **Watak persona terkunci** (prompt): Darma selalu bela kepentingannya, Sri selalu bela
-  anggota kecil + prosedur. `domain` & `director_hint` di `scenarios.py` dibaca direktur.
+  anggota kecil + prosedur. Hanya `domain` di `scenarios.py` yang dibaca direktur —
+  tanpa petunjuk per fase (pola kode latihan; petunjuk "Ibu Sri paling relevan" dulu
+  membuat Sri mendominasi). Giliran terjadwal (sapaan, interupsi Fase 2) berdiri sendiri:
+  direktur tak dipanggil sesudahnya.
 - **Fase**: RPC `advance_phase` → `Discussion.advance_phase()` (lock, idempoten; hentikan
   suara & tunggu lantai kosong dulu) → `update_instructions` kedua NPC + attribute `phase`.
   Fase 2 = giliran terjadwal Pak Darma (`entry_line`).
@@ -188,7 +217,12 @@ Telinga dipisah dari mulut, supaya NPC yang salah tak pernah menjawab duluan:
    TTS: kalimat terskrip lewat `generate_reply(instructions="Ucapkan PERSIS …")`.
 7. **Observer, Auditor & mentor gagal-aman**: kalau panggilan LLM error, observer
    → "neutral", auditor → fallback netral, mentor → hint fallback. Jangan biarkan
-   error menjatuhkan sesi.
+   error menjatuhkan sesi. **Auditor dulu langsung fallback saat Gemini sibuk (503)** — SDK
+   `google-genai` TIDAK mencoba ulang tanpa `retry_options`. Kini auditor mencoba ulang error
+   sementara (408/429/5xx, gangguan jaringan) hingga 4× (jeda 1/2/4 dtk), lalu pindah ke
+   `GEMINI_AUDITOR_FALLBACK_MODEL`, semuanya dalam anggaran `_AUDIT_BUDGET_S` (50 dtk) yang
+   WAJIB di bawah timeout RPC `end_session` FE (`END_SESSION_RPC_TIMEOUT_MS`, test paritas).
+   Hasil fallback di-stamp `evaluationFailed: true` → FE menampilkannya tapi TIDAK menyimpannya.
 8. **Mic non-fatal di FE**: kegagalan mic tak boleh menutup sesi (teks fallback).
 
 ## Kredensial

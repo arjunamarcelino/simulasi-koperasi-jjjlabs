@@ -34,6 +34,9 @@ const sess = (o: Partial<SessionRecord> = {}): SessionRecord => ({
   scores: {},
   stateClassification: {},
   narrativeFeedback: "",
+  values: {},
+  progressFeedback: "",
+  nextStep: "",
   ...o,
 });
 

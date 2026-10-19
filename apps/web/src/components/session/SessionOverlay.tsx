@@ -8,6 +8,7 @@ import type { ScenarioId } from "../../session/transport/contract";
 import { PixelPanel } from "../common/PixelPanel";
 import { GameButton } from "../common/GameButton";
 import { ResultPanel } from "./ResultPanel";
+import { EvaluatingPanel } from "./EvaluatingPanel";
 import { BigCharacter } from "./BigCharacter";
 import { DialogueBox } from "./DialogueBox";
 import { ActionRail } from "./ActionRail";
@@ -32,6 +33,7 @@ export function SessionOverlay() {
   const goalReached = useSessionStore((s) => s.goalReached);
   const micEnabled = useSessionStore((s) => s.micEnabled);
   const ended = useSessionStore((s) => s.ended);
+  const evaluating = useSessionStore((s) => s.evaluating);
   const error = useSessionStore((s) => s.error);
   const transcript = useSessionStore((s) => s.transcript);
   const driftLevel = useSessionStore((s) => s.driftLevel);
@@ -151,6 +153,16 @@ export function SessionOverlay() {
             </GameButton>
           </div>
         </PixelPanel>
+      </Scrim>
+    );
+  }
+
+  // The session is ending and the auditor is assessing it. A pipe that drops meanwhile
+  // falls through to the error / "terputus" doors below instead of waiting forever.
+  if (evaluating && connection !== "ended" && connection !== "error") {
+    return (
+      <Scrim>
+        <EvaluatingPanel />
       </Scrim>
     );
   }
@@ -386,10 +398,14 @@ const EVIDENCE_TONE: Record<EvidenceTone, string> = {
 function EvidencePanel({ evidence, onClose }: { evidence: EvidenceContent; onClose: () => void }) {
   return (
     <div className="pointer-events-auto absolute left-3 top-20 z-30 w-full max-w-sm">
-      <div className="pixel-panel relative bg-parchment text-left animate-[lineIn_140ms_ease-out]">
+      {/* Same padding as the briefing PixelPanel — the two share this slot (raw
+          `pixel-panel` carries border + shadow only, no padding). */}
+      <div className="pixel-panel relative bg-parchment p-6 text-left animate-[lineIn_140ms_ease-out] md:p-8">
         <CloseButton onClick={onClose} label="Tutup bukti" />
         {evidence.eyebrow && (
-          <p className="font-display text-[8px] tracking-wide text-ink-soft">{evidence.eyebrow}</p>
+          <p className="mb-1.5 pr-6 font-display text-[8px] tracking-wide text-ink-soft">
+            {evidence.eyebrow}
+          </p>
         )}
         <h2 className="mb-2 flex items-center gap-1.5 pr-6 font-display text-[11px] text-brown">
           <span aria-hidden="true">📁</span>

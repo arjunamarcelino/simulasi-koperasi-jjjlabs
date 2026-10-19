@@ -49,6 +49,7 @@ class Models:
     observer: str  # Lapisan 2
     mentor: str  # Petunjuk
     auditor: str  # Lapisan 3
+    auditor_fallback: str | None  # cadangan Lapisan 3 bila model utama sibuk/gagal; None = tanpa
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,11 @@ class RatTuning:
     echo_guard_budget: float  # detik audio mic yang dibisukan saat NPC bicara (sekali seumur sesi)
     playout_tail: float  # lantai bicara ditahan setelah frame terakhir
     director_timeout: float  # F3: batas tunggu direktur; habis → fallback
+    # NPC boleh saling menyambung paling banyak sekian giliran sebelum wajib balik ke
+    # pemain; dihitung ulang dari 0 tiap pemain bicara (MAX_NPC_EXCHANGES kode latihan).
+    max_npc_exchanges: int
+    # Batas NPC saling SANGGAH (alasan direktur "diserang") per giliran pemain.
+    max_npc_rebuttals: int
 
 
 def google_auth() -> GoogleAuth:
@@ -79,6 +85,11 @@ def models() -> Models:
         observer=os.environ.get("GEMINI_OBSERVER_MODEL", "gemini-3.5-flash-lite"),
         mentor=os.environ.get("GEMINI_MENTOR_MODEL", "gemini-3.5-flash-lite"),
         auditor=os.environ.get("GEMINI_AUDITOR_MODEL", "gemini-3.5-flash"),
+        # Kosongkan env untuk mematikan cadangan.
+        auditor_fallback=(
+            os.environ.get("GEMINI_AUDITOR_FALLBACK_MODEL", "gemini-3.5-flash-lite").strip()
+            or None
+        ),
     )
 
 
@@ -89,7 +100,11 @@ def rat_tuning() -> RatTuning:
         user_turn_debounce=_float("RAT_USER_TURN_DEBOUNCE", 0.7),
         echo_guard_budget=_float("RAT_ECHO_GUARD_BUDGET", 3.0),
         playout_tail=_float("RAT_PLAYOUT_TAIL", 0.4),
-        director_timeout=_float("RAT_DIRECTOR_TIMEOUT", 4.0),
+        # Kode latihan menunggu direktur tanpa batas; batas longgar ini hanya pengaman.
+        # (4 dtk terlalu ketat: flash-lite kadang >4 dtk → fallback ke pemimpin fase.)
+        director_timeout=_float("RAT_DIRECTOR_TIMEOUT", 10.0),
+        max_npc_exchanges=int(_float("RAT_MAX_NPC_EXCHANGES", 4)),
+        max_npc_rebuttals=int(_float("RAT_MAX_NPC_REBUTTALS", 1)),
     )
 
 

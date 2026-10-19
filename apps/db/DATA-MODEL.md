@@ -86,6 +86,9 @@ erDiagram
     jsonb scores_json "per-scenario rubric, 0-100"
     jsonb state_json "AuditorResult.stateClassification"
     text narrative_feedback
+    jsonb values_json "ICA values: {key: {status, evidence, trend}}"
+    text progress_feedback "Perjalanan Nilaimu narrative"
+    text next_step "suggestion the next session's auditor checks"
   }
   SCENARIO_DEFINITION {
     text code PK
@@ -183,7 +186,7 @@ indistinguishable from a returning player and a client-supplied balance is unaut
 | (derived in UI) badges | `badge_definition` + `user_badge.awarded_at` | **persisted** (SIM-5 wires it); `awarded_at` is the new fact |
 | (FE-only quiz bank + client grading) | `quiz_definition` / `quiz_completion` + `submit_quiz` | **SIM-5**: answer key server-side, credit-once per question |
 | (whole `koperasi.*` wallet, first login) | `reconcile_local_progress(uid, xp, missions)` | **SIM-5**: one-time import, xp + game-missions only (point/vouchers dropped) |
-| `AuditorResult` (session end) | `sessions` (folded score columns) | **SIM-6**: row written atomically at session **end** via `record_session`; transcript **not** persisted |
+| `AuditorResult` (session end) | `sessions` (folded score columns) | **SIM-6**: row written atomically at session **end** via `record_session`; transcript **not** persisted. Personal feedback (ICA `values_json`, `progress_feedback`, `next_step`) added by `20261020090000_session_values` — the FE reads its own last 5 assessed rows back and sends them to `/token` as the auditor's comparison history |
 | FE static content arrays | `*_definition` tables | seeded from `@simkop/catalog` (shared package the FE also imports, CI parity-checked) |
 
 ### Net-new (no localStorage equivalent)

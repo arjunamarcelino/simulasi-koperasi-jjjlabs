@@ -15,10 +15,10 @@ dipakai `src/session/transport/livekit/LiveKitTransport.ts`.
 ## 1. Alur satu sesi
 
 ```
-FE  POST /token {scenario_id}         → {token, room, url}
+FE  POST /token {scenario_id, history?} → {token, room, url}
     (header Authorization: Bearer <supabase-jwt>; diverifikasi backend, §2)
 FE  room.connect(url, token)          (LiveKit client)
-    → agent otomatis ter-dispatch ke room (bawa scenario_id)
+    → agent otomatis ter-dispatch ke room (bawa scenario_id + history)
     → agent join (~12–19 dtk), NPC menyapa (transkripsi + audio)
 FE  ↔ agent: voice (mic) / teks (RPC send_text)
     agent → FE: transkripsi, attribute drift_level & phase, data message speaker
@@ -47,6 +47,28 @@ Request:
 ```json
 { "scenario_id": "kredit-macet" }
 ```
+
+Opsional — **riwayat nilai pemain** untuk feedback personal (Skenario 2–4). FE mengirimnya dari
+baris `sessions` miliknya sendiri; backend memvalidasi KETAT lalu meneruskannya apa adanya ke
+job metadata dispatch `{scenario_id, history}`. Hanya **AI Auditor** yang membacanya, sekali di
+akhir sesi (bukan NPC/observer/mentor). Jalur token tetap tanpa DB.
+```json
+{
+  "scenario_id": "keanggotaan-fiktif",
+  "history": [
+    {
+      "scenario_id": "kredit-macet",
+      "played_on": "2026-10-18",
+      "values": { "kepedulian": { "status": "DIABAIKAN", "evidence": "Langsung menagih." } },
+      "next_step": "Tanyakan sebab kesulitannya dulu."
+    }
+  ]
+}
+```
+Aturan (`422` bila dilanggar): maks **5** entri, terbaru dulu; `scenario_id` riwayat ∈ skenario
+ber-auditor (bukan tutorial); `played_on` = tanggal; `values` maks 6 key (key ≤40 karakter),
+`status` ∈ `TERCERMIN|BELUM_TAMPAK|DIABAIKAN`, `evidence` ≤200; `next_step` ≤300; kunci lain
+(mis. narasi, skor) ditolak. Tanpa `history` = riwayat kosong (sesi pertama).
 Response `200`:
 ```json
 { "token": "<jwt>", "room": "kredit-macet-3a3c81a8", "url": "wss://...livekit.cloud" }
@@ -58,7 +80,7 @@ Status:
 |---|---|---|
 | `200` | token diterbitkan | connect ke room |
 | `401` | token hilang/invalid/kedaluwarsa (`WWW-Authenticate: Bearer`) | refresh sesi + retry SEKALI |
-| `422` | `scenario_id` tak dikenal (dicek SETELAH auth) | surface error |
+| `422` | `scenario_id` tak dikenal / `history` tak valid (dicek SETELAH auth) | surface error |
 | `429` | rate limit per-user terlampaui (`Retry-After`) | surface error |
 | `500` | verifier/LiveKit belum dikonfigurasi (fail-closed) | surface error |
 | `503` | endpoint JWKS tak terjangkau | surface error |
@@ -356,6 +378,12 @@ jadi RPC berhasil ke participant remote mana pun yang dipilih FE.
 Setelah menerima balasan `end_session`, FE menampilkan hasil lalu
 `room.disconnect()`.
 
+**Timeout `end_session` = 60 dtk** (`END_SESSION_RPC_TIMEOUT_MS`, bukan default livekit 15 dtk).
+LiveKit membatalkan handler worker saat batas ini habis, padahal auditor bisa mencoba ulang
+(Gemini sibuk) lalu pindah ke model cadangan dalam anggaran 50 dtk (`_AUDIT_BUDGET_S`). Kedua
+angka dijaga test paritas. Sejak aksi akhir (atau `drift_level=2`), FE menampilkan "Sedang
+menyusun evaluasi…" sampai hasil tiba; bila koneksi error saat menunggu, FE menampilkan error.
+
 ---
 
 ## 4. Agent → FE (attribute, data message, transkripsi)
@@ -372,6 +400,13 @@ sendiri — Ibu Sri memakai koneksi worker (`agent-…`), Pak Darma bergabung se
 masing-masing; giliran NPC diserialkan (tak pernah dua NPC bersuara bersamaan).
 Transkripsi suara **pemain** dipublish worker atas nama identity pemain (STT terpisah),
 jadi tetap tiba sebagai transkripsi milik participant lokal.
+
+**Baca transkripsi NPC dari text stream `lk.transcription`** (`registerTextStreamHandler`;
+delta per chunk, `lk.segment_id` = id segmen, stream ditutup = final), BUKAN dari
+`TranscriptionReceived`: paket legacy dari koneksi NPC kedua (`npc-pak-darma`) tak pernah
+sampai ke klien (terbukti live), jadi giliran Pak Darma kosong. `TranscriptionReceived`
+hanya dipakai untuk transkripsi pemain (participant lokal). Ikat nama persona (4d) saat
+stream dibuka, jangan di tiap chunk.
 
 ### 4b. Participant attribute `drift_level` — indikator ketegangan (Lapisan 2)
 `RoomEvent.ParticipantAttributesChanged` → `changed["drift_level"]` = `"0" | "1" | "2"`.
@@ -426,10 +461,29 @@ yang sebelumnya di-disable. Hanya skenario yang mendefinisikan sinyal ini
   "stateClassification": { "State_Jalur_Remedi": "MELANGGAR_PROSEDUR", "...": "..." },
   "scores": { "member_centric": 40, "compliance": 35, "soft_skills": 30 },
   "endingType": "good" | "bad" | "neutral",
-  "narrativeFeedback": "teks evaluasi Bahasa Indonesia"
+  "narrativeFeedback": "teks evaluasi Bahasa Indonesia",
+  "values": {
+    "kepedulian": {
+      "status": "TERCERMIN" | "BELUM_TAMPAK" | "DIABAIKAN",
+      "evidence": "satu kalimat bukti perilaku pemain",
+      "trend": "MENGUAT" | "TETAP" | "MELEMAH" | "BARU_DIUJI"
+    }
+  },
+  "progressFeedback": "narasi 'Perjalanan Nilaimu' (vs sesi-sesi lama, tanpa angka)",
+  "nextStep": "satu saran untuk sesi berikutnya",
+  "evaluationFailed": false
 }
 ```
-Tutorial: `stateClassification` & `scores` = `{}` (pesan selamat terskrip).
+Tutorial: `stateClassification` & `scores` = `{}` (pesan selamat terskrip); `values` = `{}`,
+`progressFeedback` & `nextStep` = `""`. Auditor gagal (semua percobaan + model cadangan habis)
+→ narasi fallback, field personal kosong, dan **`evaluationFailed: true`** (di-stamp worker,
+bukan dari LLM). FE tetap MENAMPILKAN panel hasil tersebut tetapi **TIDAK menyimpannya** ke
+`sessions` (bukan penilaian sungguhan; tak boleh masuk riwayat/pembanding).
+
+`values` hanya berisi nilai ICA yang relevan dengan skenario (§6). `status` dari LLM lalu
+**dibatasi cap** di worker agar tak bertentangan dengan state (mis. `State_Jalur_Remedi =
+MELANGGAR_PROSEDUR` → `keadilan` paling tinggi `DIABAIKAN`). `trend` dihitung **kode** dari
+kemunculan TERAKHIR nilai yang sama di `history` (tak ada → `BARU_DIUJI`).
 
 ### `PhaseState` (isi attribute `phase`, RAT)
 ```json
@@ -440,12 +494,15 @@ Tutorial: `stateClassification` & `scores` = `{}` (pesan selamat terskrip).
 
 ## 6. Taksonomi & skor per skenario (untuk render hasil)
 
-| scenario_id | State (nilai mungkin) | score keys | catatan |
-|---|---|---|---|
-| `tutorial-koperasi-konsumen` | — | — | tanpa drift/auditor; attribute `goal_reached=1` saat ibu setuju (buka tombol) → sinyal selesai "Bayar & Daftar" (RPC `end_session`) |
-| `kredit-macet` | `State_Analisis_Masalah`{BENAR,SALAH}; `State_Jalur_Remedi`{SESUAI,MELANGGAR_PROSEDUR,NAIF} | member_centric, compliance, soft_skills | NPC Pak Joko |
-| `keanggotaan-fiktif` | `State_Verifikasi_Data`{DIBERSIHKAN,DIBIARKAN}; `State_Relasi_NPC`{TERJAGA,RUSAK} | integritas_data, compliance, soft_skills | NPC Pak Bambang. "Periksa Dokumen" = fitur FE statis |
-| `rapat-anggota-tahunan` | `State_Proses_Rapat`{TUNTAS,BUBAR}; `State_Keabsahan_Keputusan`{SAH_DEMOKRATIS,TUNDUK_TEKANAN_MODAL,TIDAK_BERLAKU} | kepemimpinan, compliance, soft_skills | Dua NPC: Pak Darma & Ibu Sri. Fase 1→2→3 |
+| scenario_id | State (nilai mungkin) | score keys | nilai ICA (`values`) | catatan |
+|---|---|---|---|---|
+| `tutorial-koperasi-konsumen` | — | — | — | tanpa drift/auditor; attribute `goal_reached=1` saat ibu setuju (buka tombol) → sinyal selesai "Bayar & Daftar" (RPC `end_session`) |
+| `kredit-macet` | `State_Analisis_Masalah`{BENAR,SALAH}; `State_Jalur_Remedi`{SESUAI,MELANGGAR_PROSEDUR,NAIF} | member_centric, compliance, soft_skills | kepedulian, keadilan, tanggung_jawab_pribadi | NPC Pak Joko |
+| `keanggotaan-fiktif` | `State_Verifikasi_Data`{DIBERSIHKAN,DIBIARKAN}; `State_Relasi_NPC`{TERJAGA,RUSAK} | integritas_data, compliance, soft_skills | kejujuran, keadilan, kepedulian | NPC Pak Bambang. "Periksa Dokumen" = fitur FE statis |
+| `rapat-anggota-tahunan` | `State_Proses_Rapat`{TUNTAS,BUBAR}; `State_Keabsahan_Keputusan`{SAH_DEMOKRATIS,TUNDUK_TEKANAN_MODAL,TIDAK_BERLAKU} | kepemimpinan, compliance, soft_skills | demokrasi, kesetaraan, kepedulian | Dua NPC: Pak Darma & Ibu Sri. Fase 1→2→3 |
+
+Label nilai ICA (10 nilai, `ICA_VALUES` di `scenarios.py`) dicerminkan FE di
+`resultLabels.ts` `VALUE_LABELS` — dijaga test paritas.
 
 Skor 0–100. Nama key skor bisa berbeda antar skenario — render generik dari objek
 `scores`, jangan hardcode nama key.
