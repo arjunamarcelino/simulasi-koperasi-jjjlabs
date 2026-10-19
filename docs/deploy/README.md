@@ -1,7 +1,7 @@
 # Deployment & Ops — Simulasi Koperasi (indeks + runbook)
 
 Set dokumentasi deploy untuk handover v1. **Hosting terpisah:** frontend di VPS
-in-house, backend di GCP, DB+auth di Supabase, voice via LiveKit Cloud + Azure.
+in-house, backend di GCP, DB+auth di Supabase, voice via LiveKit Cloud + Google (Gemini API, Cloud STT).
 Bahasa Indonesia; perintah/istilah teknis Inggris. `<domain>` dan `<PLACEHOLDER>`
 diganti nilai asli.
 
@@ -33,7 +33,7 @@ Browser ──TLS──> app.<domain>     (VPS nginx → apps/web dist/)
             └──> admin.<domain>   (VPS nginx → apps/admin dist/)
         ──TLS──> api.<domain>     (GCP: LB+NEG → Cloud Run token server, 1 instance)
         ──wss──> LiveKit Cloud    (media + sesi agent)
-Voice worker (GCE VM + systemd) ──outbound──> LiveKit; ──> Azure OpenAI + Azure Speech
+Voice worker (GCE VM + systemd) ──outbound──> LiveKit; ──> Gemini API (API key) + Cloud STT (worker-sa)
 api  ──/admin/* (metrics_reader)──> Supabase (Postgres 15); ──JWKS ES256──> Supabase (auth)
 ```
 DNS: `app`/`admin` = A/AAAA → IP VPS; `api` = A/CNAME → IP LB (lihat `production-config.md` §2).
@@ -59,7 +59,8 @@ DNS: `app`/`admin` = A/AAAA → IP VPS; `api` = A/CNAME → IP LB (lihat `produc
   gcloud run services describe token-server --region <REGION> --format='value(spec.template.spec.containers[].env)' | grep -i LIVEKIT_AGENT_NAME
   gcloud compute ssh voice-worker --zone <ZONE> --command 'docker exec koperasi-worker printenv LIVEKIT_AGENT_NAME'
   ```
-- [ ] Worker: `curl http://<worker>:8081/` → 200 (liveness proses, framework livekit-agents 1.6.5) **dan** log memuat registrasi job ke LiveKit (readiness).
+- [ ] Worker: `curl http://<worker>:8081/` → 200 (liveness proses, framework livekit-agents 1.8.x) **dan** log memuat registrasi job ke LiveKit (readiness).
+- [ ] Cloud STT siap: `speech.googleapis.com` aktif, `worker-sa` punya `roles/speech.client`, VM **tanpa** `GOOGLE_APPLICATION_CREDENTIALS`; satu sesi RAT live tanpa error kredensial (lihat `gcp-backend.md` §9).
 - [ ] CORS preflight dari origin prod meng-echo origin itu (bukan localhost):
   ```bash
   curl -s -D - -o /dev/null -X OPTIONS $API/token \
@@ -84,7 +85,7 @@ DNS: `app`/`admin` = A/AAAA → IP VPS; `api` = A/CNAME → IP LB (lihat `produc
 
 ### Monitoring bersenjata (sebelum go-live)
 - [ ] Uptime check menguji `/token` (bukan hanya `/health`); alert 5xx + worker-crash.
-- [ ] GCP Spend Cap + budget; `--max-instances=1`; batas durasi sesi via kontrol room LiveKit (`emptyTimeout`/`user_away_timeout` — cap worker belum ada di kode, lihat `monitoring-cost.md`); Azure TPM quota.
+- [ ] GCP Spend Cap + budget; `--max-instances=1`; batas durasi sesi via kontrol room LiveKit (`emptyTimeout`/`user_away_timeout` — cap worker belum ada di kode, lihat `monitoring-cost.md`); rate limit/kuota Gemini API.
 
 ---
 
@@ -135,7 +136,7 @@ DNS: `app`/`admin` = A/AAAA → IP VPS; `api` = A/CNAME → IP LB (lihat `produc
 ## On-call — cek pertama
 1. Alert nyata? (bukan flapping/duplikat) 2. Dampak? (user-facing sekarang?)
 3. **Deploy/migrasi terbaru?** (yield tertinggi → kandidat rollback)
-4. Health endpoint + log + dashboard. 5. **Halaman status provider** (LiveKit, Azure,
+4. Health endpoint + log + dashboard. 5. **Halaman status provider** (LiveKit, Google AI/Gemini,
    Supabase, GCP) — kegagalan total provider tanpa perubahan kode sering = **cost
    cap/quota tripped**, bukan bug.
 
@@ -145,6 +146,6 @@ DNS: `app`/`admin` = A/AAAA → IP VPS; `api` = A/CNAME → IP LB (lihat `produc
 - Tiket: SIM-25/26/27/28/30 (M5), SIM-33 (M6 — Documentation & Handover).
 - ⚠️ `docs/` di-gitignore repo ini → file set ini di-commit dengan `git add -f`
   (pola sama seperti `docs/qa/`).
-- `livekit-agents` **di-pin 1.6.5** (`uv.lock`) — detail & verifikasi di `backend-containers.md`.
+- `livekit-agents` **di-pin 1.8.6** (`uv.lock`) — detail & verifikasi di `backend-containers.md`.
   Host docs GCP = `docs.cloud.google.com`; Vite 7 docs = `v7.vite.dev`; semua harga = tautan live.
 - ✅ Container backend (SIM-26) sudah di-build & dijalankan (lihat `backend-containers.md`).

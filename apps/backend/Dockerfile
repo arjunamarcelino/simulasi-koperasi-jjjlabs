@@ -40,9 +40,9 @@ CMD ["sh", "-c", "exec uvicorn api.server:app --host 0.0.0.0 --port ${PORT:-8000
 
 # ---- worker: LiveKit voice worker (outbound-only untuk job; health :8081) ----
 FROM base AS worker
-# Bake bobot VAD/turn-detector (openai/azure/silero) agar sesi pertama tak lambat.
-# Butuh jaringan saat build. Bentuk via agent-script (meng-impor plugin agar tahu
-# file apa yang diunduh); valid di livekit-agents 1.6.5 (di-pin di uv.lock).
+# Bake bobot model lokal milik plugin agar sesi pertama tak lambat (worker Google tak
+# memakai model lokal → praktis no-op). Butuh jaringan saat build. Bentuk via agent-script
+# (meng-impor plugin agar tahu file apa yang diunduh); livekit-agents 1.8.6 (di-pin di uv.lock).
 RUN python voice_worker/voice_agent.py download-files
 # Framework mengekspos health server di :8081 pada mode `start` (liveness proses) —
 # dipakai HEALTHCHECK container (opsi autohealing GCE: lihat docs/deploy/gcp-backend.md).
