@@ -398,10 +398,14 @@ const EVIDENCE_TONE: Record<EvidenceTone, string> = {
 function EvidencePanel({ evidence, onClose }: { evidence: EvidenceContent; onClose: () => void }) {
   return (
     <div className="pointer-events-auto absolute left-3 top-20 z-30 w-full max-w-sm">
-      <div className="pixel-panel relative bg-parchment text-left animate-[lineIn_140ms_ease-out]">
+      {/* Same padding as the briefing PixelPanel — the two share this slot (raw
+          `pixel-panel` carries border + shadow only, no padding). */}
+      <div className="pixel-panel relative bg-parchment p-6 text-left animate-[lineIn_140ms_ease-out] md:p-8">
         <CloseButton onClick={onClose} label="Tutup bukti" />
         {evidence.eyebrow && (
-          <p className="font-display text-[8px] tracking-wide text-ink-soft">{evidence.eyebrow}</p>
+          <p className="mb-1.5 pr-6 font-display text-[8px] tracking-wide text-ink-soft">
+            {evidence.eyebrow}
+          </p>
         )}
         <h2 className="mb-2 flex items-center gap-1.5 pr-6 font-display text-[11px] text-brown">
           <span aria-hidden="true">📁</span>
