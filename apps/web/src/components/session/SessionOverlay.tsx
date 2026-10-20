@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useReducer, useState, type ReactNode } from "react";
 import { gameStore, useGameStore } from "../../stores/game.store";
 import { sessionStore, useSessionStore } from "../../stores/session.store";
 import { sessionController } from "../../session/controller";
 import { SCENARIOS } from "../../scenarios/scenario.config";
-import type { EvidenceContent, EvidenceTone, ScenarioConfig } from "../../types/scenario";
+import type { EvidenceContent, EvidenceGuide } from "../../types/scenario";
 import type { ScenarioId } from "../../session/transport/contract";
 import { PixelPanel } from "../common/PixelPanel";
 import { GameButton } from "../common/GameButton";
@@ -13,6 +13,11 @@ import { BigCharacter } from "./BigCharacter";
 import { DialogueBox } from "./DialogueBox";
 import { ActionRail } from "./ActionRail";
 import { SessionStatusBar } from "./SessionStatusBar";
+import { CloseButton } from "./CloseButton";
+import { BriefingPanel } from "./BriefingPanel";
+import { EvidenceDossier, EvidencePanel } from "./EvidencePanel";
+import { completedPlayerTurns, evidenceStepIndex, shouldRemindEvidence } from "./evidenceGuide";
+import { INITIAL_PANELS, panelsReducer } from "./sessionPanels";
 
 /** Wall-clock (ms) to wait for the NPC agent to join before giving up (LiveKit). */
 const AGENT_JOIN_TIMEOUT_MS = 25000;
@@ -43,20 +48,27 @@ export function SessionOverlay() {
 
   // Briefing opens by default so the player sees the mission before talking.
   // Evidence ("Periksa Bukti") is a second left panel; the two are mutually
-  // exclusive so they never overlap.
-  const [showBriefing, setShowBriefing] = useState(true);
-  const [showEvidence, setShowEvidence] = useState(false);
-  const toggleBriefing = useCallback(() => {
-    setShowBriefing((v) => {
-      if (!v) setShowEvidence(false);
-      return !v;
-    });
-  }, []);
+  // exclusive so they never overlap, and closing the file returns to the panel it
+  // replaced (the briefing it was opened from).
+  const [panels, dispatchPanels] = useReducer(panelsReducer, INITIAL_PANELS);
+  const showBriefing = panels.open === "briefing";
+  const showEvidence = panels.open === "evidence";
+  // Open-the-file guide (scenarios whose evidence declares one): nudges stop once the
+  // player has opened the file — in session or on the pre-session card. Local state,
+  // not the store: startScenario() resets the store after a pre-session read.
+  const [evidenceOpened, setEvidenceOpened] = useState(false);
+  const [showPreEvidence, setShowPreEvidence] = useState(false);
+  const [reminded, setReminded] = useState(false);
+  const [evidencePopKey, setEvidencePopKey] = useState(0);
+  const toggleBriefing = useCallback(() => dispatchPanels("toggleBriefing"), []);
   const toggleEvidence = useCallback(() => {
-    setShowEvidence((v) => {
-      if (!v) setShowBriefing(false);
-      return !v;
-    });
+    // Toggling either opens the file or closes one already open — opened either way.
+    setEvidenceOpened(true);
+    dispatchPanels("toggleEvidence");
+  }, []);
+  const openPreEvidence = useCallback(() => {
+    setShowPreEvidence(true);
+    setEvidenceOpened(true);
   }, []);
 
   // Tear the session down + unfreeze the player. stop() here is immediate (mic
@@ -102,6 +114,37 @@ export function SessionOverlay() {
     }, AGENT_JOIN_TIMEOUT_MS);
     return () => window.clearTimeout(id);
   }, [connection, agentJoined, ended, error]);
+
+  const guide = config?.evidence?.guide ?? null;
+  const nudgingEvidence = !!guide && !evidenceOpened;
+  const playerTurns = completedPlayerTurns(transcript);
+
+  // Point the player at the file (local hint, no mentor RPC) + pop its rail button.
+  const pointToEvidence = useCallback((g: EvidenceGuide) => {
+    setReminded(true); // a nudge already seen makes the one-shot reminder redundant
+    setEvidencePopKey((k) => k + 1);
+    sessionController.showHint(g.nudge);
+  }, []);
+
+  // One-shot reminder: the player has been talking without opening the file.
+  useEffect(() => {
+    if (!guide) return;
+    const due = shouldRemindEvidence({
+      hasGuide: true,
+      opened: evidenceOpened,
+      reminded,
+      hintShowing: hint !== null,
+      playerTurns,
+    });
+    if (due) pointToEvidence(guide);
+  }, [guide, evidenceOpened, reminded, hint, playerTurns, pointToEvidence]);
+
+  // Once the file is open, a lingering "open the file" hint is stale — clear it.
+  useEffect(() => {
+    if (evidenceOpened && guide && sessionStore.getState().hint === guide.nudge) {
+      sessionController.dismissHint();
+    }
+  }, [evidenceOpened, guide]);
 
   if (!config || !scenarioId) return null; // unknown id — openSession pre-guards this
 
@@ -193,13 +236,21 @@ export function SessionOverlay() {
           connection={connection}
           onClose={close}
         />
-        <PixelPanel className="max-w-sm text-center">
+        <PixelPanel className={`${showPreEvidence ? "max-w-md" : "max-w-sm"} text-center`}>
           <p className="mb-4 font-body text-xl text-ink-soft">
             Tekan untuk menyapa {npcName} dan mengaktifkan mikrofon.
           </p>
           <GameButton variant="primary" onClick={start}>
             ▶ Mulai Percakapan
           </GameButton>
+          {config.evidence && guide && (
+            <PreSessionEvidence
+              evidence={config.evidence}
+              guide={guide}
+              open={showPreEvidence}
+              onOpen={openPreEvidence}
+            />
+          )}
         </PixelPanel>
       </Scrim>
     );
@@ -214,10 +265,19 @@ export function SessionOverlay() {
           connection={connection}
           onClose={close}
         />
-        <PixelPanel className="max-w-sm text-center">
+        <PixelPanel className={`${showPreEvidence ? "max-w-md" : "max-w-sm"} text-center`}>
           <p className="animate-pulse font-body text-xl text-ink-soft">
             Menyambungkan ke {npcName}…
           </p>
+          {/* The agent can take ~15s to join — spend the wait reading the case file. */}
+          {config.evidence && guide && (
+            <PreSessionEvidence
+              evidence={config.evidence}
+              guide={guide}
+              open={showPreEvidence}
+              onOpen={openPreEvidence}
+            />
+          )}
         </PixelPanel>
       </Scrim>
     );
@@ -233,6 +293,7 @@ export function SessionOverlay() {
   // For the multi-NPC stage, the active persona is matched by the last line's
   // `name` label; single-NPC scenarios just toggle the one npc slot.
   const activeNpcName = !playerActive && line ? (line.name ?? null) : null;
+  const fileStep = config.evidence ? evidenceStepIndex(config.steps, config.evidence.title) : -1;
 
   return (
     <div className="absolute inset-0 z-30 flex select-none flex-col overflow-hidden">
@@ -278,7 +339,14 @@ export function SessionOverlay() {
         nudgeEnd={driftLevel >= 1 && canEnd}
         hasEvidence={!!config.evidence}
         evidenceLabel={config.evidence?.title ?? "Periksa Bukti"}
-        onHint={() => sessionController.requestHint()}
+        nudgeEvidence={nudgingEvidence}
+        // The briefing already points at the file; the coachmark takes over once it closes.
+        evidenceCallout={guide && nudgingEvidence && !showBriefing ? guide.callout : null}
+        evidencePopKey={evidencePopKey}
+        // Until the file is opened, Petunjuk points at it locally instead of asking the mentor.
+        onHint={() =>
+          guide && nudgingEvidence ? pointToEvidence(guide) : sessionController.requestHint()
+        }
         onToggleBriefing={toggleBriefing}
         onCheckEvidence={toggleEvidence}
         onAdvancePhase={() => sessionController.advancePhase()}
@@ -290,11 +358,24 @@ export function SessionOverlay() {
       )}
 
       {showBriefing && (
-        <BriefingPanel config={config} onClose={() => setShowBriefing(false)} />
+        <BriefingPanel
+          config={config}
+          onClose={() => dispatchPanels("closeBriefing")}
+          evidenceAction={
+            guide && config.evidence && fileStep >= 0
+              ? {
+                  stepIndex: fileStep,
+                  label: config.evidence.title,
+                  opened: evidenceOpened,
+                  onOpen: toggleEvidence,
+                }
+              : undefined
+          }
+        />
       )}
 
       {showEvidence && config.evidence && (
-        <EvidencePanel evidence={config.evidence} onClose={() => setShowEvidence(false)} />
+        <EvidencePanel evidence={config.evidence} onClose={() => dispatchPanels("closeEvidence")} />
       )}
 
       <div className="absolute inset-x-0 bottom-0 z-20 p-3">
@@ -353,21 +434,6 @@ function Scrim({ children }: { children: ReactNode }) {
   );
 }
 
-/** Prominent pixel close button (matches the mading boards' ✕). */
-function CloseButton({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className="pixel-raise active:pixel-press absolute -right-2 -top-2 z-10 flex h-8 w-8 select-none items-center justify-center bg-mustard font-display text-[11px] text-ink focus-visible:pixel-focus focus-visible:outline-none"
-    >
-      ✕
-    </button>
-  );
-}
-
 /** In-session hint, top-center. Pixel banner, dismissible. */
 function HintBanner({ text, onDismiss }: { text: string; onDismiss: () => void }) {
   return (
@@ -383,72 +449,41 @@ function HintBanner({ text, onDismiss }: { text: string; onDismiss: () => void }
   );
 }
 
-const EVIDENCE_TONE: Record<EvidenceTone, string> = {
-  good: "text-forest",
-  bad: "text-orange",
-  neutral: "text-ink",
-};
-
 /**
- * "Periksa Bukti" — the koperasi's static case file, toggled from the rail.
- * Styled as a dossier (parchment + brown, tabular rows) so it never reads like
- * the briefing "scroll". Content only; it does NOT reveal the force-majeure
- * cause — the player must draw that out in conversation.
+ * Case file on the pre-conversation cards ("Mulai" / "Menyambungkan…"): a prompt +
+ * button, expanding in place into the dossier so the player reads it before talking.
  */
-function EvidencePanel({ evidence, onClose }: { evidence: EvidenceContent; onClose: () => void }) {
-  return (
-    <div className="pointer-events-auto absolute left-3 top-20 z-30 w-full max-w-sm">
-      {/* Same padding as the briefing PixelPanel — the two share this slot (raw
-          `pixel-panel` carries border + shadow only, no padding). */}
-      <div className="pixel-panel relative bg-parchment p-6 text-left animate-[lineIn_140ms_ease-out] md:p-8">
-        <CloseButton onClick={onClose} label="Tutup bukti" />
-        {evidence.eyebrow && (
-          <p className="mb-1.5 pr-6 font-display text-[8px] tracking-wide text-ink-soft">
-            {evidence.eyebrow}
-          </p>
-        )}
-        <h2 className="mb-2 flex items-center gap-1.5 pr-6 font-display text-[11px] text-brown">
-          <span aria-hidden="true">📁</span>
-          {evidence.title}
-        </h2>
-        <dl className="divide-y divide-ink-soft/20 border-t-2 border-border">
-          {evidence.items.map((item) => (
-            <div key={item.label} className="py-2">
-              <dt className="font-display text-[8px] tracking-wide text-ink-soft">{item.label}</dt>
-              <dd className={`font-body text-lg leading-snug ${EVIDENCE_TONE[item.tone ?? "neutral"]}`}>
-                {item.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
+function PreSessionEvidence({
+  evidence,
+  guide,
+  open,
+  onOpen,
+}: {
+  evidence: EvidenceContent;
+  guide: EvidenceGuide;
+  open: boolean;
+  onOpen: () => void;
+}) {
+  if (open) {
+    return (
+      <div className="mt-4 max-h-[50dvh] overflow-y-auto border-3 border-border bg-parchment p-4 text-left">
+        <EvidenceDossier evidence={evidence} />
       </div>
-    </div>
-  );
-}
-
-/** Scenario briefing (mission + steps), toggled by the Deskripsi rail button. */
-function BriefingPanel({ config, onClose }: { config: ScenarioConfig; onClose: () => void }) {
+    );
+  }
   return (
-    <div className="pointer-events-auto absolute left-3 top-20 z-30 w-full max-w-sm">
-      <PixelPanel className="relative text-left animate-[lineIn_140ms_ease-out]">
-        <CloseButton onClick={onClose} label="Tutup deskripsi" />
-        <div className="mb-2 flex items-center justify-between gap-2 pr-6">
-          <h2 className="font-display text-[11px] text-forest">{config.title}</h2>
-        </div>
-        {config.mission && (
-          <p className="mb-3 font-body text-lg leading-snug text-ink">{config.mission}</p>
-        )}
-        {config.steps && config.steps.length > 0 && (
-          <ol className="space-y-1.5 font-body text-lg leading-snug text-ink-soft">
-            {config.steps.map((step, i) => (
-              <li key={i} className="flex gap-2">
-                <span className="font-display text-[9px] text-mustard">{i + 1}.</span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </PixelPanel>
+    <div className="mt-4 border-t-2 border-ink-soft/20 pt-3">
+      <p className="mb-2 font-body text-lg leading-snug text-ink">
+        <span aria-hidden="true">📁 </span>
+        {guide.callout}
+      </p>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="pixel-raise active:pixel-press bg-cream px-3 py-2 font-display text-[9px] text-forest focus-visible:pixel-focus focus-visible:outline-none"
+      >
+        Baca berkas dulu
+      </button>
     </div>
   );
 }

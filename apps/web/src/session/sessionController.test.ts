@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   driftCb: null as ((level: 0 | 1 | 2) => void) | null,
   connectionCb: null as ((state: string) => void) | null,
   endSessionCalls: [] as unknown[][],
+  requestHint: vi.fn(),
   connectArgs: [] as unknown[][],
   transport: "mock" as "mock" | "livekit",
 }));
@@ -33,6 +34,7 @@ vi.mock("./transport/createTransport", () => ({
     endSession: (...args: unknown[]) => {
       h.endSessionCalls.push(args);
     },
+    requestHint: h.requestHint,
     onSessionEnded: (cb: (e: SessionEnded) => void) => {
       h.sessionEndedCb = cb;
       return () => {};
@@ -103,6 +105,8 @@ beforeEach(() => {
   h.listMySessions.mockResolvedValue({ status: "ok", data: [] });
   h.connectArgs = [];
   h.endSessionCalls = [];
+  h.requestHint.mockReset();
+  h.requestHint.mockResolvedValue("hint mentor");
   h.driftCb = null;
   h.connectionCb = null;
   h.transport = "mock";
@@ -456,5 +460,29 @@ describe("sessionController — failed evaluation", () => {
 
     expect(h.recordSession).not.toHaveBeenCalled();
     expect(h.syncSessionBadges).not.toHaveBeenCalled();
+  });
+});
+
+describe("sessionController — local hints (open-the-file nudge)", () => {
+  it("shows a local hint without asking the mentor", async () => {
+    const controller = createSessionController();
+    controller.startScenario("kredit-macet");
+    await flush();
+
+    controller.showHint("Buka 'Periksa Bukti' dulu.");
+
+    expect(sessionStore.getState().hint).toBe("Buka 'Periksa Bukti' dulu.");
+    expect(h.requestHint).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op once the session has ended", async () => {
+    const controller = createSessionController();
+    controller.startScenario("kredit-macet");
+    await flush();
+    h.sessionEndedCb?.(ENDED);
+
+    controller.showHint("Buka 'Periksa Bukti' dulu.");
+
+    expect(sessionStore.getState().hint).toBeNull();
   });
 });

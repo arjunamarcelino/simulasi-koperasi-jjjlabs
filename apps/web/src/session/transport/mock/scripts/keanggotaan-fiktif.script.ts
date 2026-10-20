@@ -78,7 +78,7 @@ export const KEANGGOTAAN_FIKTIF_SCRIPT = {
     },
   ],
   hints: [
-    "Pak Bambang disegani — jangan langsung menuduh. Sapa dengan hormat dan buka 'Periksa Dokumen' dulu.",
+    "Pak Bambang disegani — jangan langsung menuduh. Sapa dengan hormat, lalu singgung data dari dokumen dengan tenang.",
     "Sebut satu kejanggalan konkret dari dokumen (mis. nomor ganda KOP-0161) dengan sopan, lalu tanyakan latarnya.",
     "Jelaskan sederhana: data fiktif mengurangi hak bonus (SHU) anggota yang benar-benar aktif — itu soal keadilan, bukan menyalahkan.",
     "Ajak sepakati verifikasi ulang ke ketua RT/dusun, lalu tekan 'Keputusan Akhir'.",

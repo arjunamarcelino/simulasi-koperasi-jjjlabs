@@ -79,7 +79,7 @@ export const KREDIT_MACET_SCRIPT = {
   ],
   hints: [
     "Pak Joko defensif — jangan langsung menuduh. Tanyakan dulu kabar usahanya dengan tenang.",
-    "Gali sebab objektif: minta izin melihat bukti (buka 'Periksa Bukti') dan tanyakan kenapa warungnya sepi.",
+    "Di berkas, riwayat bayarnya lancar 10 bulan lalu macet sejak Mei — tanyakan apa yang berubah pada warungnya sejak itu.",
     "Ingat asas kekeluargaan: untuk anggota beritikad baik yang kena musibah, ada mekanisme 3R (Rescheduling/Reconditioning/Restructuring).",
     "Setelah paham kondisinya, sampaikan solusi keringanan/perpanjangan tempo lewat percakapan, lalu tekan 'Keputusan Akhir'.",
   ],
