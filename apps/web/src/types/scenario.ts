@@ -10,6 +10,19 @@ export type EvidenceItem = {
   tone?: EvidenceTone;
 };
 
+/**
+ * Guidance that steers the player to open — and read — the evidence panel, for
+ * scenarios where the case only makes sense after seeing the file. Static FE copy.
+ */
+export type EvidenceGuide = {
+  /** Short call to action for the rail coachmark + pre-session card. */
+  callout: string;
+  /** 1–2 sentences: the local Petunjuk before the file is opened + the reminder. */
+  nudge: string;
+  /** "Yang perlu kamu perhatikan" bullets shown inside the evidence panel. */
+  lookFor: readonly string[];
+};
+
 /** Static case-file content backing the "Periksa Bukti" panel. */
 export type EvidenceContent = {
   /** Panel title (e.g. "Periksa Bukti"). */
@@ -17,6 +30,12 @@ export type EvidenceContent = {
   /** Optional eyebrow/framing line (e.g. "BERKAS PERKARA — Pak Joko"). */
   eyebrow?: string;
   items: readonly EvidenceItem[];
+  /**
+   * When present, the session nudges the player to open this file (pulsing rail
+   * button, coachmark, briefing action, local hint, one-shot reminder) until they
+   * do. Presence is the capability — absent → no nudges.
+   */
+  guide?: EvidenceGuide;
 };
 
 /**

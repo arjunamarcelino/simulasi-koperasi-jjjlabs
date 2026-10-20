@@ -7,7 +7,9 @@ import type { PhaseState } from "../../session/transport/contract";
  * shift). Always-on: Petunjuk, Deskripsi, Akhiri. Maju-Fase appears only when the
  * scenario emits phases (RAT) — the tutorial never shows it. (Mic lives in the
  * dialogue box.) The evidence button ("Periksa Bukti" / "Periksa Dokumen") shows
- * only when the scenario declares evidence content.
+ * only when the scenario declares evidence content; while the scenario wants the
+ * player to open it (`nudgeEvidence`) it carries a mustard ring, a "!" badge and an
+ * optional coachmark bubble that opens the file.
  */
 type Props = {
   ready: boolean;
@@ -22,6 +24,12 @@ type Props = {
   hasEvidence?: boolean;
   /** Label for the evidence rail button (defaults to "Periksa Bukti"). */
   evidenceLabel?: string;
+  /** The case file is still unopened — ring + badge on its button. */
+  nudgeEvidence?: boolean;
+  /** Coachmark text beside the evidence button; null/absent → no bubble. */
+  evidenceCallout?: string | null;
+  /** Bump to replay a one-shot pop on the evidence button (reminder, local hint). */
+  evidencePopKey?: number;
   onHint: () => void;
   onToggleBriefing: () => void;
   onCheckEvidence?: () => void;
@@ -38,6 +46,9 @@ export const ActionRail = memo(function ActionRail({
   nudgeEnd = false,
   hasEvidence = false,
   evidenceLabel = "Periksa Bukti",
+  nudgeEvidence = false,
+  evidenceCallout = null,
+  evidencePopKey = 0,
   onHint,
   onToggleBriefing,
   onCheckEvidence,
@@ -58,14 +69,40 @@ export const ActionRail = memo(function ActionRail({
         <HintIcon />
       </RailButton>
       {hasEvidence && (
-        <RailButton
-          label={evidenceLabel}
-          tone="bg-cream text-forest"
-          onClick={() => onCheckEvidence?.()}
-          disabled={!ready}
+        // Keyed by the pop counter: a bump remounts the wrapper and replays nudgePop.
+        // The pop sits on the wrapper so it never fights the button's guide ring.
+        <div
+          key={evidencePopKey}
+          className={`relative ${evidencePopKey > 0 ? "animate-[nudgePop_450ms_ease-out]" : ""}`}
         >
-          <EvidenceIcon />
-        </RailButton>
+          <RailButton
+            label={evidenceLabel}
+            tone="bg-cream text-forest"
+            onClick={() => onCheckEvidence?.()}
+            disabled={!ready}
+            guide={nudgeEvidence}
+          >
+            <EvidenceIcon />
+          </RailButton>
+          {nudgeEvidence && ready && (
+            <span
+              data-testid="evidence-badge"
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center border-2 border-border bg-mustard font-display text-[8px] text-ink"
+            >
+              !
+            </span>
+          )}
+          {evidenceCallout && ready && (
+            <button
+              type="button"
+              onClick={() => onCheckEvidence?.()}
+              className="pixel-panel absolute right-full top-1/2 mr-3 w-max max-w-[11rem] -translate-y-1/2 bg-mustard px-3 py-2 text-left font-body text-base leading-tight text-ink animate-[lineIn_140ms_ease-out] focus-visible:pixel-focus focus-visible:outline-none"
+            >
+              {evidenceCallout} <span aria-hidden="true">→</span>
+            </button>
+          )}
+        </div>
       )}
       {phase && phase.advanceActionLabel !== null && (
         <RailButton
@@ -100,6 +137,7 @@ function RailButton({
   disabled = false,
   highlight = false,
   pulse = false,
+  guide = false,
   children,
 }: {
   label: string;
@@ -110,6 +148,8 @@ function RailButton({
   highlight?: boolean;
   /** Sustained ring while a condition holds (drift L1). Distinct from highlight. */
   pulse?: boolean;
+  /** Friendly mustard ring — "open me next" guidance, never a warning. */
+  guide?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -121,7 +161,7 @@ function RailButton({
       title={label}
       className={`group pixel-raise active:pixel-press flex h-12 items-center overflow-hidden border-3 border-border px-3 transition-transform duration-75 focus-visible:pixel-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${tone} ${
         highlight && !disabled ? "animate-[nudgePop_450ms_ease-out]" : ""
-      } ${pulse && !disabled ? "drift-nudge" : ""}`}
+      } ${pulse && !disabled ? "drift-nudge" : ""} ${guide && !disabled ? "guide-nudge" : ""}`}
     >
       <span aria-hidden="true" className="shrink-0">
         {children}

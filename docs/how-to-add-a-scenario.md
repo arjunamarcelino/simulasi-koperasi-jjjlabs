@@ -101,7 +101,13 @@ taksonomi/skor **§6** (scenario_id, State{nilai}, score keys, catatan NPC).
 - **`apps/web/src/session/transport/contract.ts`** — tambah literal id ke union `ScenarioId`.
 - **`apps/web/src/scenarios/scenario.config.ts`** — tambah entri `ScenarioConfig` (tiru
   `kredit-macet`): `id`, `title`, `shortDescription`, `difficulty`, `status`, `npcName`,
-  `blurb`, `mission`, `steps`, opsional `evidence`.
+  `blurb`, `mission`, `steps`, opsional `evidence`. Bila kasusnya baru bisa dipahami setelah
+  membaca berkas, tambahkan `evidence.guide` (`callout`, `nudge`, `lookFor`). Sesi lalu
+  mengarahkan pemain membuka berkas sampai ia membukanya: tombol berkas berdenyut + badge "!",
+  coachmark, tombol "📁 Buka" di langkah yang menyebut `'<evidence.title>'` (taruh di langkah 1),
+  Petunjuk lokal (tanpa RPC mentor), pengingat sekali setelah 2 giliran, dan berkas bisa dibaca
+  di layar Mulai/Menyambungkan. `lookFor` tampil sebagai "Yang perlu kamu perhatikan" di panel.
+  Contoh: `kredit-macet`, `keanggotaan-fiktif`. Uji di `scenario.config.test.ts`.
 - **`apps/web/src/game/scenes/KoperasiInteriorScene.ts`** — tambah NPC + `Station` di
   `buildStations()` dengan `fire: () => gameStore.getState().openSession("tarik-simpanan")`,
   dan tambah id station ke union `StationKind`.

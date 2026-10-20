@@ -59,6 +59,8 @@ export type SessionController = {
   endSession: () => void;
   advancePhase: () => void;
   requestHint: () => void;
+  /** Show a FE-authored hint (no mentor RPC) — e.g. the open-the-file nudge. */
+  showHint: (text: string) => void;
   dismissHint: () => void;
   restart: () => void;
   debugSetDrift: (level: DriftLevel) => void;
@@ -286,6 +288,11 @@ export function createSessionController(): SessionController {
         fallback(cause);
         sessionStore.getState().setHintLoading(false);
       }
+    },
+
+    showHint: (text: string) => {
+      if (hasEnded()) return;
+      sessionStore.getState().setHint(text);
     },
 
     dismissHint: () => sessionStore.getState().setHint(null),

@@ -161,6 +161,8 @@ Preconditions: single browser tab, no other session open, Supabase up, built wit
 - [ ] **BAD via force-quit** `[P0]` — send **4** escalate words (or `debugSetDrift(2)`) → `forceQuitLine` streams, ResultPanel is BAD, and the **input is locked** (further sends produce no NPC reply).
 - [ ] **Interrupted session** `[P1]` — start a scenario, send one message, then close the overlay / reload the page mid-conversation → reopen → **no orphan row** (§4 step 6) and the session is cleanly closed. Expected resume/restart behavior: _record what you observe_.
 - [ ] Evidence panel ("Periksa Dokumen"/"Periksa Bukti") opens and shows content; "Petunjuk" (hint) returns a hint.
+- [ ] Closing the evidence panel (✕ or its rail button) returns to **Deskripsi** when the file was opened while Deskripsi was showing; opened with no panel showing → closing leaves the scene clear.
+- [ ] **Open-the-file guide** `[P1]` (Kredit Macet & Keanggotaan Fiktif only) — before the file is opened: the start/connecting card offers "Baca berkas dulu"; Deskripsi step 1 is highlighted with "📁 Buka"; after closing Deskripsi the evidence rail button shows a mustard ring + "!" badge + coachmark; "Petunjuk" shows a local "buka 'Periksa …'" hint (no mentor call); after 2 player turns a one-shot reminder appears. Opening the file clears all of these (step shows "✓ Diperiksa"), the panel shows "Yang perlu kamu perhatikan", and "Petunjuk" returns mentor hints again. RAT & Tutorial show none of it.
 
 **Per scenario:**
 - [ ] **Tutorial — Koperasi Konsumen** `[P0]` — send 4 messages → goal fires → "Bayar & Daftar" → `good` ending. **No score chips, no bad path — do NOT Fail for missing scores.**
