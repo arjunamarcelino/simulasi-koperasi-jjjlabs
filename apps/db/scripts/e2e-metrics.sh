@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# End-to-end proof that the REAL least-privilege `metrics_reader` login role can EXECUTE
+# admin.metrics_overview() but CANNOT read the underlying tables. pgTAP can't cover this:
+# it asserts the grant matrix via has_*_privilege but does not connect AS the role (and
+# SET ROLE into a non-member login role is unreliable), so a broken grant/ownership or a
+# wrong password would ship green. This connects with the role's own credentials.
+#
+# Requires the role's password to be set first (it's NULL in the migration) — see db-tests.yml.
+# METRICS_DB_URL defaults to the local `supabase start` DB as metrics_reader.
+set -euo pipefail
+
+DSN="${METRICS_DB_URL:-postgresql://metrics_reader:postgres@127.0.0.1:54322/postgres}"
+
+# 1) EXECUTE works and returns a well-formed JSON object.
+out="$(psql "$DSN" -tAc "select jsonb_typeof(admin.metrics_overview())" 2>&1)" || {
+  echo "e2e-metrics: FAIL — metrics_reader cannot execute admin.metrics_overview(): $out"
+  exit 1
+}
+echo "$out" | grep -q '^object$' || {
+  echo "e2e-metrics: FAIL — metrics_overview() did not return an object: $out"
+  exit 1
+}
+
+# 1b) SIM-16: the SAME role can EXECUTE admin.scenario_analytics(text) and get an object
+#     (proves the new drill-down function's grant/ownership is wired like metrics_overview).
+out2="$(psql "$DSN" -tAc "select jsonb_typeof(admin.scenario_analytics('kredit-macet'))" 2>&1)" || {
+  echo "e2e-metrics: FAIL — metrics_reader cannot execute admin.scenario_analytics(): $out2"
+  exit 1
+}
+echo "$out2" | grep -q '^object$' || {
+  echo "e2e-metrics: FAIL — scenario_analytics() did not return an object: $out2"
+  exit 1
+}
+
+# 1c) SIM-17: the SAME role can EXECUTE the leaderboard WRITE + read functions (first destructive
+#     functions in the admin schema). Capture a throwaway season, confirm overview returns an
+#     object, then delete the season to clean up the side effect.
+cap="$(psql "$DSN" -tAc "select admin.capture_leaderboard_snapshot('e2e') ->> 'season_id'" 2>&1)" || {
+  echo "e2e-metrics: FAIL — metrics_reader cannot execute admin.capture_leaderboard_snapshot(): $cap"
+  exit 1
+}
+ov="$(psql "$DSN" -tAc "select jsonb_typeof(admin.leaderboard_overview(null))" 2>&1)" || {
+  echo "e2e-metrics: FAIL — metrics_reader cannot execute admin.leaderboard_overview(): $ov"
+  exit 1
+}
+echo "$ov" | grep -q '^object$' || {
+  echo "e2e-metrics: FAIL — leaderboard_overview() did not return an object: $ov"
+  exit 1
+}
+del="$(psql "$DSN" -tAc "select admin.delete_leaderboard_season('$cap'::uuid) ->> 'deleted'" 2>&1)" || {
+  echo "e2e-metrics: FAIL — metrics_reader cannot execute admin.delete_leaderboard_season(): $del"
+  exit 1
+}
+echo "$del" | grep -q '^true$' || {
+  echo "e2e-metrics: FAIL — delete_leaderboard_season() did not report deleted=true: $del"
+  exit 1
+}
+
+# 2) Direct table reads are DENIED (least privilege: EXECUTE-only, no table grants) — including
+#    the new snapshot tables, which must be reachable only through the definer functions.
+for tbl in public.sessions public.leaderboard_seasons public.leaderboard_entries; do
+  if psql "$DSN" -tAc "select 1 from $tbl limit 1" >/dev/null 2>&1; then
+    echo "e2e-metrics: FAIL — metrics_reader can read $tbl directly (should be denied)"
+    exit 1
+  fi
+done
+
+echo "e2e-metrics: PASS (metrics_reader executes metrics_overview + scenario_analytics + leaderboard capture/overview/delete; direct table reads denied)"

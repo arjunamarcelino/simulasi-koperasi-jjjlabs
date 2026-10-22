@@ -21,6 +21,15 @@ const GOOD_ENDING = {
   endingType: "good",
   narrativeFeedback:
     "Selamat! Anda menegakkan asas kekeluargaan tanpa mengorbankan prosedur. Dengan menggali sebab tunggakan — akses jalan tertutup proyek membuat omzet warung anjlok — lalu menawarkan keringanan dan perpanjangan tempo (Restrukturisasi/3R), Pak Joko tetap kooperatif dan pinjaman berpeluang pulih secara sah.",
+  values: {
+    kepedulian: { status: "TERCERMIN", evidence: "Anda menanyakan kabar warung Pak Joko sebelum membahas tunggakan.", trend: "BARU_DIUJI" },
+    keadilan: { status: "TERCERMIN", evidence: "Anda menawarkan perpanjangan tempo dan keringanan cicilan, bukan penyitaan.", trend: "BARU_DIUJI" },
+    tanggung_jawab_pribadi: { status: "BELUM_TAMPAK", evidence: "Anda belum menyepakati komitmen pembayaran yang realistis dengan Pak Joko.", trend: "BARU_DIUJI" },
+  },
+  progressFeedback:
+    "Ini titik awal perjalanan nilai Anda. Kepedulian dan keadilan sudah tampak saat Anda mendengar cerita Pak Joko lalu menawarkan restrukturisasi. Yang perlu dijaga: keringanan sebaiknya diikat dengan kesepakatan kewajiban yang jelas.",
+  nextStep: "Setelah menawarkan keringanan, ajak lawan bicara menyepakati jadwal pembayaran yang sanggup ia penuhi.",
+  evaluationFailed: false,
 } satisfies AuditorResult;
 
 const BAD_ENDING = {
@@ -34,6 +43,15 @@ const BAD_ENDING = {
   endingType: "bad",
   narrativeFeedback:
     "Misi gagal. Anda menekan dan mengancam menyita tanpa lebih dulu menggali kondisi nyata Pak Joko. Menghadapi anggota beritikad baik yang tertimpa musibah, koperasi punya mekanisme resmi bernama Restrukturisasi — bukan penyitaan sepihak yang melangkahi prosedur dan merusak asas kekeluargaan.",
+  values: {
+    kepedulian: { status: "DIABAIKAN", evidence: "Anda langsung menagih tanpa menanyakan mengapa warung Pak Joko sepi.", trend: "BARU_DIUJI" },
+    keadilan: { status: "DIABAIKAN", evidence: "Anda mengancam menyita lemari es tanpa menawarkan jalur 3R.", trend: "BARU_DIUJI" },
+    tanggung_jawab_pribadi: { status: "BELUM_TAMPAK", evidence: "Kewajiban Pak Joko dibahas lewat ancaman, bukan lewat kesepakatan.", trend: "BARU_DIUJI" },
+  },
+  progressFeedback:
+    "Ini titik awal perjalanan nilai Anda. Ketegasan soal kewajiban sudah terlihat, tetapi Pak Joko tidak diberi ruang bercerita sehingga solusi yang adil tak sempat dicari.",
+  nextStep: "Tanyakan dulu apa yang membuat lawan bicara kesulitan sebelum membahas aturan atau sanksi.",
+  evaluationFailed: false,
 } satisfies AuditorResult;
 
 export const KREDIT_MACET_SCRIPT = {
@@ -61,7 +79,7 @@ export const KREDIT_MACET_SCRIPT = {
   ],
   hints: [
     "Pak Joko defensif — jangan langsung menuduh. Tanyakan dulu kabar usahanya dengan tenang.",
-    "Gali sebab objektif: minta izin melihat bukti (buka 'Periksa Bukti') dan tanyakan kenapa warungnya sepi.",
+    "Di berkas, riwayat bayarnya lancar 10 bulan lalu macet sejak Mei — tanyakan apa yang berubah pada warungnya sejak itu.",
     "Ingat asas kekeluargaan: untuk anggota beritikad baik yang kena musibah, ada mekanisme 3R (Rescheduling/Reconditioning/Restructuring).",
     "Setelah paham kondisinya, sampaikan solusi keringanan/perpanjangan tempo lewat percakapan, lalu tekan 'Keputusan Akhir'.",
   ],

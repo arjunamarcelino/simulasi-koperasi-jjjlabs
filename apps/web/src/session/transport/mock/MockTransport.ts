@@ -20,6 +20,7 @@ import { TUTORIAL_SCRIPT } from "./scripts/tutorial.script";
 import { KREDIT_MACET_SCRIPT } from "./scripts/kredit-macet.script";
 import { KEANGGOTAAN_FIKTIF_SCRIPT } from "./scripts/keanggotaan-fiktif.script";
 import { RAT_SCRIPT } from "./scripts/rat.script";
+import { Emitter } from "../emitter";
 
 // Scenarios plug in here as their scripts land.
 const SCRIPTS: Partial<Record<ScenarioId, ScenarioScript>> = {
@@ -35,31 +36,10 @@ const THINK_MAX_MS = 900;
 const STREAM_TICK_MS = 28;
 const CHARS_PER_TICK = 2;
 
-/** Minimal emitter: enough for every stream, no dependency. */
-class Emitter<T> {
-  private readonly listeners = new Set<(value: T) => void>();
-
-  subscribe(cb: (value: T) => void): Unsubscribe {
-    this.listeners.add(cb);
-    return () => {
-      this.listeners.delete(cb);
-    };
-  }
-
-  emit(value: T): void {
-    for (const cb of [...this.listeners]) cb(value);
-  }
-
-  clear(): void {
-    this.listeners.clear();
-  }
-}
-
 /**
  * Scripted transport for validating the UI without a backend. The generic bits
  * (partial→final streaming, drift keywords, force-quit, ending selection) serve
- * every scenario. RAT (`script.rat`) adds a two-persona / phase machine on top —
- * dead code until a RAT script is registered, harmless meanwhile.
+ * every scenario. RAT (`script.rat`) adds a two-persona / phase machine on top.
  */
 export class MockTransport implements SessionTransport {
   private readonly transcript = new Emitter<TranscriptItem>();

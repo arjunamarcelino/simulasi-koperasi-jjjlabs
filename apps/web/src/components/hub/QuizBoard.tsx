@@ -1,119 +1,216 @@
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { gameStore } from "../../stores/game.store";
-import {
-  QUIZ_QUESTIONS,
-  QUIZ_PICK,
-  POINT_PER_CORRECT,
-  XP_PER_QUESTION,
-  type QuizQuestion,
-} from "../../content/quiz";
+import { progressRepo } from "../../lib/progressRepo";
+import type { QuizCatalogQuestion, QuizResultRow, Totals } from "../../lib/progressRepo.contracts";
 import { ModalShell } from "../common/ModalShell";
 import { GameButton } from "../common/GameButton";
 
 const LETTERS = ["A", "B", "C", "D"];
+/** How many questions to draw per play (non-secret; server caps at the same bound). */
+const QUIZ_PICK = 10;
 
-/** Unbiased Fisher–Yates; returns a fresh 10-question run. */
-function pickRun(): QuizQuestion[] {
-  const copy = [...QUIZ_QUESTIONS];
+type Phase = "loading" | "playing" | "grading" | "summary" | "error";
+
+// Admins edit the quiz catalog live (SIM-18), so the board must reflect edits on the NEXT open —
+// no module-level pool cache. A fetch-generation counter makes only the LATEST open/retry write
+// state: each loadRun bumps it, and a resolving fetch that is no longer the latest is dropped
+// (prevents a slow earlier fetch from painting a stale draw over a newer one).
+let quizFetchGen = 0;
+
+/** Pure error/empty content (no ModalShell) so the branch matrix is unit-testable in the node
+ * test env. `empty` and `offline` are terminal (no retry — reopening refetches); only a transient
+ * `retryable` load/grade error offers "Coba Lagi". */
+export function QuizErrorContent({
+  errorKind,
+  onRetry,
+  onClose,
+}: {
+  errorKind: "offline" | "retryable" | "empty";
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      <div className="border-3 border-border bg-cream px-6 py-6 text-center">
+        {errorKind === "offline" ? (
+          <>
+            <p className="font-body text-xl text-ink">Kuis butuh koneksi internet.</p>
+            <p className="mt-2 font-body text-lg text-ink-soft">
+              Sambungkan koneksi lalu buka kuis kembali.
+            </p>
+          </>
+        ) : errorKind === "empty" ? (
+          <>
+            <p className="font-body text-xl text-ink">Belum ada soal kuis.</p>
+            <p className="mt-2 font-body text-lg text-ink-soft">
+              Soal akan muncul setelah admin menambahkannya.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="font-body text-xl text-ink">Gagal memuat kuis.</p>
+            <p className="mt-2 font-body text-lg text-ink-soft">Coba lagi sebentar.</p>
+          </>
+        )}
+      </div>
+      <div className="mt-6 flex justify-center gap-4">
+        {errorKind === "retryable" && (
+          <GameButton variant="primary" onClick={onRetry}>
+            Coba Lagi
+          </GameButton>
+        )}
+        <GameButton variant="ghost" onClick={onClose}>
+          Tutup
+        </GameButton>
+      </div>
+    </>
+  );
+}
+
+/** Unbiased Fisher–Yates draw of up to n questions. */
+function draw(pool: QuizCatalogQuestion[], n: number): QuizCatalogQuestion[] {
+  const copy = [...pool];
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [copy[i], copy[j]] = [copy[j]!, copy[i]!];
   }
-  return copy.slice(0, QUIZ_PICK);
-}
-
-type QuizRun = {
-  picked: QuizQuestion[];
-  index: number;
-  selected: number | null;
-  correctCount: number;
-  phase: "playing" | "summary";
-};
-
-type Action =
-  | { type: "SELECT"; option: number }
-  | { type: "NEXT" }
-  | { type: "SUMMARY" }
-  | { type: "RESTART" };
-
-function startRun(): QuizRun {
-  return { picked: pickRun(), index: 0, selected: null, correctCount: 0, phase: "playing" };
-}
-
-function reducer(state: QuizRun, action: Action): QuizRun {
-  switch (action.type) {
-    case "SELECT": {
-      if (state.selected !== null) return state; // already answered this question
-      const correct = action.option === state.picked[state.index]!.correctIndex;
-      return {
-        ...state,
-        selected: action.option,
-        correctCount: state.correctCount + (correct ? 1 : 0),
-      };
-    }
-    case "NEXT":
-      return { ...state, index: state.index + 1, selected: null };
-    case "SUMMARY":
-      return { ...state, phase: "summary" };
-    case "RESTART":
-      return startRun();
-  }
+  return copy.slice(0, n);
 }
 
 /**
- * The koperasi quiz. Mounted only while activeOverlay === "QUIZ" (see HubPage),
- * so closing unmounts it and reopening starts a fresh run — abandoning mid-quiz
- * banks nothing. Rewards commit exactly once (committedRef) on reaching summary.
+ * The koperasi quiz. Mounted only while activeOverlay === "QUIZ". Questions come
+ * from the DB (quiz_catalog); grading is server-authoritative (submit_quiz) so the
+ * answer key never reaches the client. Offline/degraded → a "needs connection"
+ * state (the quiz cannot be graded without the server).
  */
 export function QuizBoard() {
-  const [run, dispatch] = useReducer(reducer, undefined, startRun);
-  const committedRef = useRef(false);
-
-  const { picked, index, selected, correctCount, phase } = run;
-  const question = picked[index]!;
-  const answered = selected !== null;
-  const isLast = index === picked.length - 1;
-  const earnedXp = picked.length * XP_PER_QUESTION;
-  const earnedPoint = correctCount * POINT_PER_CORRECT;
+  const [phase, setPhase] = useState<Phase>("loading");
+  const [pool, setPool] = useState<QuizCatalogQuestion[]>([]);
+  const [picked, setPicked] = useState<QuizCatalogQuestion[]>([]);
+  const [index, setIndex] = useState(0);
+  const [choices, setChoices] = useState<(number | null)[]>([]);
+  const [results, setResults] = useState<QuizResultRow[] | null>(null);
+  const [awarded, setAwarded] = useState<Totals | null>(null);
+  // "offline" = no server (answer key is server-only, can't grade); "retryable" = a
+  // transient load/grade error that a "Coba lagi" can retry.
+  const [errorKind, setErrorKind] = useState<"offline" | "retryable" | "empty">("retryable");
+  const retryRef = useRef<() => void>(() => {});
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const close = () => gameStore.getState().clearSelection();
 
-  const goSummary = () => {
-    if (committedRef.current) return; // synchronous latch — commit exactly once
-    committedRef.current = true;
-    gameStore.getState().addQuizRewards({ xp: earnedXp, point: earnedPoint });
-    dispatch({ type: "SUMMARY" });
-  };
-  const advance = () => {
-    if (!answered) return;
-    if (isLast) goSummary();
-    else dispatch({ type: "NEXT" });
-  };
-  const restart = () => {
-    committedRef.current = false;
-    dispatch({ type: "RESTART" });
+  const startPlaying = (questions: QuizCatalogQuestion[]) => {
+    setPool(questions);
+    setPicked(draw(questions, QUIZ_PICK));
+    setChoices(Array<number | null>(Math.min(QUIZ_PICK, questions.length)).fill(null));
+    setIndex(0);
+    setResults(null);
+    setAwarded(null);
+    setPhase("playing");
   };
 
-  // Keep the latest advance() reachable from the once-attached key listener
-  // without re-subscribing every render (avoids stale closures).
+  // Fetch the catalog fresh on every open (admins edit it live), then draw a run. The
+  // generation guard drops a superseded fetch; the state write stays AFTER the guard so a
+  // dropped straggler can never paint a stale draw.
+  const loadRun = async () => {
+    const myGen = ++quizFetchGen;
+    setPhase("loading");
+    const res = await progressRepo.fetchQuiz();
+    if (myGen !== quizFetchGen || !mounted.current) return; // superseded / unmounted → drop
+    if (res.status === "ok") {
+      if (res.data.length > 0) {
+        startPlaying(res.data);
+      } else {
+        // A legitimately empty catalog is a distinct terminal state — NOT a transient error, and
+        // never startPlaying([]) (which would draw a zero-length run). Reopening refetches.
+        setErrorKind("empty");
+        setPhase("error");
+      }
+    } else {
+      setErrorKind(res.status === "degraded" ? "offline" : "retryable");
+      retryRef.current = () => void loadRun();
+      setPhase("error");
+    }
+  };
+
+  useEffect(() => {
+    void loadRun();
+    // Run once on open; loadRun closes over stable setters only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const question = picked[index];
+  const selected = choices[index] ?? null;
+  const answered = selected !== null;
+  const isLast = index === picked.length - 1;
+
+  // In-flight guard: a held Enter fires key-repeat (~30ms) faster than the listener's deferred
+  // cleanup, so a second submit could land in the pre-commit window (double submit_quiz; a late
+  // transient failure would flip an already-painted summary back to error). Synchronous ref, so it
+  // blocks re-entry before any state commits.
+  const submittingRef = useRef(false);
+  const submitRun = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setPhase("grading");
+    try {
+      const answers = picked.map((q, i) => ({ code: q.code, choice: choices[i] ?? 0 }));
+      const outcome = await gameStore.getState().submitQuiz(answers);
+      if (!mounted.current) return;
+      if (outcome.ok) {
+        setResults(outcome.results);
+        setAwarded(outcome.awarded);
+        setPhase("summary");
+      } else {
+        setErrorKind(outcome.reason === "degraded" ? "offline" : "retryable");
+        retryRef.current = () => void submitRun();
+        setPhase("error");
+      }
+    } finally {
+      submittingRef.current = false;
+    }
+  };
+
+  const advance = () => {
+    if (!answered) return;
+    if (isLast) void submitRun();
+    else setIndex((i) => i + 1);
+  };
   const advanceRef = useRef(advance);
   advanceRef.current = advance;
 
-  // After answering, move focus to the advance button (a11y + queues the reveal
-  // announcement for screen readers).
+  const select = (option: number) =>
+    setChoices((prev) => {
+      if (prev[index] !== null) return prev; // already answered this question
+      const next = [...prev];
+      next[index] = option;
+      return next;
+    });
+
+  const restart = () => startPlaying(pool);
+
+  // After answering, move focus to the advance button (a11y).
   useEffect(() => {
     if (phase === "playing" && answered) document.getElementById("quiz-advance")?.focus();
   }, [answered, index, phase]);
 
-  // Keyboard: 1–4 to answer, Enter to advance. stopPropagation ONLY on consumed
-  // keys so Escape/Tab still reach ModalShell.
+  // Keyboard: 1–4 to answer, Enter to advance. stopPropagation ONLY on consumed keys
+  // so Escape/Tab still reach ModalShell.
   useEffect(() => {
     if (phase !== "playing") return;
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return; // ignore auto-repeat: a held Enter must not advance/submit twice
       if (e.key >= "1" && e.key <= "4") {
         e.preventDefault();
         e.stopPropagation();
-        dispatch({ type: "SELECT", option: Number(e.key) - 1 });
+        const n = Number(e.key) - 1;
+        if (n < (question?.options.length ?? 0)) select(n); // ignore a key past the option count
       } else if (e.key === "Enter") {
         e.preventDefault();
         e.stopPropagation();
@@ -122,9 +219,37 @@ export function QuizBoard() {
     };
     document.addEventListener("keydown", onKeyDown, { capture: true });
     return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [phase]);
+    // `select` closes over `index`; re-subscribe per index so the right slot is set.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, index]);
+
+  if (phase === "loading" || phase === "grading") {
+    return (
+      <ModalShell titleId="quiz-title" onClose={close} panelClassName="w-full max-w-lg">
+        <h2 id="quiz-title" className="mb-4 text-center font-display text-sm text-forest md:text-base">
+          Kuis Koperasi
+        </h2>
+        <p className="py-8 text-center font-body text-xl text-ink-soft">
+          {phase === "loading" ? "Memuat soal…" : "Menilai jawaban…"}
+        </p>
+      </ModalShell>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <ModalShell titleId="quiz-title" onClose={close} panelClassName="w-full max-w-lg">
+        <h2 id="quiz-title" className="mb-4 text-center font-display text-sm text-forest md:text-base">
+          Kuis Koperasi
+        </h2>
+        <QuizErrorContent errorKind={errorKind} onRetry={() => retryRef.current()} onClose={close} />
+      </ModalShell>
+    );
+  }
 
   if (phase === "summary") {
+    const correctCount = results?.filter((r) => r.correct).length ?? 0;
+    const byCode = new Map(results?.map((r) => [r.code, r]));
     return (
       <ModalShell titleId="quiz-title" onClose={close} panelClassName="w-full max-w-lg">
         <h2 id="quiz-title" className="mb-4 text-center font-display text-sm text-forest md:text-base">
@@ -138,12 +263,37 @@ export function QuizBoard() {
         </div>
         <div className="mt-4 flex justify-center gap-3">
           <span className="border-2 border-border bg-forest px-3 py-1 font-display text-[10px] text-cream">
-            +{earnedXp} XP
+            +{awarded?.xp ?? 0} XP
           </span>
           <span className="border-2 border-border bg-mustard px-3 py-1 font-display text-[10px] text-ink">
-            +{earnedPoint} Poin
+            +{awarded?.point ?? 0} Poin
           </span>
         </div>
+
+        <div className="mt-5 flex max-h-64 flex-col gap-2 overflow-y-auto">
+          {picked.map((q, i) => {
+            const r = byCode.get(q.code);
+            const chosen = choices[i];
+            return (
+              <div key={q.code} className="border-3 border-border bg-parchment px-3 py-2">
+                <p className="font-body text-base text-ink">{q.prompt}</p>
+                <p className="mt-1 font-body text-base text-ink-soft">
+                  Jawabanmu: {chosen !== null && chosen !== undefined ? q.options[chosen] : "—"}
+                </p>
+                <p className="mt-1 font-display text-[9px] text-forest">
+                  {r?.correct ? "✓ Benar" : "✗ Kurang tepat"}
+                  {r?.alreadyCredited && (
+                    <span className="ml-2 text-ink-soft">· sudah dikreditkan</span>
+                  )}
+                </p>
+                {r?.explanation && (
+                  <p className="mt-1 font-body text-base text-ink-soft">{r.explanation}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
         <div className="mt-6 flex justify-center gap-4">
           <GameButton variant="primary" onClick={restart}>
             Main Lagi
@@ -156,6 +306,8 @@ export function QuizBoard() {
     );
   }
 
+  // phase === "playing"
+  const answeredCount = choices.filter((c) => c !== null).length;
   return (
     <ModalShell titleId="quiz-title" onClose={close} panelClassName="w-full max-w-lg">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -166,7 +318,7 @@ export function QuizBoard() {
           Soal {index + 1}/{picked.length}
         </span>
         <span className="border-2 border-border bg-forest px-2 py-0.5 font-display text-[9px] text-cream">
-          Skor {correctCount}
+          Terjawab {answeredCount}
         </span>
       </div>
 
@@ -186,19 +338,15 @@ export function QuizBoard() {
         key={index}
         className="mb-5 flex min-h-24 animate-[fadeIn_120ms_ease-out] items-center justify-center border-3 border-border bg-cream px-5 py-6 text-center"
       >
-        <p className="font-body text-xl leading-snug text-ink md:text-2xl">{question.question}</p>
+        <p className="font-body text-xl leading-snug text-ink md:text-2xl">{question?.prompt}</p>
       </div>
 
       <div className="flex flex-col gap-3" role="radiogroup" aria-label="Pilihan jawaban">
-        {question.options.map((opt, i) => {
-          const isCorrect = i === question.correctIndex;
+        {question?.options.map((opt, i) => {
           const isChosen = i === selected;
-          let state = "pixel-raise active:pixel-press bg-cream text-ink hover:bg-parchment";
-          if (answered) {
-            if (isCorrect) state = "border-3 border-border bg-forest text-cream";
-            else if (isChosen) state = "border-3 border-border bg-orange text-ink";
-            else state = "border-3 border-line bg-cream text-ink-soft opacity-70";
-          }
+          const state = isChosen
+            ? "border-3 border-border bg-forest text-cream"
+            : "pixel-raise active:pixel-press bg-cream text-ink hover:bg-parchment";
           return (
             <button
               key={i}
@@ -206,7 +354,7 @@ export function QuizBoard() {
               role="radio"
               aria-checked={isChosen}
               disabled={answered}
-              onClick={() => dispatch({ type: "SELECT", option: i })}
+              onClick={() => select(i)}
               className={`flex w-full items-center gap-3 px-4 py-3 text-left font-body text-lg focus-visible:pixel-focus focus-visible:outline-none disabled:cursor-default md:text-xl ${state}`}
             >
               <span className="flex h-6 w-6 shrink-0 items-center justify-center border-2 border-border bg-mustard font-display text-[9px] text-ink">
@@ -217,19 +365,6 @@ export function QuizBoard() {
           );
         })}
       </div>
-
-      {answered && (
-        <div
-          aria-live="polite"
-          role="status"
-          className="mt-4 border-3 border-border bg-parchment px-4 py-3 text-center font-body text-lg text-ink-soft"
-        >
-          <span className="font-display text-[10px] text-forest">
-            {selected === question.correctIndex ? "✓ Benar!" : "✗ Kurang tepat"}
-          </span>
-          {question.explanation && <p className="mt-2">{question.explanation}</p>}
-        </div>
-      )}
 
       <div className="mt-5 flex justify-end">
         <GameButton id="quiz-advance" variant="primary" disabled={!answered} onClick={advance}>

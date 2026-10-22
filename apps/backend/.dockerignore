@@ -1,0 +1,24 @@
+# Jangan salin ke image: venv (platform-specific), VCS, cache, dan — PENTING —
+# file .env berisi kredensial. COPY . /app akan membawa apa pun yang tak di-ignore.
+.venv/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+# Semua varian .env — termasuk .env.example (tak dibutuhkan saat runtime; image
+# harus bebas file env). Daftar var: lihat repo / docs/deploy/production-config.md.
+.env
+.env.*
+# Build artefak & dokumen
+dist/
+build/
+*.md
+tests/
+.cache/
+
+# Kunci service account GCP — jangan ikut ter-COPY ke image (mount saat runtime).
+*-sa-key.json

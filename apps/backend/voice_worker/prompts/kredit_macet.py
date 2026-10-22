@@ -1,6 +1,6 @@
 """System prompt — Skenario 2 (Kredit Macet), NPC Pak Joko.
 
-Di-grounding ke dokumen skenario (`apps/scenarios.md` §Skenario 2) & PRD §7.2.
+Di-grounding ke dokumen skenario (`docs/scenarios.md` §Skenario 2) & PRD §7.2.
 Nada berevolusi murni lewat prompt (PRD §6 Lapisan 1). Interaksi HANYA percakapan
 suara: tak ada peragaan tindakan fisik/penyerahan dokumen — verifikasi konkret
 direncanakan untuk nanti, bukan dilakukan di dalam percakapan.

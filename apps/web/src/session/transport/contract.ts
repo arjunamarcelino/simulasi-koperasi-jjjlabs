@@ -38,18 +38,65 @@ export type PhaseState = {
 /** The three ways a session ends — PRD §6. */
 export type FinalDecisionTrigger = "manual" | "sinyal_level_1" | "force_quit_level_2";
 
+/** The three terminal states of a scored session. Single source for the transport, the
+ *  history read path, and the result UI. */
+export type EndingType = "good" | "bad" | "neutral";
+
+/** How one ICA cooperative value showed up in a session (auditor judgment, capped by the
+ *  worker so it never contradicts the state classification). */
+export type ValueStatus = "TERCERMIN" | "BELUM_TAMPAK" | "DIABAIKAN";
+
+/** Change vs the latest past session that assessed the same value — computed by the
+ *  worker from the player's history, never by the LLM. */
+export type ValueTrend = "MENGUAT" | "TETAP" | "MELEMAH" | "BARU_DIUJI";
+
+export type ValueAssessment = {
+  status: ValueStatus;
+  /** One sentence pointing at the player's own words/actions in that session. */
+  evidence: string;
+  trend: ValueTrend;
+};
+
+/** One past session summarized for the auditor — the `history` items of POST /token.
+ *  snake_case because it is the wire shape (CONTRACT.md §2); no narrative, no scores. */
+export type ValueHistoryEntry = {
+  scenario_id: string;
+  /** YYYY-MM-DD (UTC) the attempt was played. */
+  played_on: string;
+  values: Record<string, { status: ValueStatus; evidence: string }>;
+  /** The suggestion that session gave — the next auditor checks whether it was followed. */
+  next_step: string;
+};
+
+export type ConnectOptions = {
+  /** Newest-first value history for the auditor's personal feedback (LiveKit only). */
+  history?: readonly ValueHistoryEntry[];
+};
+
 /**
  * AI Auditor result (PRD §6 Layer 3). For the tutorial this payload is scripted
  * (not gpt-generated); stateClassification/scores stay empty so one shape serves
  * both the tutorial and scored scenarios later.
  */
 export type AuditorResult = {
-  scenarioId: ScenarioId;
+  // Known catalog scenario OR an arbitrary persisted code (session history may replay a
+  // legacy/uncatalogued id). `string & {}` keeps literal autocomplete for the union.
+  scenarioId: ScenarioId | (string & {});
   trigger: FinalDecisionTrigger;
   stateClassification: Record<string, string>;
   scores: Record<string, number>;
-  endingType: "good" | "bad" | "neutral";
+  endingType: EndingType;
   narrativeFeedback: string;
+  /** Personal feedback (scenarios 2–4): the scenario's relevant ICA values. Empty for the
+   *  tutorial, a failed audit, or an older worker. */
+  values: Record<string, ValueAssessment>;
+  /** "Perjalanan Nilaimu" narrative comparing with the player's past sessions. */
+  progressFeedback: string;
+  /** One concrete suggestion for the next session ("" when absent). */
+  nextStep: string;
+  /** True when the auditor exhausted its retries + fallback model and this is the scripted
+   *  fallback. It is still SHOWN (same panel as always) but NEVER persisted. */
+  evaluationFailed: boolean;
 };
 
 export type SessionEnded = {
@@ -63,7 +110,7 @@ export type Unsubscribe = () => void;
 
 export interface SessionTransport {
   /** Mint token + join room. Resolves once the NPC greeting is queued. */
-  connect(scenarioId: ScenarioId): Promise<void>;
+  connect(scenarioId: ScenarioId, opts?: ConnectOptions): Promise<void>;
 
   /** A text turn from the player — the voice fallback path. */
   sendText(text: string): void;

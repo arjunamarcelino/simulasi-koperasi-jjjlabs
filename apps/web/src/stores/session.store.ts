@@ -27,6 +27,9 @@ export type SessionState = {
   phase: PhaseState | null;
   micEnabled: boolean;
   ended: SessionEnded | null;
+  /** True from the moment the session is ending (player's end action or a force-quit)
+   *  until the auditor's result arrives — drives "Sedang menyusun evaluasi…". */
+  evaluating: boolean;
   error: string | null;
   hint: string | null;
   hintLoading: boolean;
@@ -41,6 +44,7 @@ export type SessionState = {
   setPhase: (phase: PhaseState) => void;
   setMicEnabled: (enabled: boolean) => void;
   setEnded: (ended: SessionEnded) => void;
+  setEvaluating: (evaluating: boolean) => void;
   setError: (message: string | null) => void;
   setHint: (hint: string | null) => void;
   setHintLoading: (loading: boolean) => void;
@@ -56,6 +60,7 @@ const INITIAL = {
   phase: null,
   micEnabled: false,
   ended: null,
+  evaluating: false,
   error: null,
   hint: null,
   hintLoading: false,
@@ -88,6 +93,7 @@ export const sessionStore = createStore<SessionState>()(
     setPhase: (phase) => set({ phase }),
     setMicEnabled: (micEnabled) => set({ micEnabled }),
     setEnded: (ended) => set({ ended }),
+    setEvaluating: (evaluating) => set({ evaluating }),
     setError: (error) => set({ error }),
     setHint: (hint) => set({ hint }),
     setHintLoading: (hintLoading) => set({ hintLoading }),

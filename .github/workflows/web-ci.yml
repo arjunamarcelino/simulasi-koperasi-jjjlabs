@@ -1,0 +1,47 @@
+# Frontend gates: typecheck + lint + unit tests + production build.
+# REQUIRED check — unfiltered on purpose; rationale + branch-protection setup in
+# .github/BRANCH_PROTECTION.md. (A path-filtered required check hangs "Expected" forever.)
+name: web-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop] # dedupe: same-repo PRs already run via pull_request
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: these jobs only read the checkout (build/lint/test, no repo writes).
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install workspace (links @simkop/catalog)
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm --filter web typecheck
+      - name: Lint
+        run: pnpm --filter web lint
+      - name: Test
+        run: pnpm --filter web test
+      - name: Build
+        run: pnpm --filter web build
+      - name: Assert DEV e2e seam stripped from prod build
+        # Independent of the NODE_ENV axis both DEV guards share: fail if the harness
+        # leaked into dist/ (SIM-22 security control). Guards the standard production
+        # `pnpm build` (NODE_ENV=production → import.meta.env.DEV=false); a non-standard
+        # `vite build --mode development` would ship the seam and is intentionally out of scope.
+        run: |
+          if grep -rqE "__e2e|installE2EHarness" apps/web/dist; then
+            echo "::error::E2E harness leaked into the production build"; exit 1
+          fi

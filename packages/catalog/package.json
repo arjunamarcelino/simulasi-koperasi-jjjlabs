@@ -1,0 +1,11 @@
+{
+  "name": "@simkop/catalog",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Single source of truth for Koperasi Simulator catalog content (scenarios, missions, vouchers, badges, level tiers). Consumed by both apps/web and the apps/db seed generator.",
+  "exports": {
+    ".": "./index.ts",
+    "./data/*": "./data/*"
+  }
+}

@@ -44,7 +44,7 @@ function GameMissionCard({ mission, done }: { mission: Mission; done: boolean })
         <GameButton
           variant="primary"
           className="!px-4 !py-2 !text-[10px]"
-          onClick={() => gameStore.getState().completeMission(mission.id)}
+          onClick={() => void gameStore.getState().completeMission(mission.id)}
         >
           Klaim
         </GameButton>
@@ -56,10 +56,30 @@ function GameMissionCard({ mission, done }: { mission: Mission; done: boolean })
 function RealLifeMissionCard({ mission, done }: { mission: RealLifeMission; done: boolean }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
+  const [emptyHint, setEmptyHint] = useState(false);
 
-  const submit = () => {
-    const result = gameStore.getState().completeMission(mission.id, code);
-    if (!result.ok && result.reason === "wrong-code") setError("Kode salah");
+  const submit = async () => {
+    const result = await gameStore.getState().completeMission(mission.id, code);
+    if (result.ok) return;
+    switch (result.reason) {
+      case "wrong-code":
+        setError("Kode salah");
+        break;
+      case "empty-code":
+        setEmptyHint(true); // a blank code is a prompt, not an error
+        break;
+      case "degraded":
+        setOffline(true);
+        break;
+      case "already":
+      case "unknown":
+        break; // the board already reflects these
+      default: {
+        const _exhaustive: never = result.reason;
+        void _exhaustive;
+      }
+    }
   };
 
   return (
@@ -78,7 +98,7 @@ function RealLifeMissionCard({ mission, done }: { mission: RealLifeMission; done
           className="mt-3 flex items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            submit();
+            void submit();
           }}
         >
           <input
@@ -86,6 +106,8 @@ function RealLifeMissionCard({ mission, done }: { mission: RealLifeMission; done
             onChange={(e) => {
               setCode(e.target.value);
               if (error) setError(null);
+              if (offline) setOffline(false);
+              if (emptyHint) setEmptyHint(false);
             }}
             placeholder="Masukkan kode"
             autoCapitalize="characters"
@@ -100,6 +122,13 @@ function RealLifeMissionCard({ mission, done }: { mission: RealLifeMission; done
         </form>
       )}
       {error && <p className="mt-2 font-body text-lg text-orange">{error}</p>}
+      {emptyHint && <p className="mt-2 font-body text-lg text-ink-soft">Masukkan kode dulu.</p>}
+      {offline && (
+        <div className="mt-2">
+          <p className="font-body text-lg text-ink">Misi ini butuh koneksi internet.</p>
+          <p className="mt-1 font-body text-lg text-ink-soft">Sambungkan koneksi lalu coba lagi.</p>
+        </div>
+      )}
     </div>
   );
 }

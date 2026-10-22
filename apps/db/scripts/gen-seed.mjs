@@ -1,0 +1,195 @@
+#!/usr/bin/env node
+/**
+ * Generate `supabase/seed.sql` from the shared catalog in `@simkop/catalog`.
+ *
+ * `@simkop/catalog` is the single source of truth: apps/web imports the same data
+ * for the UI, and this script maps it to DB columns for the seed — so the game and
+ * the database cannot silently drift. `sort_order` is derived from array position.
+ *
+ * Usage:
+ *   node scripts/gen-seed.mjs           # write supabase/seed.sql
+ *   node scripts/gen-seed.mjs --check   # exit 1 if seed.sql is out of date (CI guard)
+ */
+import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+import scenarios from "@simkop/catalog/data/scenarios.json" with { type: "json" };
+import missions from "@simkop/catalog/data/missions.json" with { type: "json" };
+import vouchers from "@simkop/catalog/data/vouchers.json" with { type: "json" };
+import badges from "@simkop/catalog/data/badges.json" with { type: "json" };
+import quiz from "@simkop/catalog/data/quiz.json" with { type: "json" };
+import mading from "@simkop/catalog/data/mading.json" with { type: "json" };
+
+// Reallife unlock codes are server-only: they live here, NOT in the client-bundled catalog
+// (@simkop/catalog ships to apps/web). We merge them into the seed by mission id below.
+import codes from "../seed-codes.json" with { type: "json" };
+
+const here = dirname(fileURLToPath(import.meta.url));
+const seedPath = join(here, "..", "supabase", "seed.sql");
+const codesPath = join(here, "..", "seed-codes.json");
+
+/** SQL-quote a string, or emit NULL. */
+const s = (v) => (v === null || v === undefined ? "NULL" : `'${String(v).replace(/'/g, "''")}'`);
+/** SQL integer, or NULL. */
+const n = (v) => (v === null || v === undefined ? "NULL" : String(v));
+/** jsonb literal from a JS value, or NULL. */
+const j = (v) => (v === null || v === undefined ? "NULL" : `'${JSON.stringify(v).replace(/'/g, "''")}'::jsonb`);
+
+function block(title, table, cols, rows, rowToVals, conflictUpdate, conflictTarget = "code") {
+  const values = rows.map((r, i) => `  (${rowToVals(r, i + 1).join(", ")})`);
+  return [
+    `-- ${title}`,
+    `insert into public.${table} (${cols.join(", ")}) values`,
+    values.join(",\n"),
+    `on conflict (${conflictTarget}) do update set`,
+    conflictUpdate.map((c) => `  ${c} = excluded.${c}`).join(",\n") + ";",
+  ].join("\n");
+}
+
+// Flatten the heterogeneous mading catalog into one mading_block row-set. block_key is the stable
+// seed key per board (the data slide's own id; an index key for the list boards; 'default' for the
+// singleton identitas). sort_order resets per board. The data slide's `id` becomes block_key and is
+// stripped from the stored payload (the learner read supplies block_key separately).
+function madingRows(m) {
+  const rows = [];
+  rows.push({ board: "identitas", block_key: "default", payload: m.identitas, sort_order: 0 });
+  m.info.forEach((p, i) => rows.push({ board: "info", block_key: `info-${i}`, payload: p, sort_order: i }));
+  m.data.forEach(({ id, ...payload }, i) => rows.push({ board: "data", block_key: id, payload, sort_order: i }));
+  m.knowledge.forEach((p, i) => rows.push({ board: "knowledge", block_key: `kn-${i}`, payload: p, sort_order: i }));
+  return rows;
+}
+
+// Validate the mission ⇄ code join bidirectionally so a missing, orphan, stale, mis-keyed,
+// or duplicated code fails the build instead of silently seeding a NULL or wrong redeem_code.
+// (A NULL redeem_code on a reallife row is also rejected by the DB CHECK constraint, but a
+// clear build-time error beats a load-time 23514.)
+const reallifeIds = missions.filter((m) => m.kind === "reallife").map((m) => m.id);
+const gameIds = new Set(missions.filter((m) => m.kind !== "reallife").map((m) => m.id));
+const missionIds = new Set(missions.map((m) => m.id));
+for (const id of reallifeIds) {
+  if (!codes[id] || !String(codes[id]).trim()) {
+    throw new Error(`gen-seed: reallife mission "${id}" has no code in seed-codes.json`);
+  }
+}
+for (const k of Object.keys(codes)) {
+  if (!missionIds.has(k)) throw new Error(`gen-seed: seed-codes.json has a code for unknown/stale mission id "${k}"`);
+  if (gameIds.has(k)) throw new Error(`gen-seed: seed-codes.json assigns a code to game mission "${k}" (reallife only)`);
+}
+if (Object.keys(codes).length !== reallifeIds.length) {
+  throw new Error(
+    `gen-seed: seed-codes.json has ${Object.keys(codes).length} entries, expected ${reallifeIds.length} (one per reallife mission)`,
+  );
+}
+// import() silently keeps only the last value for a duplicated JSON key — detect from raw text.
+{
+  const seen = new Set();
+  for (const [, k] of readFileSync(codesPath, "utf8").matchAll(/"([^"]+)"\s*:/g)) {
+    if (seen.has(k)) throw new Error(`gen-seed: duplicate key "${k}" in seed-codes.json`);
+    seen.add(k);
+  }
+}
+
+// SIM-42 C1 self-guard: redeem_code MUST stay out of the mission on-conflict set so a re-seed
+// never clobbers an admin-rotated code (codes are rotate-only after init). Named + asserted here
+// so a future edit that re-adds it fails `gen:seed` / `--check` at generation time — the pgTAP
+// seed-durability test only proves the SEMANTIC, not the generator.
+const MISSION_CONFLICT_UPDATE = ["kind", "title", "description", "reward_xp", "reward_point", "sort_order"];
+if (MISSION_CONFLICT_UPDATE.includes("redeem_code")) {
+  throw new Error(
+    "gen-seed: redeem_code must NOT be in the mission on-conflict set (SIM-42 C1) — a re-seed would clobber admin-rotated codes",
+  );
+}
+
+const parts = [
+  "-- GENERATED FILE — do not edit by hand.",
+  "-- Source: @simkop/catalog (packages/catalog)  •  Regenerate: pnpm --filter @simkop/db gen:seed",
+  "-- apps/web imports the same catalog, so seed and UI cannot drift (parity checked in CI).",
+  "",
+  block(
+    "Scenarios (4)",
+    "scenario_definition",
+    ["code", "title", "difficulty", "status", "sort_order"],
+    scenarios,
+    (r, i) => [s(r.id), s(r.title), s(r.difficulty), s(r.status), n(i)],
+    ["title", "difficulty", "status", "sort_order"],
+  ),
+  "",
+  // NOTE: the mission conflict-update set deliberately OMITS redeem_code (and the SIM-42
+  // audit columns are never emitted at all), so a re-seed is INSERT-ONLY for codes: a fresh
+  // insert still seeds the reallife code (redeem_code stays in the INSERT column list below —
+  // a NULL there would trip mission_reallife_has_code, 23514), but `on conflict do update`
+  // will NOT overwrite a code an admin rotated at runtime (SIM-42 C1). Do NOT re-add
+  // `redeem_code` here — that silently reintroduces the clobber. Seeding is init-only
+  // (apps/db/RUNBOOK.md); post-init, codes are rotate-only via the admin path.
+  block(
+    "Missions (7) — redeem_code is a soft KDMP gate code (reallife only), not a cryptographic secret",
+    "mission_definition",
+    ["code", "kind", "title", "description", "reward_xp", "reward_point", "redeem_code", "sort_order"],
+    missions,
+    (r, i) => [s(r.id), s(r.kind), s(r.title), s(r.description), n(r.reward.xp), n(r.reward.point), s(r.kind === "reallife" ? codes[r.id] : null), n(i)],
+    MISSION_CONFLICT_UPDATE,
+  ),
+  "",
+  block(
+    "Vouchers (5)",
+    "voucher_definition",
+    ["code", "name", "cost", "description", "sort_order"],
+    vouchers,
+    (r, i) => [s(r.id), s(r.name), n(r.cost), s(r.description), n(i)],
+    ["name", "cost", "description", "sort_order"],
+  ),
+  "",
+  block(
+    `Badges (${badges.length}) — criteria mirrors BadgeCriteria; null = teaser (locked until its signal exists)`,
+    "badge_definition",
+    ["code", "title", "requirement", "icon", "criteria", "sort_order"],
+    badges,
+    (r, i) => [s(r.id), s(r.title), s(r.requirement), s(r.icon), j(r.criteria), n(i)],
+    ["title", "requirement", "icon", "criteria", "sort_order"],
+  ),
+  "",
+  block(
+    "Quiz (20) — correct_index is the answer key; base table is not client-readable (quiz_catalog omits it)",
+    "quiz_definition",
+    ["code", "prompt", "options", "correct_index", "explanation", "sort_order"],
+    quiz,
+    (r, i) => [s(r.id), s(r.prompt), j(r.options), n(r.correctIndex), s(r.explanation ?? null), n(i)],
+    ["prompt", "options", "correct_index", "explanation", "sort_order"],
+  ),
+  "",
+  // NOTE: the quiz + mading conflict-update sets deliberately OMIT updated_at, so a re-seed reverts
+  // payload/sort_order to catalog values WITHOUT bumping the CAS token. A standalone `psql -f seed.sql`
+  // against a live DB therefore leaves an admin's loaded token validating against reverted content
+  // (benign: the next save re-overwrites). Seeding is init-only (apps/db/RUNBOOK.md); don't reseed live.
+  block(
+    "Mading (SIM-18) — info/data/knowledge boards + the identitas header; one generic table, board discriminator",
+    "mading_block",
+    ["board", "block_key", "payload", "sort_order"],
+    madingRows(mading),
+    (r) => [s(r.board), s(r.block_key), j(r.payload), n(r.sort_order)],
+    ["payload", "sort_order"],
+    "board, block_key",
+  ),
+  "",
+];
+
+const out = parts.join("\n");
+
+if (process.argv.includes("--check")) {
+  let current = "";
+  try {
+    current = readFileSync(seedPath, "utf8");
+  } catch {
+    console.error("seed.sql missing — run `pnpm --filter @simkop/db gen:seed`");
+    process.exit(1);
+  }
+  if (current !== out) {
+    console.error("seed.sql is out of date with @simkop/catalog — run `pnpm --filter @simkop/db gen:seed`");
+    process.exit(1);
+  }
+  console.log("seed.sql is in sync with @simkop/catalog ✓");
+} else {
+  writeFileSync(seedPath, out);
+  console.log(`wrote ${seedPath}`);
+}

@@ -1,14 +1,12 @@
 /**
- * Voucher catalog for the kasir redemption overlay. Simulated (mock codes, no
- * real integration). `cost` is in Point. Placeholder content — edit freely.
+ * Voucher catalog for the kasir redemption overlay. Simulated (mock codes, no real
+ * integration). `cost` is in Point. The catalog data + `Voucher` type live in the
+ * shared `@simkop/catalog` package (also seeds the DB); this module re-exports them
+ * and keeps the wallet's `RedeemedVoucher` record type + its guards, which are
+ * FE-only (not catalog content).
  */
-
-export type Voucher = {
-  id: string;
-  name: string;
-  cost: number;
-  description?: string;
-};
+export type { Voucher } from "@simkop/catalog";
+export { VOUCHERS } from "@simkop/catalog";
 
 /** A redeemed voucher stored in the wallet. `name` is denormalized so the record
  * stays self-describing even if the catalog changes. */
@@ -18,14 +16,6 @@ export type RedeemedVoucher = {
   code: string;
   redeemedAt: number;
 };
-
-export const VOUCHERS: readonly Voucher[] = [
-  { id: "belanja-5k", name: "Voucher Belanja KDMP Rp5.000", cost: 50, description: "Potongan belanja di toko koperasi" },
-  { id: "belanja-10k", name: "Voucher Belanja KDMP Rp10.000", cost: 100, description: "Potongan belanja di toko koperasi" },
-  { id: "pulsa-5k", name: "Voucher Pulsa Rp5.000", cost: 60, description: "Isi ulang pulsa semua operator" },
-  { id: "sembako", name: "Paket Sembako Hemat", cost: 150, description: "Beras 1kg + minyak + gula" },
-  { id: "simpan-pinjam", name: "Diskon Biaya Simpan Pinjam", cost: 200, description: "Potongan administrasi pinjaman berikutnya" },
-];
 
 /** Type guard for a persisted RedeemedVoucher (validates element shape). */
 export function isRedeemedVoucher(u: unknown): u is RedeemedVoucher {

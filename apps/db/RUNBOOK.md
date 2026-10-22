@@ -1,0 +1,150 @@
+# Supabase Provisioning Runbook (SIM-1)
+
+How to stand up the hosted Supabase environment `apps/db` targets, wire CI to deploy it,
+and keep it alive for the 16-Oct demo. Repo automation (workflows, guards, `.env.example`)
+already exists; **this runbook is the manual/ops half** (dashboard + secrets) plus verification.
+
+> **Ignition rule:** the repo variable **`SUPABASE_ENABLED=true` is set LAST**, only after the
+> project exists and every secret/var below is saved. Until then the CI workflows are dormant.
+
+Schema: [`DATA-MODEL.md`](./DATA-MODEL.md).
+
+---
+
+## 1. Create the project
+
+1. Create a **Supabase organization** ("Simulasi Koperasi") — a team org, not a personal account (survives handover).
+2. New **project**: region **Singapore (ap-southeast-1)**, Postgres **15**. Save the **DB password**.
+3. Create a **dedicated CI bot account** (e.g. `simkop-ci`), add it to the org, and mint its
+   **Personal Access Token** (Account → Access Tokens). Use the **bot's** token in CI — never a
+   personal one (a PAT can delete any project in the org; keep the blast radius small).
+
+## 2. Auth configuration (dashboard)
+
+- **Providers → enable Anonymous sign-ins.**
+- **Enable Manual identity linking** (guest → Google upgrade).
+- **Google** provider:
+  1. Google Cloud Console → APIs & Services → Credentials → **OAuth client ID** (Web).
+  2. Authorized **redirect URI**: `https://<ref>.supabase.co/auth/v1/callback` (+ `http://127.0.0.1:54321/auth/v1/callback` for local).
+  3. Authorized **JavaScript origins**: the app origin(s) (e.g. the deployed FE URL + `http://localhost:5173`).
+  4. Paste **Client ID + Secret** into Supabase → Auth → Providers → Google → enable.
+- **URL Configuration**: set **Site URL** + add the FE origin(s) to the **redirect allow-list**.
+- **Attack Protection → enable CAPTCHA → Cloudflare Turnstile** (paste the Turnstile secret key). Keep the anon-signin rate limit.
+- **JWT Signing Keys**: ensure **asymmetric (ES256)** keys are active (migrate off legacy HS256 if needed). Note the **JWKS URL**: `https://<ref>.supabase.co/auth/v1/.well-known/jwks.json`.
+
+## 3. GitHub secrets, variables, and Environment
+
+Create a **GitHub Environment** named **`supabase-deploy`** (repo Settings → Environments) with a
+**required reviewer** + restrict to the `develop` branch. Put the deploy-only secrets there:
+
+| Name | Kind | Where | Value |
+|---|---|---|---|
+| `SUPABASE_ACCESS_TOKEN` | Environment secret | `supabase-deploy` | the **bot** account's PAT |
+| `SUPABASE_DB_PASSWORD` | Environment secret | `supabase-deploy` | project DB password |
+| `SUPABASE_PROJECT_ID` | repo secret | repo | project ref (the `<ref>` in the URL) |
+| `SUPABASE_ANON_KEY` | repo secret | repo | anon/publishable key (public; masking is harmless) |
+| `SUPABASE_DB_HOST` | repo **variable** | repo | **session pooler** host, e.g. `aws-0-ap-southeast-1.pooler.supabase.com` — copy from Settings → Database → Connection string → **Session pooler (5432)** |
+| `SUPABASE_ENABLED` | repo **variable** | repo | `true` — **set LAST** |
+
+Also give the FE its public env (`apps/web/.env` / hosting env): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+
+> **Never** store the `service_role` key anywhere in the repo/CI/FE. The `guard-secrets` workflow +
+> GitHub **secret scanning + push protection** (already **enabled** on the repo) are the backstop that
+> catches an actual key *blob* (`eyJ…` / `sb_secret_…`) that the `guard-secrets` name/value grep can't.
+
+## 4. Keep-alive ⚠️ default-branch requirement
+
+Free-tier projects **pause after ~7 days idle** → the demo dies if idle. `supabase-keepalive.yml`
+pings daily. GitHub runs `schedule:` only from the workflow file on the repo's **DEFAULT branch** —
+the default is now **`develop`** (done via `gh repo edit --default-branch develop`), so the cron fires
+once this workflow merges to `develop`. ⚠️ If the default is ever moved back to `main`, move
+`supabase-keepalive.yml` with it or the cron stops.
+
+Belt-and-suspenders: add an **external monitor** (UptimeRobot / cron-job.org) hitting
+`https://<ref>.supabase.co/rest/v1/` with the anon key daily — GitHub cron is best-effort, and a run
+that never fires raises no alert. Put **calendar reminders on 14-Oct and 15-Oct** to open the
+dashboard and confirm the project is **Active (not Paused)**. Escalate to **Pro** for the demo week if
+you want the pause risk gone entirely.
+
+## 5. First deploy (Go/No-Go)
+
+**Pre-deploy** — all boxes before flipping `SUPABASE_ENABLED`:
+- [ ] All secrets/vars above saved; `SUPABASE_DB_HOST` is the **session pooler (5432)**.
+- [ ] ES256 keys active; JWKS URL noted.
+- [ ] `guard-secrets` green on the branch (no `service_role` in FE/repo).
+- [ ] **`SUPABASE_ENABLED=true` set LAST.**
+
+**Deploy** — run `db-deploy` via **workflow_dispatch** (watched first run, not an unattended merge):
+- [ ] Job **ran** (not skipped — a skip means `SUPABASE_ENABLED` isn't set).
+- [ ] `supabase db push` reported migrations applied (**not** "no changes" on a fresh project).
+- [ ] Seed step exit 0.
+- [ ] **Smoke checks green** (`supabase/smoke/run.sh`: 10-table set, seed counts 4/7/5/10, `mission_definition` denied, `add_rewards` denied, JWKS ES256).
+
+**Manual auth-flow verification** (can't run in CI once Turnstile is on — do from the app/SDK, or temporarily disable CAPTCHA to test):
+- [ ] Anonymous sign-in returns a JWT with `is_anonymous: true`.
+- [ ] The signup trigger provisioned rows: `select count(*) from profiles` ≥ 1 **and** every profile has a `user_progress` row (1:1).
+- [ ] Two anonymous sessions each see **only their own** `user_progress` row (cross-tenant RLS).
+- [ ] `GET /auth/v1/authorize?provider=google` → 302 to accounts.google.com.
+
+## 6. Hand-off
+- **SIM-3**: give the FE `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`.
+- **SIM-4**: give the **JWKS URL**. The backend must verify with `algorithms=["ES256"]` only (never let the token's `alg` pick the path), validate `iss` (`https://<ref>.supabase.co/auth/v1`), `aud=authenticated`, `exp`, and reject `is_anonymous:true` for reward/permanent gating; bound the JWKS client cache. Time-box + **retire the legacy HS256 secret** once ES256 is live. Adding the `Authorization` header makes `/token` **CORS-preflighted** → allow it in `apps/backend` CORS.
+
+## 7. Rollback / recovery
+- **Bad migration/seed, pre-cutover (greenfield):** `supabase db reset --linked` (⚠️ **destroys all hosted data**, replays migrations) → `psql -f supabase/seed.sql` to reseed. Set a **hard cutover date** after which this is forbidden.
+- **Bad seed only:** fix `seed.sql`, re-run `psql -f` (idempotent; never deletes).
+- **Post-cutover / real data:** forward corrective migration (never edit an applied one) — Free tier has **no PITR**; go **Pro** for the demo window if the data is unlosable.
+- **Code rollback** is independent: revert the commit; the DB doesn't roll back with code.
+
+## 8. Post-handover hygiene (optional — NOT needed for the 26-day hackathon)
+Stale anonymous-user cleanup — **defer**: anon users can't reach 30 days old within the hackathon.
+When it's eventually wanted (a `pg_cron` job deleting 30-day-old `is_anonymous` users), it's delicate
+because manual identity-linking means a *converted* user must be excluded — so **dry-run the DELETE as a
+SELECT and confirm zero linked users are caught before scheduling anything**. Write it up only if the
+project outlives the hackathon. Cascade if you do run it: `auth.users` → `profiles` → user rows
+(`on delete cascade`); `voucher_redemption` survives as an anonymized tombstone (`on delete set null`).
+
+## 9. After the demo
+- **Rotate/revoke** the CI bot's `SUPABASE_ACCESS_TOKEN`.
+- Decide dev vs prod project separation if the project outlives the hackathon.
+
+## 10. Admin metrics role (SIM-15; widened in SIM-17)
+The `20261009120000_admin_metrics.sql` migration creates `metrics_reader` with a **null password** (it
+cannot authenticate until a password is set out-of-band — keeps secrets out of git). The FastAPI backend
+connects as this role to call `admin.metrics_overview()` (and, since SIM-16, `admin.scenario_analytics()`;
+since SIM-19, the read-only `admin.session_results_export()` CSV export).
+
+> **SIM-17 note:** `metrics_reader` now ALSO `EXECUTE`s the seasonal-leaderboard functions, including the
+> `VOLATILE` **writes** `admin.capture_leaderboard_snapshot` and `admin.delete_leaderboard_season` — so
+> this credential can now create/delete leaderboard seasons (still via definer fns only; NO direct table
+> privileges). Treat `METRICS_DB_URL` as a higher-value secret accordingly. The password/DSN setup below
+> is unchanged; the real-role `scripts/e2e-metrics.sh` now also exercises capture → overview → delete.
+>
+> **SIM-18/19/42 note:** `metrics_reader` also `EXECUTE`s the admin content writes — quiz/mading upsert+delete
+> (SIM-18) and, since **SIM-42**, `admin.set_mission_redeem_code` (rotate a reallife mission's unlock code) +
+> `admin.list_missions` (read the hidden codes). Same posture: definer fns only, NO direct table privilege.
+> **INVARIANT:** the `admin` schema must NEVER be added to PostgREST's exposed schemas — these fns are
+> reachable only through the backend as `metrics_reader`, never via the public REST API.
+>
+> **SIM-42 seed interaction:** reallife codes are seeded once from `seed-codes.json`, but the generated
+> `seed.sql` mission `on conflict do update` **omits** `redeem_code`, so codes are **rotate-only after
+> init** — a re-seed will NOT repair or overwrite a code. To change a code on an already-seeded DB, use the
+> admin rotate path (not an edit to `seed-codes.json` + re-seed, which is inert for existing rows).
+
+- **Local dev / branch previews:** after `supabase start` (or a branch reset), set a throwaway password so
+  the backend can connect:
+  `psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "alter role metrics_reader password 'postgres'"`
+  then set the backend's `METRICS_DB_URL=postgresql://metrics_reader:postgres@127.0.0.1:54322/postgres`
+  (`METRICS_DB_SSL=disable` — local Postgres serves no TLS). CI does this automatically (`db-tests.yml`).
+- **Hosted:** set a real URL-safe secret via a transient `psql` (history off), NOT the dashboard SQL editor:
+  `ALTER ROLE metrics_reader WITH PASSWORD '<url-safe-secret>'`; store it in the deploy secret manager; set
+  the backend `METRICS_DB_URL` to the **session-pooler** DSN with username **`metrics_reader.<project-ref>`**
+  (`:5432`, host from the Supabase Connect dialog) + `METRICS_DB_SSL=verify-full`. A bare role name through
+  the pooler → `FATAL: Tenant or user not found`. See the full Go/No-Go in the SIM-15 plan.
+- **Teardown (if ever needed):** `drop schema admin cascade;` **then** `drop role metrics_reader;` —
+  order matters (the role holds grants on `admin` objects until the schema is dropped, so `drop role`
+  first fails "role cannot be dropped because some objects depend on it"). The role is cluster-global,
+  survives `db reset`, and must be dropped manually (migrations are forward-only). On teardown also
+  **rotate/clear the hosted `METRICS_DB_URL` secret**. Because migrations are forward-only, re-applying
+  the migration after a teardown recreates the role with a **NULL password** → re-set the password or
+  the backend 503s.

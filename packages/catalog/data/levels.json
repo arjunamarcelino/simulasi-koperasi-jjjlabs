@@ -1,0 +1,8 @@
+[
+  { "title": "Calon Anggota", "minXp": 0 },
+  { "title": "Anggota", "minXp": 100 },
+  { "title": "Anggota Aktif", "minXp": 300 },
+  { "title": "Pengurus", "minXp": 600 },
+  { "title": "Pengawas", "minXp": 1000 },
+  { "title": "Ketua", "minXp": 1500 }
+]

@@ -6,10 +6,13 @@ import {
   type Participant,
   type RemoteParticipant,
   type RemoteTrack,
+  type TextStreamReader,
   type TranscriptionSegment,
 } from "livekit-client";
 import { ENV } from "../../../config/env";
+import { authedFetch } from "../../../lib/authedFetch";
 import type {
+  ConnectOptions,
   ConnectionState as WireConnectionState,
   DriftLevel,
   FinalDecisionTrigger,
@@ -20,24 +23,15 @@ import type {
   TranscriptItem,
   Unsubscribe,
 } from "../contract";
+import { Emitter } from "../emitter";
+import {
+  readTranscriptStream,
+  SEGMENT_ID_ATTRIBUTE,
+  TRANSCRIPTION_TOPIC,
+} from "./transcriptStream";
+import { END_SESSION_RPC_TIMEOUT_MS, parseAuditorResult, tokenRequestBody } from "./wire";
 
 type TokenResponse = { token: string; room: string; url: string };
-
-class Emitter<T> {
-  private readonly listeners = new Set<(value: T) => void>();
-  subscribe(cb: (value: T) => void): Unsubscribe {
-    this.listeners.add(cb);
-    return () => {
-      this.listeners.delete(cb);
-    };
-  }
-  emit(value: T): void {
-    for (const cb of [...this.listeners]) cb(value);
-  }
-  clear(): void {
-    this.listeners.clear();
-  }
-}
 
 const CONNECTION_MAP: Record<ConnectionState, WireConnectionState> = {
   [ConnectionState.Disconnected]: "ended",
@@ -46,6 +40,14 @@ const CONNECTION_MAP: Record<ConnectionState, WireConnectionState> = {
   [ConnectionState.Reconnecting]: "connecting",
   [ConnectionState.SignalReconnecting]: "connecting",
 };
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
+function isPhaseState(x: unknown): x is PhaseState {
+  return isRecord(x) && typeof x["phase"] === "number" && typeof x["label"] === "string";
+}
 
 /**
  * Real transport over LiveKit. Maps the wire (REST token + LiveKit event/RPC) to
@@ -75,13 +77,15 @@ export class LiveKitTransport implements SessionTransport {
   private currentSpeakerName: string | undefined;
   private readonly audioEls = new Set<HTMLMediaElement>();
 
-  async connect(scenarioId: ScenarioId): Promise<void> {
+  async connect(scenarioId: ScenarioId, opts?: ConnectOptions): Promise<void> {
     this.connection.emit("connecting");
 
-    const res = await fetch(`${ENV.tokenEndpoint}/token`, {
+    // authedFetch attaches the Supabase JWT (once SIM-4 verifies it) and does a
+    // 401-only refresh-retry. In mock/no-auth mode it's a plain fetch.
+    const res = await authedFetch(`${ENV.tokenEndpoint}/token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ scenario_id: scenarioId }),
+      body: JSON.stringify(tokenRequestBody(scenarioId, opts?.history ?? [])),
     });
     if (this.aborted) return;
     if (!res.ok) {
@@ -99,10 +103,19 @@ export class LiveKitTransport implements SessionTransport {
     this.room = room;
 
     room.on(RoomEvent.ConnectionStateChanged, (state: ConnectionState) => {
+      // An unexpected Disconnected (not our own teardown) is a dropped room, not a
+      // clean finish — surface "error" so consumers don't treat a drop as "ended".
+      if (state === ConnectionState.Disconnected && !this.ended) {
+        this.connection.emit("error");
+        return;
+      }
       this.connection.emit(CONNECTION_MAP[state]);
     });
     room.on(RoomEvent.TranscriptionReceived, (segments, participant) => {
       this.handleTranscription(segments, participant);
+    });
+    room.registerTextStreamHandler(TRANSCRIPTION_TOPIC, (reader, { identity }) => {
+      void this.handleTranscriptStream(reader, identity);
     });
     room.on(RoomEvent.ParticipantConnected, (p: RemoteParticipant) => {
       // NPC (agent) is the only remote participant — remember its identity for RPC.
@@ -132,7 +145,9 @@ export class LiveKitTransport implements SessionTransport {
       const rawPhase = changed["phase"];
       if (rawPhase !== undefined) {
         try {
-          this.phase.emit(JSON.parse(rawPhase) as PhaseState);
+          const parsed: unknown = JSON.parse(rawPhase);
+          if (isPhaseState(parsed)) this.phase.emit(parsed);
+          else console.error("Phase payload tidak valid, diabaikan:", parsed);
         } catch (cause: unknown) {
           console.error("Gagal parse phase:", cause);
         }
@@ -301,9 +316,16 @@ export class LiveKitTransport implements SessionTransport {
     this.endingInFlight = true;
     void this.room?.localParticipant.setMicrophoneEnabled(false).catch(() => {});
     try {
-      const raw = await this.rpc("end_session", "");
-      const parsed = JSON.parse(raw) as SessionEnded["result"];
+      const raw = await this.rpc("end_session", "", END_SESSION_RPC_TIMEOUT_MS);
+      const payload: unknown = JSON.parse(raw);
       if (this.ended) return; // force-quit slipped in between awaits
+      const parsed = parseAuditorResult(payload);
+      if (!parsed) {
+        console.error("Hasil end_session tidak valid:", payload);
+        this.ended = true;
+        this.connection.emit("error");
+        return;
+      }
       this.ended = true;
       this.connection.emit("ended");
       this.sessionEnded.emit({ trigger, result: { ...parsed, trigger } });
@@ -321,7 +343,12 @@ export class LiveKitTransport implements SessionTransport {
   private handleSessionEndedData(payload: Uint8Array): void {
     if (this.ended) return;
     try {
-      const parsed = JSON.parse(new TextDecoder().decode(payload)) as SessionEnded["result"];
+      const data: unknown = JSON.parse(new TextDecoder().decode(payload));
+      const parsed = parseAuditorResult(data);
+      if (!parsed) {
+        console.error("Payload session_ended tidak valid, diabaikan:", data);
+        return;
+      }
       this.ended = true;
       void this.room?.localParticipant.setMicrophoneEnabled(false).catch(() => {});
       this.connection.emit("ended");
@@ -332,35 +359,66 @@ export class LiveKitTransport implements SessionTransport {
     }
   }
 
-  private async rpc(method: string, payload: string): Promise<string> {
+  private async rpc(method: string, payload: string, responseTimeout?: number): Promise<string> {
     const room = this.room;
     const destinationIdentity =
       this.agentIdentity ?? room?.remoteParticipants.values().next().value?.identity;
     if (!room || !destinationIdentity) {
       throw new Error("Agent NPC belum tersambung ke room.");
     }
-    return room.localParticipant.performRpc({ destinationIdentity, method, payload });
+    return room.localParticipant.performRpc({
+      destinationIdentity,
+      method,
+      payload,
+      ...(responseTimeout !== undefined ? { responseTimeout } : {}),
+    });
   }
 
+  /**
+   * Legacy transcription carries the PLAYER's words only (the RAT Listener publishes
+   * them solely this way). NPC lines come from `lk.transcription` text streams — the
+   * legacy packets of RAT's second NPC connection (Pak Darma) never reach the client,
+   * so reading NPCs from here left his turns blank.
+   */
   private handleTranscription(
     segments: TranscriptionSegment[],
     participant?: Participant,
   ): void {
-    const isPlayer = participant?.isLocal ?? false;
+    if (!participant?.isLocal) return;
     for (const seg of segments) {
-      // Build without `name` first, then set it conditionally — required by
-      // exactOptionalPropertyTypes (never assign `name: undefined`).
-      const item: TranscriptItem = {
+      this.transcript.emit({
         id: seg.id,
-        speaker: isPlayer ? "player" : "npc",
+        speaker: "player",
         text: seg.text,
         streaming: !seg.final,
         at: Date.now(),
-      };
-      if (!isPlayer && this.currentSpeakerName) {
-        item.name = this.currentSpeakerName;
-      }
-      this.transcript.emit(item);
+      });
+    }
+  }
+
+  /** One NPC transcript segment, streamed as deltas from whichever connection voices it. */
+  private async handleTranscriptStream(
+    reader: TextStreamReader,
+    identity: string,
+  ): Promise<void> {
+    // The player's own stream duplicates its legacy transcription (single-NPC).
+    if (identity === this.room?.localParticipant.identity) return;
+    const id = reader.info.attributes?.[SEGMENT_ID_ATTRIBUTE] ?? reader.info.id;
+    // Bind the persona once, at stream open: the worker sends `speaker` before each
+    // NPC turn starts, and a later turn's signal must not relabel this line.
+    const name = this.currentSpeakerName;
+    const at = Date.now();
+    try {
+      await readTranscriptStream(reader, (text, final) => {
+        if (!text) return;
+        // Build without `name` first, then set it conditionally — required by
+        // exactOptionalPropertyTypes (never assign `name: undefined`).
+        const item: TranscriptItem = { id, speaker: "npc", text, streaming: !final, at };
+        if (name) item.name = name;
+        this.transcript.emit(item);
+      });
+    } catch (cause: unknown) {
+      console.error("Gagal membaca transkripsi NPC:", cause);
     }
   }
 }

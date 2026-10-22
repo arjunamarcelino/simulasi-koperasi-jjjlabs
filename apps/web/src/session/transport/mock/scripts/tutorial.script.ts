@@ -46,6 +46,10 @@ export const TUTORIAL_SCRIPT: ScenarioScript = {
       endingType: "good",
       narrativeFeedback:
         "Selamat! Ibu tadi resmi terdaftar sebagai anggota dan telah membayar Simpanan Pokok. Anda baru saja menuntaskan transaksi koperasi konsumen pertama Anda — mendaftar, menyimpan, lalu menikmati manfaat sebagai anggota. Alur dasar ini akan terus dipakai di skenario berikutnya.",
+      values: {},
+      progressFeedback: "",
+      nextStep: "",
+      evaluationFailed: false,
     },
   },
 };

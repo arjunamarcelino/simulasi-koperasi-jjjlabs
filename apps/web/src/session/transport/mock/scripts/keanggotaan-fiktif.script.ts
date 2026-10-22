@@ -21,6 +21,15 @@ const GOOD_ENDING = {
   endingType: "good",
   narrativeFeedback:
     "Bagus! Anda memilih jalan tengah yang tepat — menaruh verifikasi di atas tuduhan. Dengan mengajak Pak Bambang mencocokkan ulang nama-nama janggal (KOP-0161 ganda, entri tanpa NIK/Simpanan Pokok) ke ketua RT/dusun, data fiktif dibereskan tanpa merusak hubungan. Hak SHU dan suara anggota asli terlindungi, sesuai UU 25/1992 Pasal 17(2) & 30(1)(f).",
+  values: {
+    kejujuran: { status: "TERCERMIN", evidence: "Anda menyebut nomor ganda KOP-0161 dan baris tanpa NIK apa adanya.", trend: "BARU_DIUJI" },
+    keadilan: { status: "TERCERMIN", evidence: "Anda mengaitkan pembersihan data dengan hak SHU anggota asli.", trend: "BARU_DIUJI" },
+    kepedulian: { status: "TERCERMIN", evidence: "Anda menanyakan latar belakang pencatatan dengan sopan, tanpa menuduh.", trend: "BARU_DIUJI" },
+  },
+  progressFeedback:
+    "Ini titik awal perjalanan nilai Anda. Kejujuran dan kepedulian berjalan bersama: Anda tidak menutupi kejanggalan, tetapi tetap menjaga kehormatan Pak Bambang. Pertahankan cara ini saat lawan bicara mulai defensif.",
+  nextStep: "Saat lawan bicara mulai defensif, ulangi tujuan bersama — melindungi hak anggota — sebelum melanjutkan pembahasan.",
+  evaluationFailed: false,
 } satisfies AuditorResult;
 
 const BAD_ENDING = {
@@ -34,6 +43,15 @@ const BAD_ENDING = {
   endingType: "bad",
   narrativeFeedback:
     "Misi gagal. Anda menuduh Pak Bambang memalsukan data dan mengancam pidana tanpa lebih dulu memverifikasi. Ia tersinggung, menutup diri, dan data fiktif tetap dibiarkan — hak SHU anggota asli terus terdilusi. Konfrontasi pengurus senior menuntut bukti dan kesantunan, bukan tuduhan sepihak.",
+  values: {
+    kejujuran: { status: "TERCERMIN", evidence: "Anda menyebut kejanggalan Daftar Anggota secara terang.", trend: "BARU_DIUJI" },
+    keadilan: { status: "BELUM_TAMPAK", evidence: "Hak SHU anggota asli tidak sempat dibahas karena percakapan memanas.", trend: "BARU_DIUJI" },
+    kepedulian: { status: "DIABAIKAN", evidence: "Anda menuduh Pak Bambang memalsukan data dan mengancam pidana.", trend: "BARU_DIUJI" },
+  },
+  progressFeedback:
+    "Ini titik awal perjalanan nilai Anda. Anda berani menyebut kejanggalan, tetapi tuduhan tanpa verifikasi membuat Pak Bambang menutup diri sehingga data fiktif tetap dibiarkan.",
+  nextStep: "Sampaikan temuan sebagai pertanyaan klarifikasi, bukan tuduhan, lalu ajak lawan bicara memeriksanya bersama.",
+  evaluationFailed: false,
 } satisfies AuditorResult;
 
 export const KEANGGOTAAN_FIKTIF_SCRIPT = {
@@ -60,7 +78,7 @@ export const KEANGGOTAAN_FIKTIF_SCRIPT = {
     },
   ],
   hints: [
-    "Pak Bambang disegani — jangan langsung menuduh. Sapa dengan hormat dan buka 'Periksa Dokumen' dulu.",
+    "Pak Bambang disegani — jangan langsung menuduh. Sapa dengan hormat, lalu singgung data dari dokumen dengan tenang.",
     "Sebut satu kejanggalan konkret dari dokumen (mis. nomor ganda KOP-0161) dengan sopan, lalu tanyakan latarnya.",
     "Jelaskan sederhana: data fiktif mengurangi hak bonus (SHU) anggota yang benar-benar aktif — itu soal keadilan, bukan menyalahkan.",
     "Ajak sepakati verifikasi ulang ke ketua RT/dusun, lalu tekan 'Keputusan Akhir'.",

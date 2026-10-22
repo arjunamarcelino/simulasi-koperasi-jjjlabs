@@ -1,9 +1,11 @@
 import type { ScenarioConfig } from "../types/scenario";
 
 /**
- * Config-driven scenario list. The headline scenario for this project is
- * Rapat Anggota Tahunan (RAT); the rest are placeholders ("Segera Hadir")
- * until their mechanics are designed.
+ * Config-driven scenario list. The headline scenario is Rapat Anggota Tahunan
+ * (RAT); all four here are authored and `AVAILABLE` (content-complete and
+ * playable when reached). A scenario's `status` reflects its own content, not
+ * where it's exposed — hub wiring (rooms vs. NPC stations) lives elsewhere
+ * (src/world/rooms.config.ts, src/game/scenes/KoperasiInteriorScene.ts).
  */
 export const SCENARIOS: readonly ScenarioConfig[] = [
   {
@@ -60,9 +62,9 @@ export const SCENARIOS: readonly ScenarioConfig[] = [
     mission:
       "Selidiki alasan Pak Joko menunggak cicilan secara objektif, lalu tawarkan penyelesaian yang sesuai aturan (bukan menyita sepihak, bukan pula membebaskan utang tanpa dasar).",
     steps: [
+      "Buka 'Periksa Bukti' dulu: lihat riwayat bayar & tunggakan Pak Joko agar kamu tahu apa yang perlu ditanyakan.",
       "Sapa Pak Joko dengan tenang; ia defensif dan cemas — jangan langsung menuduh.",
-      "Gali sebab tunggakan: tanyakan kondisi usahanya dan minta izin melihat bukti (buka 'Periksa Bukti').",
-      "Pastikan itikad & kondisinya sebelum menyimpulkan — alasan awal bisa terdengar mengada-ada.",
+      "Gali sebab tunggakan: tanyakan kondisi usahanya dan apa yang berubah sejak Mei. Pastikan itikad & kondisinya sebelum menyimpulkan — alasan awal bisa terdengar mengada-ada.",
       "Setelah paham, sampaikan penyelesaian lewat percakapan (mis. perpanjang tempo / ringankan cicilan), lalu tekan 'Keputusan Akhir'.",
     ],
     evidence: {
@@ -79,6 +81,16 @@ export const SCENARIOS: readonly ScenarioConfig[] = [
           value: "Anggota menyebut usaha sedang sepi — perlu digali langsung.",
         },
       ],
+      guide: {
+        callout: "Mulai dari sini: buka berkas Pak Joko",
+        nudge:
+          "Sebelum menggali lebih jauh, buka 'Periksa Bukti' — lihat riwayat bayar dan tunggakan Pak Joko supaya kamu tahu apa yang perlu ditanyakan.",
+        lookFor: [
+          "Lancar 10 bulan, lalu menunggak sejak Mei → tanyakan apa yang berubah sejak itu.",
+          "Sisa angsuran Rp 6.200.000 → bekal menawarkan jadwal ulang atau keringanan yang masuk akal.",
+          "Catatan petugas: 'usaha sepi' → gali sebabnya langsung dari Pak Joko, jangan menebak.",
+        ],
+      },
     },
   },
   {
@@ -94,8 +106,8 @@ export const SCENARIOS: readonly ScenarioConfig[] = [
     mission:
       "Verifikasi kejanggalan Daftar Anggota lewat 'Periksa Dokumen', lalu ajak Pak Bambang membereskan data secara kooperatif — bukan menuduh, bukan pula membiarkan demi sungkan.",
     steps: [
+      "Buka 'Periksa Dokumen' dulu: temukan kejanggalan di Daftar Anggota — NIK kosong, nomor anggota ganda, tanpa Simpanan Pokok.",
       "Sapa Pak Bambang dengan hormat; ia bendahara senior yang disegani — jangan langsung menuduh.",
-      "Buka 'Periksa Dokumen' untuk melihat kejanggalan: NIK kosong, nomor anggota ganda, tanpa Simpanan Pokok.",
       "Sebut satu kejanggalan konkret dengan sopan, tanyakan latarnya, dan jelaskan bahwa data tak jelas mengurangi hak SHU anggota asli.",
       "Ajak sepakati verifikasi ulang (mis. ke ketua RT/dusun), lalu tekan 'Keputusan Akhir'.",
     ],
@@ -113,6 +125,16 @@ export const SCENARIOS: readonly ScenarioConfig[] = [
           value: "~50 nama baru tanpa NIK & tanpa Simpanan Wajib — perlu dicocokkan ulang.",
         },
       ],
+      guide: {
+        callout: "Mulai dari sini: periksa Daftar Anggota",
+        nudge:
+          "Buka 'Periksa Dokumen' dulu — temukan kejanggalan di Daftar Anggota (nomor ganda, NIK kosong) agar kamu punya dasar yang jelas sebelum bertanya ke Pak Bambang.",
+        lookFor: [
+          "KOP-0161 dipakai dua nama → tanyakan baik-baik bagaimana bisa terjadi.",
+          "Baris tanpa NIK/alamat & tanpa Simpanan Pokok → apakah orangnya benar ada dan aktif?",
+          "~50 nama baru tanpa NIK → data yang tak jelas mengurangi hak SHU anggota asli.",
+        ],
+      },
     },
   },
   {

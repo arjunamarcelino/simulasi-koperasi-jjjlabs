@@ -1,0 +1,35 @@
+# Backend gates: ruff lint + pytest (Supabase-JWT verifier, admin gate, rate-limit).
+# The admin authorization core (require_role, /admin/me, strict is_admin parse) lives
+# here, so it must run in CI. Tests need no network/real Supabase (JWKS is faked).
+# REQUIRED check — unfiltered on purpose; rationale + branch-protection setup in
+# .github/BRANCH_PROTECTION.md. (A path-filtered required check hangs "Expected" forever.)
+name: backend-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop] # dedupe: same-repo PRs already run via pull_request
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: these jobs only read the checkout (lint/test, no repo writes).
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install (frozen)
+        run: uv sync --frozen
+      - name: Lint
+        run: uvx ruff check api/ tests/
+      - name: Test
+        run: uv run pytest

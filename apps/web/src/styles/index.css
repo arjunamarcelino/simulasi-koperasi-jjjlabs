@@ -202,6 +202,24 @@
   animation: driftPulse 1200ms ease-in-out infinite;
 }
 
+/* Guidance ring (mustard) — "open me next" on the case-file rail button. Same shape
+   as the drift ring but a friendly color, so it never reads as a tension warning. */
+@keyframes guidePulse {
+  0%,
+  100% {
+    outline: 3px solid transparent;
+    outline-offset: 2px;
+  }
+  50% {
+    outline: 3px solid var(--color-mustard);
+    outline-offset: 4px;
+  }
+}
+
+@utility guide-nudge {
+  animation: guidePulse 1400ms ease-in-out infinite;
+}
+
 /* Respect reduced-motion: drop decorative animation + tween the state changes to
    near-instant (the opacity/emphasis deltas still convey meaning). */
 @media (prefers-reduced-motion: reduce) {
@@ -212,6 +230,10 @@
      the L1 warning meaning survives. */
   .drift-nudge {
     outline: 3px solid var(--color-orange);
+    outline-offset: 3px;
+  }
+  .guide-nudge {
+    outline: 3px solid var(--color-mustard);
     outline-offset: 3px;
   }
   *,

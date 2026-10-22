@@ -11,7 +11,9 @@
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
     "preview": "pnpm --filter web preview",
-    "typecheck": "pnpm --filter web typecheck",
-    "lint": "pnpm --filter web lint"
+    "typecheck": "pnpm --filter web --filter admin typecheck",
+    "lint": "pnpm --filter web --filter admin lint",
+    "test": "pnpm --filter web --filter admin test",
+    "e2e": "pnpm --filter web e2e"
   }
 }
